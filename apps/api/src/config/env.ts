@@ -31,9 +31,12 @@ const envSchema = z.object({
   JWT_REFRESH_TTL: z.string().default("30d"),
 
   OTP_TTL_SECONDS: z.coerce.number().default(300),
+  // Logs OTP codes to stdout for local dev. Defaults OFF (safe by default) and is
+  // force-disabled in production regardless of the env value (see loadEnv) so a
+  // misconfigured prod box can never leak codes to logs.
   OTP_DEV_LOG: z
     .enum(["true", "false"])
-    .default("true")
+    .default("false")
     .transform((v) => v === "true"),
 });
 
@@ -47,6 +50,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
       .join("\n");
     throw new Error(`Invalid environment configuration:\n${issues}`);
   }
+  // Defense in depth: never log OTP codes in production, whatever the env says.
+  if (parsed.data.NODE_ENV === "production") parsed.data.OTP_DEV_LOG = false;
   return parsed.data;
 }
 

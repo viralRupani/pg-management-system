@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   type DocumentSummary,
   DocumentStatus,
@@ -101,13 +101,10 @@ export class DocumentsService {
   ): Promise<{ status: string }> {
     const db = this.ctx.db();
     return db.transaction(async (tx) => {
-      const [d] = await tx.select().from(documents).where(eq(documents.id, id));
-      if (!d) throw new NotFoundException("Document not found");
-      if (d.status !== DocumentStatus.PENDING)
-        throw new ConflictException(
-          `Document already ${d.status.toLowerCase()}`,
-        );
-      await tx
+      // Conditional flip: only a PENDING document can be decided. A concurrent
+      // or repeat review matches 0 rows and bails — not select-then-update,
+      // which races under READ COMMITTED (see DepositsService.settleExit).
+      const decided = await tx
         .update(documents)
         .set({
           status: decision,
@@ -115,7 +112,20 @@ export class DocumentsService {
           reviewedByUserId: reviewerId,
           reviewedAt: new Date(),
         })
-        .where(eq(documents.id, id));
+        .where(
+          and(eq(documents.id, id), eq(documents.status, DocumentStatus.PENDING)),
+        )
+        .returning({ id: documents.id });
+      if (decided.length !== 1) {
+        const [exists] = await tx
+          .select({ status: documents.status })
+          .from(documents)
+          .where(eq(documents.id, id));
+        if (!exists) throw new NotFoundException("Document not found");
+        throw new ConflictException(
+          `Document already ${exists.status.toLowerCase()}`,
+        );
+      }
       return { status: decision };
     });
   }
