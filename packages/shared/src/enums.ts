@@ -5,6 +5,10 @@
 
 export const UserRole = {
   PLATFORM_ADMIN: "PLATFORM_ADMIN",
+  // Owns one or more PGs; has every PG_MANAGER capability in each owned PG plus
+  // manager management. A cross-tenant login identity (see owners table) that
+  // also has a per-tenant PG_OWNER `users` row in each PG it owns.
+  PG_OWNER: "PG_OWNER",
   PG_MANAGER: "PG_MANAGER",
   RESIDENT: "RESIDENT",
 } as const;

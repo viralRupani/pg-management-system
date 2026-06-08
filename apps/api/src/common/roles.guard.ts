@@ -5,8 +5,19 @@ import {
   Injectable,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import type { JwtPayload, UserRole } from "@pg/shared";
+import { type JwtPayload, UserRole } from "@pg/shared";
 import { IS_PUBLIC, ROLES_KEY } from "./decorators";
+
+/**
+ * Role hierarchy: a key role implicitly satisfies every role it outranks. A PG
+ * owner has all manager capabilities in their PGs (plus owner-only powers), so
+ * PG_OWNER satisfies any @Roles(PG_MANAGER) gate — one central rule rather than
+ * broadening every manager controller. Owner-only routes still gate on
+ * @Roles(PG_OWNER), which a manager does not satisfy (the relation is one-way).
+ */
+const OUTRANKS: Partial<Record<UserRole, readonly UserRole[]>> = {
+  [UserRole.PG_OWNER]: [UserRole.PG_MANAGER],
+};
 
 /** Enforces @Roles(...) against the authenticated payload set by JwtAuthGuard. */
 @Injectable()
@@ -28,7 +39,12 @@ export class RolesGuard implements CanActivate {
 
     const req = ctx.switchToHttp().getRequest();
     const auth = req.auth as JwtPayload | undefined;
-    if (!auth || !required.includes(auth.role)) {
+    const satisfies =
+      auth != null &&
+      required.some(
+        (r) => auth.role === r || OUTRANKS[auth.role]?.includes(r),
+      );
+    if (!satisfies) {
       throw new ForbiddenException("Insufficient role");
     }
     return true;

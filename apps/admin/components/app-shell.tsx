@@ -10,13 +10,15 @@ import {
   LogOut,
   type LucideIcon,
   Megaphone,
+  Repeat,
   Settings,
+  ShieldCheck,
   UsersRound,
   UtensilsCrossed,
   Wallet,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -26,6 +28,8 @@ interface NavItem {
   href: string;
   icon: LucideIcon;
   ready?: boolean;
+  /** Only shown to a PG owner (e.g. manager management). */
+  ownerOnly?: boolean;
 }
 
 // `ready` items are live this milestone; the rest are signposted but disabled
@@ -39,13 +43,27 @@ const NAV: NavItem[] = [
   { label: "Menu", href: "/menu", icon: UtensilsCrossed },
   { label: "Announcements", href: "/announcements", icon: Megaphone },
   { label: "Budgets", href: "/budgets", icon: Wallet },
+  {
+    label: "Managers",
+    href: "/managers",
+    icon: ShieldCheck,
+    ready: true,
+    ownerOnly: true,
+  },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { branding, logout } = useAuth();
+  const { branding, logout, isOwner, exitPg } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
   const pgName = branding?.name ?? "PG Manager";
+  const nav = NAV.filter((item) => !item.ownerOnly || isOwner);
+
+  function switchPg() {
+    exitPg();
+    router.replace("/pgs");
+  }
 
   return (
     <div className="flex min-h-screen">
@@ -68,7 +86,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 space-y-0.5 p-3">
-          {NAV.map((item) => {
+          {nav.map((item) => {
             const active = pathname.startsWith(item.href);
             const Icon = item.icon;
             if (!item.ready) {
@@ -113,6 +131,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="font-semibold">{pgName}</span>
           </div>
           <div className="ml-auto flex items-center gap-1">
+            {isOwner && (
+              <Button variant="ghost" size="sm" onClick={switchPg}>
+                <Repeat className="h-4 w-4" />
+                Switch PG
+              </Button>
+            )}
             <Button variant="ghost" size="icon" aria-label="Notifications">
               <Bell className="h-4 w-4" />
             </Button>

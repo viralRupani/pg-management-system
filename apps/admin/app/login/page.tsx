@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
+import { currentUser, landingPath } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 /**
@@ -22,9 +23,9 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Already signed in → skip the form.
+  // Already signed in → skip the form (owners land on the PG chooser).
   useEffect(() => {
-    if (!loading && user) router.replace("/dashboard");
+    if (!loading && user) router.replace(landingPath(user));
   }, [user, loading, router]);
 
   async function onSubmit(e: React.FormEvent) {
@@ -33,7 +34,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(email.trim(), password);
-      router.replace("/dashboard");
+      router.replace(landingPath(currentUser()));
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 401

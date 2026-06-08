@@ -122,6 +122,18 @@ teal accent `#0d9488`). `NEXT_PUBLIC_API_URL` overrides the API base (default
 **Live click-through still pending** (needs Postgres via Docker; couldn't boot it
 in the sandbox — run the seed flow above to exercise end-to-end).
 
+- **PG-owner surface** (NEW) — a `PG_OWNER` owns multiple PGs. Owner login lands
+  on **`/pgs`** (a chooser OUTSIDE the `(app)` shell — the global token has no
+  active PG); opening a PG calls `owner.pgs.switch` → persists a PG-scoped token →
+  enters `/dashboard` themed to that PG. The **global token is stashed**
+  (`pg_owner_global_*` keys in `lib/api.ts`) so the topbar **"Switch PG"**
+  (`exitPg`) returns to `/pgs` without re-login. Owner-only **`/managers`** page
+  (add / deactivate, inside the shell) + owner-only nav item. Routing helpers
+  `needsPgSelection`/`landingPath` (`lib/api.ts`); `useAuth` gains
+  `isOwner`/`switchPg`/`exitPg`. **Build + backend-e2e verified; browser
+  click-through deferred** (run `node apps/api/scripts/seed-owner.mjs` →
+  `owner@pgowner.demo` / `password123`).
+
 **Not started (next):** feature pages **property** (rooms/beds + edit-rent),
 **complaints**, **menu**, **announcements**, **budgets**, **settings** (branding
 editor) — all still nav stubs marked `soon`. Then the **mobile app** (Expo).

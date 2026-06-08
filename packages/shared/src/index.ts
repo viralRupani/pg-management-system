@@ -1,6 +1,7 @@
 export * from "./enums";
 export * from "./schemas/auth";
 export * from "./schemas/tenant";
+export * from "./schemas/owner";
 export * from "./schemas/resident";
 export * from "./schemas/property";
 export * from "./schemas/allocation";

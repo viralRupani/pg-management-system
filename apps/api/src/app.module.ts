@@ -5,6 +5,7 @@ import { RedisModule } from "./redis/redis.module";
 import { SecurityModule } from "./security/security.module";
 import { AuthModule } from "./auth/auth.module";
 import { PlatformModule } from "./platform/platform.module";
+import { OwnerModule } from "./owner/owner.module";
 import { ResidentsModule } from "./residents/residents.module";
 import { PropertyModule } from "./property/property.module";
 import { AllocationModule } from "./allocation/allocation.module";
@@ -36,6 +37,7 @@ class HealthController {
     SecurityModule,
     AuthModule,
     PlatformModule,
+    OwnerModule,
     ResidentsModule,
     PropertyModule,
     AllocationModule,

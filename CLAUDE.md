@@ -398,6 +398,58 @@ See `apps/admin/CLAUDE.md` for admin conventions (esp. the static-export rules).
 allocate flow) → complaints (clears the last dashboard panel) → menu /
 announcements / budgets → settings (branding editor) → then the mobile app.
 
+### ✅ PG Owner role (multi-PG owner + manager management) — DONE, verified
+A fourth role, **`PG_OWNER`**, sits between platform admin and managers: an owner
+owns **multiple PGs**, creates them, and assigns/removes **managers** per PG, with
+**all manager capabilities** in every owned PG. Built on the existing single-tenant
+JWT + RLS — no multi-tenant JWT.
+- **Two identities.** Manager actor fields (`reviewedByUserId`,
+  `createdByUserId`, …) are composite FKs into `users(id, tenant_id)`, so whoever
+  acts in a PG needs a real `users` row there. An owner therefore has (1) a global
+  login identity — new **`owners`** table + one `auth_identities` row (role
+  `PG_OWNER`, `tenant_id NULL`, email globally unique) — and (2) a **per-tenant
+  `PG_OWNER` `users` row** created eagerly in each owned PG (their in-PG actor).
+  **`owner_tenants`** (`ownerId, tenantId, userId`, `unique(ownerId,tenantId)`)
+  maps the two. `owners`/`owner_tenants` have **NO RLS** (cross-tenant, resolved
+  pre-context — like `tenants`/`auth_identities`).
+- **Token-switch, JWT shape unchanged.** Owner login → *global* token
+  (`tenantId null`, `sub = ownerId`). `POST /owner/pgs/:id/switch` verifies
+  `owner_tenants` membership and mints a *PG-scoped* token (`sub = that PG's
+  PG_OWNER user row`, `tenantId = pgId`) — so the interceptor runs `SET LOCAL`
+  and the owner is mechanically a manager-plus inside the PG. No interceptor
+  change.
+- **One-way role hierarchy** in `RolesGuard` (`OUTRANKS`): `PG_OWNER` satisfies
+  `@Roles(PG_MANAGER)` (so every manager controller just works); managers do NOT
+  satisfy `@Roles(PG_OWNER)`.
+- **Endpoints.** Platform: `POST /platform/owners` (super-admin creates owners).
+  Owner module (`apps/api/src/owner/`): `GET/POST /owner/pgs`, `POST
+  /owner/pgs/:id/switch` (global token); `GET/POST/DELETE /owner/managers`
+  (PG-scoped token). Create-PG + ownership reads use `PLATFORM_DB` (BYPASSRLS,
+  gated by `owner_tenants`); manager management runs under the scoped token's RLS
+  context. Shared `onboarding.helpers.ts` keeps platform onboarding and
+  owner-create-PG from drifting.
+- **Manager removal is a soft-deactivate** (actor FKs are `NO ACTION`/RESTRICT →
+  a manager who reviewed anything can't be hard-deleted, audit must survive):
+  delete the `auth_identities` credential, keep the `users` row with a new
+  `users.deactivated_at`. **`AuthService.refresh` re-checks the credential for
+  `PG_MANAGER`** so revocation actually bites (bounded by the short access TTL,
+  not the 30-day refresh TTL).
+- **Admin UI** (`apps/admin`): owner login → **`/pgs` chooser** (create + open),
+  PG **switch** (stashes the global token so "Switch PG" returns without
+  re-login), owner-only **`/managers`** page, owner-only nav + topbar control.
+- **Decisions locked:** platform-admin creates owners (no self-signup); managers
+  stay **one-email-one-PG** (manager model unchanged); owners manage **only PGs
+  they create** (no takeover of standalone PGs).
+- **Verified:** API suite **73/73** green — new `owner.e2e-spec.ts` drives the
+  full flow over HTTP (create→list→switch→manager-add/list/deactivate, **refresh
+  revoked after deactivate**, cross-owner 403, one-way hierarchy 403) + RLS gate
+  asserts the per-tenant `PG_OWNER` row still obeys RLS. Admin `typecheck` +
+  `build` green (`/pgs` + `/managers` prerender). Live `seed-owner.mjs` against
+  the running `dist` server creates an owner + 2 PGs. **Deferred:** browser
+  click-through of the owner UI React glue (build- + backend-verified only,
+  matching how rent/residents shipped); reactivating a deactivated manager (re-add
+  inserts a fresh user row, no reactivate path yet).
+
 Cross-cutting modules now in place: `StorageModule` (S3 presigned-URL seam,
 local stub), `JobsModule` (BullMQ on Redis), `NotificationsModule` (Expo push
 stub + channel abstraction). Real drivers (S3, Expo/FCM) swap in behind these

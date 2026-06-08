@@ -32,8 +32,12 @@ src/
     zod-validation.pipe.ts    ZodBody(schema)
   auth/                       manager login + resident OTP (AuthService/Repo, OtpService)
   platform/                   super-admin onboarding + metering (PLATFORM_DB, BYPASSRLS):
-                              PlatformService (onboard) + MeteringService (billing_snapshots,
-                              live overview, monthly snapshot)
+                              PlatformService (onboard + createOwner) + MeteringService
+                              (billing_snapshots, overview); onboarding.helpers.ts
+                              (shared tenant/manager inserts, reused by owner module)
+  owner/                      PG_OWNER surface: list/create PGs + switch (global token,
+                              PLATFORM_DB, gated by owner_tenants) and manager
+                              add/list/deactivate (PG-scoped token, RLS context)
   branding/                   white-labeling: public by-slug read (APP_DB) +
                               manager self-service branding/logo (BrandingService)
   residents/                  resident register/list/get (+ current bedLabel)
@@ -129,6 +133,15 @@ ops/tests; the worker provides the schedule.
 ## Auth specifics
 - Manager: `POST /auth/manager/login` (email+password, argon2). Email is globally
   unique in `auth_identities`.
+- **PG owner** (cross-tenant, owns many PGs): same `POST /auth/manager/login` →
+  a *global* token (`role PG_OWNER`, `tenantId null`, `sub = owners.id`).
+  `POST /owner/pgs/:id/switch` mints a *PG-scoped* token (`sub = that PG's
+  PG_OWNER user row`, `tenantId` set) after verifying `owner_tenants` membership.
+  Role hierarchy in `RolesGuard` lets `PG_OWNER` satisfy `@Roles(PG_MANAGER)`
+  (one-way). `refresh()` re-checks the `auth_identities` credential for
+  `PG_MANAGER` so a deactivated manager (credential deleted, `users` row kept via
+  `users.deactivated_at`) loses access at the access-TTL boundary, not 30 days.
+  See root CLAUDE.md "PG Owner role".
 - Resident: `POST /auth/resident/otp/request` then `/verify` — both take
   `pgCode` (tenant slug) + `phone`, because phone is unique only per-tenant. OTP
   in Redis (`otp:{tenantId}:{phone}`), dev code logged when `OTP_DEV_LOG=true`.

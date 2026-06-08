@@ -33,4 +33,19 @@ export class AuthRepository {
       ),
     });
   }
+
+  /**
+   * The credential row backing a (userId, tenantId) principal. Used on refresh
+   * to confirm the account is still live: deactivating a manager DELETES this
+   * row, so its absence means access must not be re-minted. `auth_identities`
+   * has no RLS, so this resolves without a tenant context (like login).
+   */
+  findIdentityByUserId(userId: string, tenantId: string) {
+    return this.db.query.authIdentities.findFirst({
+      where: and(
+        eq(authIdentities.userId, userId),
+        eq(authIdentities.tenantId, tenantId),
+      ),
+    });
+  }
 }

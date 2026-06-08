@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Post, Query } from "@nestjs/common";
 import {
+  createOwnerSchema,
+  type CreateOwnerInput,
   createTenantSchema,
   type CreateTenantInput,
   type SnapshotRequestInput,
@@ -29,6 +31,12 @@ export class PlatformController {
     @Body(new ZodBody(createTenantSchema)) dto: CreateTenantInput,
   ) {
     return this.platform.onboardTenant(dto);
+  }
+
+  /** Create a PG owner (who then creates/manages their own PGs). */
+  @Post("owners")
+  createOwner(@Body(new ZodBody(createOwnerSchema)) dto: CreateOwnerInput) {
+    return this.platform.createOwner(dto);
   }
 
   /** Live per-PG headcount + recurring-revenue estimate (the dashboard list). */
