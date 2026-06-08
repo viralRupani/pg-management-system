@@ -1,0 +1,1080 @@
+"use client";
+
+import { ApiError } from "@pg/api-client";
+import {
+  type AvailableBed,
+  type DepositSummary,
+  type DepositTransactionSummary,
+  type DocumentSummary,
+  OccupationType,
+  type ResidentSummary,
+} from "@pg/shared";
+import {
+  AlertCircle,
+  ArrowLeft,
+  BedDouble,
+  Download,
+  Plus,
+  UserPlus,
+} from "lucide-react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/dialog";
+import { Input, Label } from "@/components/ui/input";
+import { api } from "@/lib/api";
+import { cn, formatDate, formatPaise } from "@/lib/utils";
+
+const inputClass =
+  "flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
+
+const toMessage = (err: unknown, fallback: string) =>
+  err instanceof ApiError ? err.message : fallback;
+
+const residentTone = (s: ResidentSummary["status"]) =>
+  s === "ACTIVE" ? "success" : "neutral";
+const docTone = (s: DocumentSummary["status"]) =>
+  s === "VERIFIED" ? "success" : s === "REJECTED" ? "danger" : "warning";
+
+export default function ResidentsPage() {
+  return (
+    <Suspense fallback={<div className="h-40 animate-pulse rounded bg-muted" />}>
+      <ResidentsRouter />
+    </Suspense>
+  );
+}
+
+function ResidentsRouter() {
+  const id = useSearchParams().get("id");
+  return id ? <ResidentDetail id={id} /> : <ResidentsList />;
+}
+
+/* ------------------------------------------------------------------ list --- */
+
+function ResidentsList() {
+  const [residents, setResidents] = useState<ResidentSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [registering, setRegistering] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setResidents(await api.residents.list());
+    } catch (err) {
+      setError(toMessage(err, "Could not load residents."));
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await api.residents.list();
+        if (!cancelled) setResidents(list);
+      } catch (err) {
+        if (!cancelled) setError(toMessage(err, "Could not load residents."));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Residents</h1>
+          <p className="text-sm text-muted-foreground">
+            Everyone on record at your PG.
+          </p>
+        </div>
+        <Button size="sm" onClick={() => setRegistering(true)}>
+          <UserPlus className="h-4 w-4" />
+          Register resident
+        </Button>
+      </div>
+
+      <ErrorBanner message={error} />
+
+      <Card>
+        <CardContent className="pt-5">
+          {residents === null ? (
+            <ListSkeleton />
+          ) : residents.length === 0 ? (
+            <EmptyRow text="No residents yet. Register your first one." />
+          ) : (
+            <ul className="divide-y divide-border">
+              {residents.map((r) => (
+                <li key={r.id}>
+                  <Link
+                    href={`/residents?id=${r.id}`}
+                    className="-mx-2 flex flex-wrap items-center justify-between gap-3 rounded-md px-2 py-3 transition-colors hover:bg-muted"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{r.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {r.phone} · {r.occupationType.toLowerCase()}
+                        {r.nativePlace ? ` · ${r.nativePlace}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-muted-foreground">
+                        {r.bedLabel ?? "No bed"}
+                      </span>
+                      <Badge tone={residentTone(r.status)}>
+                        {r.status.toLowerCase()}
+                      </Badge>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <RegisterDialog
+        open={registering}
+        onClose={() => setRegistering(false)}
+        onDone={async () => {
+          setRegistering(false);
+          await load();
+        }}
+        onError={setError}
+      />
+    </div>
+  );
+}
+
+function RegisterDialog({
+  open,
+  onClose,
+  onDone,
+  onError,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+  onError: (m: string) => void;
+}) {
+  const router = useRouter();
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [age, setAge] = useState("");
+  const [occupationType, setOccupationType] = useState<OccupationType>(
+    OccupationType.OTHER,
+  );
+  const [nativePlace, setNativePlace] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setName("");
+      setPhone("");
+      setEmail("");
+      setAge("");
+      setOccupationType(OccupationType.OTHER);
+      setNativePlace("");
+    }
+  }, [open]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const created = await api.residents.register({
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim() || undefined,
+        age: age ? Number(age) : undefined,
+        occupationType,
+        nativePlace: nativePlace.trim() || undefined,
+      });
+      await onDone();
+      router.push(`/residents?id=${created.id}`);
+    } catch (err) {
+      onError(toMessage(err, "Could not register the resident."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Register resident"
+      description="Add a new resident to your PG. You can assign a bed afterwards."
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Full name" htmlFor="r-name">
+            <Input
+              id="r-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              minLength={2}
+            />
+          </Field>
+          <Field label="Phone" htmlFor="r-phone">
+            <Input
+              id="r-phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              required
+              placeholder="+9198XXXXXXXX"
+            />
+          </Field>
+          <Field label="Email (optional)" htmlFor="r-email">
+            <Input
+              id="r-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </Field>
+          <Field label="Age (optional)" htmlFor="r-age">
+            <Input
+              id="r-age"
+              type="number"
+              min={16}
+              max={120}
+              value={age}
+              onChange={(e) => setAge(e.target.value)}
+            />
+          </Field>
+          <Field label="Occupation" htmlFor="r-occ">
+            <select
+              id="r-occ"
+              value={occupationType}
+              onChange={(e) =>
+                setOccupationType(e.target.value as OccupationType)
+              }
+              className={inputClass}
+            >
+              {Object.values(OccupationType).map((o) => (
+                <option key={o} value={o}>
+                  {o.charAt(0) + o.slice(1).toLowerCase()}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Native place (optional)" htmlFor="r-native">
+            <Input
+              id="r-native"
+              value={nativePlace}
+              onChange={(e) => setNativePlace(e.target.value)}
+            />
+          </Field>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={busy}>
+            {busy ? "Registering…" : "Register"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/* ---------------------------------------------------------------- detail --- */
+
+interface DetailData {
+  resident: ResidentSummary;
+  documents: DocumentSummary[];
+  deposit: DepositSummary | null;
+  ledger: DepositTransactionSummary[];
+}
+
+function ResidentDetail({ id }: { id: string }) {
+  const [data, setData] = useState<DetailData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [allocating, setAllocating] = useState(false);
+  const [depositOpen, setDepositOpen] = useState(false);
+  const [exitOpen, setExitOpen] = useState(false);
+  const [rejectingDoc, setRejectingDoc] = useState<DocumentSummary | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const [resident, allDocs, dep] = await Promise.all([
+      api.residents.get(id),
+      api.documents.list(),
+      api.deposits.byResident(id),
+    ]);
+    setData({
+      resident,
+      documents: allDocs.filter((d) => d.residentId === id),
+      deposit: dep.deposit,
+      ledger: dep.ledger,
+    });
+  }, [id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [resident, allDocs, dep] = await Promise.all([
+          api.residents.get(id),
+          api.documents.list(),
+          api.deposits.byResident(id),
+        ]);
+        if (cancelled) return;
+        setData({
+          resident,
+          documents: allDocs.filter((d) => d.residentId === id),
+          deposit: dep.deposit,
+          ledger: dep.ledger,
+        });
+      } catch (err) {
+        if (!cancelled) setError(toMessage(err, "Could not load resident."));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  const refresh = async () => {
+    try {
+      await load();
+    } catch (err) {
+      setError(toMessage(err, "Could not refresh resident."));
+    }
+  };
+
+  const moveOut = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.allocations.moveOut(id);
+      await load();
+    } catch (err) {
+      setError(toMessage(err, "Could not move the resident out."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verifyDoc = async (docId: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.documents.verify(docId);
+      await load();
+    } catch (err) {
+      setError(toMessage(err, "Could not verify the document."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const downloadDoc = async (docId: string) => {
+    try {
+      const { downloadUrl } = await api.documents.download(docId);
+      window.open(downloadUrl, "_blank", "noopener");
+    } catch (err) {
+      setError(toMessage(err, "Could not open the document."));
+    }
+  };
+
+  if (error && !data) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-4">
+        <BackLink />
+        <ErrorBanner message={error} />
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-4">
+        <BackLink />
+        <div className="h-40 animate-pulse rounded bg-muted" />
+      </div>
+    );
+  }
+
+  const { resident, documents, deposit, ledger } = data;
+  const active = resident.status === "ACTIVE";
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-6">
+      <BackLink />
+      <ErrorBanner message={error} />
+
+      {/* Header */}
+      <Card>
+        <CardContent className="flex flex-wrap items-start justify-between gap-4 pt-5">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-semibold tracking-tight">
+                {resident.name}
+              </h1>
+              <Badge tone={residentTone(resident.status)}>
+                {resident.status.toLowerCase()}
+              </Badge>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {resident.phone} · {resident.occupationType.toLowerCase()}
+              {resident.nativePlace ? ` · ${resident.nativePlace}` : ""}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Allocation */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Bed allocation</CardTitle>
+          {active &&
+            (resident.bedLabel ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={moveOut}
+              >
+                Move out
+              </Button>
+            ) : (
+              <Button size="sm" onClick={() => setAllocating(true)}>
+                <BedDouble className="h-4 w-4" />
+                Allocate to bed
+              </Button>
+            ))}
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm">
+            {resident.bedLabel ? (
+              <span className="font-medium">{resident.bedLabel}</span>
+            ) : (
+              <span className="text-muted-foreground">
+                Not assigned to a bed.
+              </span>
+            )}
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* KYC documents */}
+      <Card>
+        <CardHeader>
+          <CardTitle>KYC documents</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {documents.length === 0 ? (
+            <EmptyRow text="No documents uploaded yet." />
+          ) : (
+            <ul className="divide-y divide-border">
+              {documents.map((d) => (
+                <li
+                  key={d.id}
+                  className="flex flex-wrap items-center justify-between gap-3 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {d.type.replace("_", " ").toLowerCase()}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDate(d.createdAt)}
+                      {d.reviewNote ? ` · note: ${d.reviewNote}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge tone={docTone(d.status)}>
+                      {d.status.toLowerCase()}
+                    </Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => downloadDoc(d.id)}
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    {d.status === "PENDING" && (
+                      <>
+                        <Button
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => verifyDoc(d.id)}
+                        >
+                          Verify
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => setRejectingDoc(d)}
+                        >
+                          Reject
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Deposit */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Security deposit</CardTitle>
+          <div className="flex gap-2">
+            {!deposit && active && (
+              <Button size="sm" onClick={() => setDepositOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Record deposit
+              </Button>
+            )}
+            {active && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setExitOpen(true)}
+              >
+                Settle exit
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {deposit ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium">
+                  {formatPaise(deposit.amountPaise)}
+                </span>
+                <Badge tone={deposit.status === "HELD" ? "brand" : "neutral"}>
+                  {deposit.status.toLowerCase()}
+                </Badge>
+              </div>
+              {ledger.length > 0 && (
+                <ul className="divide-y divide-border border-t border-border">
+                  {ledger.map((t) => (
+                    <li
+                      key={t.id}
+                      className="flex items-center justify-between gap-3 py-2 text-sm"
+                    >
+                      <span className="text-muted-foreground">
+                        {t.type.toLowerCase()}
+                        {t.reason ? ` · ${t.reason}` : ""}
+                      </span>
+                      <span
+                        className={cn(
+                          "font-medium",
+                          t.type === "REFUND" ? "text-success" : "text-danger",
+                        )}
+                      >
+                        {t.type === "REFUND" ? "+" : "−"}
+                        {formatPaise(t.amountPaise)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No deposit on record.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <AllocateDialog
+        open={allocating}
+        residentId={id}
+        onClose={() => setAllocating(false)}
+        onDone={async () => {
+          setAllocating(false);
+          await refresh();
+        }}
+        onError={setError}
+      />
+      <RecordDepositDialog
+        open={depositOpen}
+        residentId={id}
+        onClose={() => setDepositOpen(false)}
+        onDone={async () => {
+          setDepositOpen(false);
+          await refresh();
+        }}
+        onError={setError}
+      />
+      <ExitDialog
+        open={exitOpen}
+        residentId={id}
+        deposit={deposit}
+        onClose={() => setExitOpen(false)}
+        onDone={async () => {
+          setExitOpen(false);
+          await refresh();
+        }}
+        onError={setError}
+      />
+      <RejectDocDialog
+        doc={rejectingDoc}
+        onClose={() => setRejectingDoc(null)}
+        onDone={async () => {
+          setRejectingDoc(null);
+          await refresh();
+        }}
+        onError={setError}
+      />
+    </div>
+  );
+}
+
+function AllocateDialog({
+  open,
+  residentId,
+  onClose,
+  onDone,
+  onError,
+}: {
+  open: boolean;
+  residentId: string;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+  onError: (m: string) => void;
+}) {
+  const [beds, setBeds] = useState<AvailableBed[] | null>(null);
+  const [busyBed, setBusyBed] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setBeds(null);
+    (async () => {
+      try {
+        const list = await api.allocations.suggestions(residentId);
+        if (!cancelled) setBeds(list);
+      } catch (err) {
+        if (!cancelled) onError(toMessage(err, "Could not load vacant beds."));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, residentId, onError]);
+
+  const pick = async (bedId: string) => {
+    setBusyBed(bedId);
+    try {
+      await api.allocations.allocate({ bedId, residentId });
+      await onDone();
+    } catch (err) {
+      onError(toMessage(err, "Could not allocate the bed."));
+    } finally {
+      setBusyBed(null);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Allocate to a bed"
+      description="Vacant beds, ranked by fit. Pick one to assign this resident."
+    >
+      {beds === null ? (
+        <ListSkeleton />
+      ) : beds.length === 0 ? (
+        <EmptyRow text="No vacant beds available." />
+      ) : (
+        <ul className="max-h-[60vh] divide-y divide-border overflow-y-auto">
+          {beds.map((b) => (
+            <li
+              key={b.bedId}
+              className="flex flex-wrap items-center justify-between gap-3 py-3"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium">
+                  {b.roomLabel} · {b.bedLabel}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {formatPaise(b.monthlyRentPaise)}/mo
+                  {b.matchReasons.length > 0
+                    ? ` · ${b.matchReasons.join(", ")}`
+                    : ""}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                disabled={busyBed === b.bedId}
+                onClick={() => pick(b.bedId)}
+              >
+                Assign
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Dialog>
+  );
+}
+
+function RecordDepositDialog({
+  open,
+  residentId,
+  onClose,
+  onDone,
+  onError,
+}: {
+  open: boolean;
+  residentId: string;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+  onError: (m: string) => void;
+}) {
+  const [rupees, setRupees] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) setRupees("");
+  }, [open]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.deposits.record({
+        residentId,
+        amountPaise: Math.round(Number(rupees) * 100),
+      });
+      await onDone();
+    } catch (err) {
+      onError(toMessage(err, "Could not record the deposit."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Record deposit"
+      description="The security deposit held for this resident (one per resident)."
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Amount (₹)" htmlFor="dep-amount">
+          <Input
+            id="dep-amount"
+            type="number"
+            min={0}
+            step="1"
+            value={rupees}
+            onChange={(e) => setRupees(e.target.value)}
+            required
+            placeholder="e.g. 10000"
+          />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={busy || rupees === ""}>
+            {busy ? "Saving…" : "Record"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+interface DeductionRow {
+  reason: string;
+  rupees: string;
+}
+
+function ExitDialog({
+  open,
+  residentId,
+  deposit,
+  onClose,
+  onDone,
+  onError,
+}: {
+  open: boolean;
+  residentId: string;
+  deposit: DepositSummary | null;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+  onError: (m: string) => void;
+}) {
+  const [rows, setRows] = useState<DeductionRow[]>([]);
+  const [busy, setBusy] = useState(false);
+  const canDeduct = deposit?.status === "HELD";
+  const heldPaise = canDeduct ? deposit.amountPaise : 0;
+
+  useEffect(() => {
+    if (open) setRows([]);
+  }, [open]);
+
+  const totalDeductPaise = rows.reduce(
+    (sum, r) => sum + Math.round(Number(r.rupees || 0) * 100),
+    0,
+  );
+  const refundPaise = heldPaise - totalDeductPaise;
+  const over = totalDeductPaise > heldPaise;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.deposits.exit({
+        residentId,
+        deductions: rows
+          .filter((r) => r.reason.trim() && Number(r.rupees) > 0)
+          .map((r) => ({
+            reason: r.reason.trim(),
+            amountPaise: Math.round(Number(r.rupees) * 100),
+          })),
+      });
+      await onDone();
+    } catch (err) {
+      onError(toMessage(err, "Could not settle the exit."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Settle exit"
+      description="Marks the resident EXITED, frees their bed, and settles the deposit. This cannot be undone."
+    >
+      <form onSubmit={submit} className="space-y-4">
+        {canDeduct ? (
+          <>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Deposit held</span>
+              <span className="font-medium">{formatPaise(heldPaise)}</span>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Deductions</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setRows((r) => [...r, { reason: "", rupees: "" }])
+                  }
+                >
+                  <Plus className="h-4 w-4" />
+                  Add
+                </Button>
+              </div>
+              {rows.map((row, i) => (
+                <div key={i} className="flex gap-2">
+                  <input
+                    value={row.reason}
+                    onChange={(e) =>
+                      setRows((r) =>
+                        r.map((x, j) =>
+                          j === i ? { ...x, reason: e.target.value } : x,
+                        ),
+                      )
+                    }
+                    placeholder="Reason"
+                    className={inputClass}
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    value={row.rupees}
+                    onChange={(e) =>
+                      setRows((r) =>
+                        r.map((x, j) =>
+                          j === i ? { ...x, rupees: e.target.value } : x,
+                        ),
+                      )
+                    }
+                    placeholder="₹"
+                    className={cn(inputClass, "w-28")}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setRows((r) => r.filter((_, j) => j !== i))
+                    }
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between border-t border-border pt-3 text-sm">
+              <span className="text-muted-foreground">Refund to resident</span>
+              <span
+                className={cn(
+                  "font-semibold",
+                  over ? "text-danger" : "text-success",
+                )}
+              >
+                {over ? "exceeds deposit" : formatPaise(refundPaise)}
+              </span>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No deposit is held for this resident. Settling will mark them exited
+            and free their bed.
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="danger" disabled={busy || over}>
+            {busy ? "Settling…" : "Settle exit"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+function RejectDocDialog({
+  doc,
+  onClose,
+  onDone,
+  onError,
+}: {
+  doc: DocumentSummary | null;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+  onError: (m: string) => void;
+}) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setNote("");
+  }, [doc?.id]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!doc) return;
+    setBusy(true);
+    try {
+      await api.documents.reject(doc.id, note.trim());
+      await onDone();
+    } catch (err) {
+      onError(toMessage(err, "Could not reject the document."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={doc !== null}
+      onClose={onClose}
+      title="Reject document"
+      description={doc ? doc.type.replace("_", " ").toLowerCase() : undefined}
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Reason" htmlFor="doc-note">
+          <textarea
+            id="doc-note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            required
+            maxLength={500}
+            rows={3}
+            placeholder="Tell the resident what to fix…"
+            className={inputClass}
+          />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="danger"
+            disabled={busy || note.trim() === ""}
+          >
+            Reject
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/* ----------------------------------------------------------------- bits --- */
+
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function BackLink() {
+  return (
+    <Link
+      href="/residents"
+      className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <ArrowLeft className="h-4 w-4" />
+      All residents
+    </Link>
+  );
+}
+
+function ErrorBanner({ message }: { message: string | null }) {
+  if (!message) return null;
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-3 pt-5 text-danger">
+        <AlertCircle className="h-5 w-5" />
+        <span className="text-sm">{message}</span>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ListSkeleton() {
+  return (
+    <div className="space-y-3 py-1">
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="h-12 animate-pulse rounded bg-muted" />
+      ))}
+    </div>
+  );
+}
+
+function EmptyRow({ text }: { text: string }) {
+  return (
+    <p className="py-8 text-center text-sm text-muted-foreground">{text}</p>
+  );
+}

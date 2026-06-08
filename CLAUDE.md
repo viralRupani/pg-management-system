@@ -327,8 +327,12 @@ See `apps/admin/CLAUDE.md` for admin conventions (esp. the static-export rules).
   Ships **TS source** (`main: src/index.ts`, no build step). Injectable
   `TokenStore` (admin → localStorage; mobile → SecureStore later) +
   `onUnauthorized`; **single-flight refresh-on-401** retry. Resource methods
-  mirror the controllers (auth, branding, residents, allocations, property,
-  invoices, payments, complaints so far — extend as pages are built).
+  mirror the controllers — auth, branding, residents (list/get/register),
+  allocations (list/suggestions/allocate/move-out), property, invoices
+  (list/generate), payments (list/screenshot/approve/reject), documents
+  (list/download/verify/reject), deposits (by-resident/record/exit), complaints
+  so far — extend as pages are built. (Manager surface only; resident-facing
+  methods come with the mobile app.)
 - **✅ Admin foundation (DONE, verified):** Next 16 App Router, `output:'export'`
   (pure client SPA, **no SSR/middleware** — API is the only trust boundary),
   Tailwind v4, hand-rolled shadcn-style primitives. Built: **auth** (manager
@@ -361,11 +365,38 @@ See `apps/admin/CLAUDE.md` for admin conventions (esp. the static-export rules).
   and reads the dev OTP from Redis via `redis-cli`. Fixed slug → re-run is a
   no-op (409). **Note:** the on-disk `apps/api/dist` was stale (pre-branding);
   rebuild API (`pnpm --filter @pg/api build`) before running against `dist`.
-- **⬜ Remaining admin pages (nav stubs, not built):** residents, property
-  (rooms/beds + edit-rent), rent (invoices + payment approve/reject), complaints,
-  menu, announcements, budgets, settings (branding editor). Flip each nav item's
-  `ready: true` as built.
+- **✅ `components/ui/dialog.tsx`** (NEW primitive) — hand-rolled modal (backdrop
+  + Esc + body-scroll lock), used for every create/edit/confirm form. No shadcn
+  CLI; matches the other `ui/` primitives.
+- **✅ Rent page (DONE, build-verified):** `(app)/rent/page.tsx` — tabbed
+  **Payments** review queue (status filter; approve / reject-with-note /
+  view-screenshot via presigned URL) + **Invoices** list with a **Generate
+  invoices** dialog. Approve refetches invoices too (it flips the linked invoice
+  PAID). Added `invoices.generate` + `payments.screenshot` to api-client; **fixed
+  a latent bug** — `payments.reject` was sending `{ reason }` but the controller
+  reads `{ note }` (Zod would have rejected it). Nav `ready: true`.
+- **✅ Residents page (DONE, build-verified):** `(app)/residents/page.tsx` — one
+  route, **two views via `?id=`** (list ↔ detail), Suspense-wrapped (required for
+  `useSearchParams` under static export). List + **Register** dialog (jumps to the
+  new resident); detail = **bed allocation** (ranked-suggestions picker /
+  move-out) + **KYC documents** (verify / reject-with-note / download) +
+  **security deposit** (record + **settle-exit** with dynamic deduction rows and a
+  live refund preview that blocks over-deduction, mirroring the API's
+  `held = Σded + refund` invariant). Nav `ready: true`.
+  - **Verified (rent + residents):** `@pg/admin typecheck` + `build` (static
+    export green, both pages prerendered) + `@pg/api-client typecheck`. **Live
+    click-through still pending** — Docker/Postgres wouldn't boot in the sandbox;
+    run the seed flow (§5) to exercise end-to-end.
+- **⬜ Remaining admin pages (nav stubs, not built):** property (rooms/beds +
+  edit-rent), complaints, menu, announcements, budgets, settings (branding
+  editor). Flip each nav item's `ready: true` as built.
+- **⬜ Committed admin frontend test** — none yet (dashboard/rent/residents are
+  build- + manual-verified only). A Playwright admin e2e is a deferred follow-up.
 - **⬜ Resident mobile app (Expo)** — not started.
+
+**Recommended next sequence:** property (unlocks creating beds for the residents
+allocate flow) → complaints (clears the last dashboard panel) → menu /
+announcements / budgets → settings (branding editor) → then the mobile app.
 
 Cross-cutting modules now in place: `StorageModule` (S3 presigned-URL seam,
 local stub), `JobsModule` (BullMQ on Redis), `NotificationsModule` (Expo push

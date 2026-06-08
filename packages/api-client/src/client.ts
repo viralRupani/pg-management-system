@@ -1,16 +1,25 @@
 import type {
+  AllocateBedInput,
   AllocationSummary,
   AuthTokens,
+  AvailableBed,
   ComplaintSummary,
   CreateBuildingInput,
   CreateRoomInput,
+  DepositSummary,
+  DepositTransactionSummary,
+  DocumentSummary,
+  ExitSettlementInput,
+  GenerateInvoicesInput,
   InvoiceSummary,
   ManagerLoginInput,
   PaymentSummary,
   PresignedUploadResult,
+  RecordDepositInput,
   RegisterResidentInput,
   ResidentSummary,
   RoomSummary,
+  SettlementResult,
   TenantBranding,
   UpdateBrandingInput,
 } from "@pg/shared";
@@ -57,6 +66,38 @@ export class PgApiClient {
   readonly allocations = {
     /** Active allocations (current bed assignments). */
     list: () => this.http.get<AllocationSummary[]>("/allocations"),
+    /** Ranked vacant beds offered as placement options for a resident. */
+    suggestions: (residentId: string) =>
+      this.http.get<AvailableBed[]>("/allocations/suggestions", {
+        query: { residentId },
+      }),
+    allocate: (input: AllocateBedInput) =>
+      this.http.post<AllocationSummary>("/allocations", input),
+    moveOut: (residentId: string) =>
+      this.http.post("/allocations/move-out", { residentId }),
+  };
+
+  readonly documents = {
+    /** All KYC documents in the tenant (filter by residentId client-side). */
+    list: () => this.http.get<DocumentSummary[]>("/documents"),
+    download: (id: string) =>
+      this.http.get<{ downloadUrl: string }>(`/documents/${id}/download`),
+    verify: (id: string) => this.http.post(`/documents/${id}/verify`),
+    reject: (id: string, note: string) =>
+      this.http.post(`/documents/${id}/reject`, { note }),
+  };
+
+  readonly deposits = {
+    byResident: (residentId: string) =>
+      this.http.get<{
+        deposit: DepositSummary | null;
+        ledger: DepositTransactionSummary[];
+      }>(`/deposits/resident/${residentId}`),
+    record: (input: RecordDepositInput) =>
+      this.http.post<{ id: string }>("/deposits", input),
+    /** Settle a resident's exit: deductions + refund, frees the bed. */
+    exit: (input: ExitSettlementInput) =>
+      this.http.post<SettlementResult>("/deposits/exit", input),
   };
 
   readonly property = {
@@ -70,15 +111,24 @@ export class PgApiClient {
 
   readonly invoices = {
     list: () => this.http.get<InvoiceSummary[]>("/invoices"),
+    /** Generate monthly invoices from active allocations (idempotent per period). */
+    generate: (input: GenerateInvoicesInput) =>
+      this.http.post<{ generated: number; period: string }>(
+        "/invoices/generate",
+        input,
+      ),
   };
 
   readonly payments = {
     /** Manager review queue. Pass status=SUBMITTED for the pending queue. */
     list: (status?: string) =>
       this.http.get<PaymentSummary[]>("/payments", { query: { status } }),
+    /** Presigned URL for the uploaded payment screenshot. */
+    screenshot: (id: string) =>
+      this.http.get<{ downloadUrl: string }>(`/payments/${id}/screenshot`),
     approve: (id: string) => this.http.post(`/payments/${id}/approve`),
-    reject: (id: string, reason: string) =>
-      this.http.post(`/payments/${id}/reject`, { reason }),
+    reject: (id: string, note: string) =>
+      this.http.post(`/payments/${id}/reject`, { note }),
   };
 
   readonly complaints = {

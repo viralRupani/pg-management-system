@@ -96,11 +96,46 @@ Demo login (from the seed): `manager@sunrise.pg` / `password123` (PG "Sunrise PG
 teal accent `#0d9488`). `NEXT_PUBLIC_API_URL` overrides the API base (default
 `http://localhost:4000`). CORS for `:3000` is already in the API's `CORS_ORIGINS`.
 
-## Status (M7, 2026-06-08)
-**Done:** foundation — api-client package, auth (login + context + guard),
-white-label theming, app shell, dashboard wired to live API. Verified: `next
-build` static export green, TS green, live login → branding → dashboard data
-(5 residents / 4 beds / 1 pending payment / 2 complaints) over real HTTP + CORS.
-**Not started (next):** feature pages (residents, property, rent/approvals,
-complaints, menu, announcements, budgets, settings/branding editor) — all are
-nav stubs marked `soon`. Then the **mobile app** (Expo).
+## Status (M7, 2026-06-09)
+**Done:**
+- **Foundation** — api-client package, auth (login + context + guard),
+  white-label theming, app shell, dashboard wired to live API. Verified: `next
+  build` static export green, TS green, live login → branding → dashboard data
+  (5 residents / 4 beds / 1 pending payment / 2 complaints) over real HTTP + CORS.
+- **`components/ui/dialog.tsx`** (NEW primitive) — hand-rolled modal (backdrop +
+  Esc close + body-scroll lock); used for all create/edit/confirm forms. No
+  shadcn CLI, matches the other `ui/` primitives.
+- **Rent page** (`(app)/rent/page.tsx`) — tabbed: **Payments** review queue
+  (status filter; approve / reject-with-note / view-screenshot) + **Invoices**
+  list with a **Generate invoices** dialog. Approving refetches invoices too
+  (it flips the linked invoice to PAID). Nav `ready: true`.
+- **Residents page** (`(app)/residents/page.tsx`) — one route, **two views via
+  `?id=`** (list ↔ detail), Suspense-wrapped (required for `useSearchParams`
+  under static export). List + **Register** dialog; detail has **bed allocation**
+  (ranked-suggestions picker / move-out), **KYC documents** (verify / reject /
+  download), **security deposit** (record + **settle-exit** with dynamic
+  deduction rows and a live refund preview that blocks over-deduction). Nav
+  `ready: true`.
+
+**Verified (Rent + Residents):** `pnpm --filter @pg/admin typecheck` + `build`
+(static export, both pages prerendered) + `@pg/api-client typecheck` — all green.
+**Live click-through still pending** (needs Postgres via Docker; couldn't boot it
+in the sandbox — run the seed flow above to exercise end-to-end).
+
+**Not started (next):** feature pages **property** (rooms/beds + edit-rent),
+**complaints**, **menu**, **announcements**, **budgets**, **settings** (branding
+editor) — all still nav stubs marked `soon`. Then the **mobile app** (Expo).
+Also outstanding: **no committed frontend test yet** (dashboard/rent/residents
+verified by build + manual click-through) — a Playwright admin e2e is a deferred
+follow-up.
+
+### Feature-page patterns (locked in by rent + residents)
+- **Detail/edit views = `?id=` + client fetch**, never `[id]` routes. When a page
+  reads `useSearchParams()`, wrap it in `<Suspense>` or `next build` fails the
+  static export. Residents is the worked example (one `page.tsx`, list ↔ detail).
+- Every mutation form lives in the **`Dialog`** primitive; on success the parent
+  refetches (`load()`), then closes — no optimistic local mutation.
+- **Money in, money out:** inputs are rupees → `Math.round(rupees * 100)` paise on
+  submit; display via `formatPaise`. The API is always integer paise.
+- No `Select`/`Textarea` primitives yet — use native `<select>`/`<textarea>` with
+  the shared `inputClass` string (see residents page). Promote to `ui/` if reused.

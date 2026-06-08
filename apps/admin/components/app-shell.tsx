@@ -32,9 +32,9 @@ interface NavItem {
 // so the roadmap is visible without dead links in a static export.
 const NAV: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, ready: true },
-  { label: "Residents", href: "/residents", icon: UsersRound },
+  { label: "Residents", href: "/residents", icon: UsersRound, ready: true },
   { label: "Rooms & Beds", href: "/property", icon: DoorOpen },
-  { label: "Rent", href: "/rent", icon: CreditCard },
+  { label: "Rent", href: "/rent", icon: CreditCard, ready: true },
   { label: "Complaints", href: "/complaints", icon: ClipboardList },
   { label: "Menu", href: "/menu", icon: UtensilsCrossed },
   { label: "Announcements", href: "/announcements", icon: Megaphone },
