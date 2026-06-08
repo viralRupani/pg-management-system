@@ -51,6 +51,12 @@ export class ComplaintsController {
     return this.complaints.list();
   }
 
+  @Get(":id/photo")
+  @Roles(UserRole.PG_MANAGER)
+  photo(@Param("id") id: string) {
+    return this.complaints.getPhotoUrl(id);
+  }
+
   @Post(":id/status")
   @Roles(UserRole.PG_MANAGER)
   updateStatus(

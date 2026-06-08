@@ -162,6 +162,7 @@ export class ComplaintsService {
         description: complaints.description,
         status: complaints.status,
         assignedToUserId: complaints.assignedToUserId,
+        photoKey: complaints.photoKey,
         createdAt: complaints.createdAt,
       })
       .from(complaints)
@@ -176,7 +177,20 @@ export class ComplaintsService {
       description: r.description,
       status: r.status as ComplaintStatusType,
       assignedToUserId: r.assignedToUserId,
+      photoKey: r.photoKey,
       createdAt: r.createdAt.toISOString(),
     }));
+  }
+
+  /** Manager: presigned download URL for a complaint's photo (if any). */
+  async getPhotoUrl(complaintId: string): Promise<{ downloadUrl: string }> {
+    const [row] = await this.ctx
+      .db()
+      .select({ key: complaints.photoKey })
+      .from(complaints)
+      .where(eq(complaints.id, complaintId));
+    if (!row) throw new NotFoundException("Complaint not found");
+    if (!row.key) throw new NotFoundException("No photo on this complaint");
+    return this.storage.presignDownload(row.key);
   }
 }

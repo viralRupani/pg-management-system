@@ -13,6 +13,7 @@ import {
   CreditCard,
   UsersRound,
 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { StatCard } from "@/components/stat-card";
 import { Badge } from "@/components/ui/badge";
@@ -159,24 +160,26 @@ function PendingPaymentsPanel({
         ) : (
           <ul className="divide-y divide-border">
             {payments.slice(0, 6).map((p) => (
-              <li
-                key={p.id}
-                className="flex items-center justify-between gap-3 py-3"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {p.residentName}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {p.period} · submitted {formatDate(p.createdAt)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium">
-                    {formatPaise(p.amountPaise)}
-                  </span>
-                  <Badge tone="warning">Submitted</Badge>
-                </div>
+              <li key={p.id}>
+                <Link
+                  href="/rent"
+                  className="-mx-2 flex items-center justify-between gap-3 rounded-md px-2 py-3 transition-colors hover:bg-muted"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {p.residentName}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {p.period} · submitted {formatDate(p.createdAt)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium">
+                      {formatPaise(p.amountPaise)}
+                    </span>
+                    <Badge tone="warning">Submitted</Badge>
+                  </div>
+                </Link>
               </li>
             ))}
           </ul>
@@ -209,21 +212,23 @@ function ComplaintsPanel({
         ) : (
           <ul className="divide-y divide-border">
             {open.map((c) => (
-              <li
-                key={c.id}
-                className="flex items-center justify-between gap-3 py-3"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {c.description}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {c.residentName} · {c.category.toLowerCase()}
-                  </p>
-                </div>
-                <Badge tone={toneFor(c.status)}>
-                  {c.status.replace("_", " ").toLowerCase()}
-                </Badge>
+              <li key={c.id}>
+                <Link
+                  href={`/complaints?id=${c.id}`}
+                  className="-mx-2 flex items-center justify-between gap-3 rounded-md px-2 py-3 transition-colors hover:bg-muted"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {c.description}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {c.residentName} · {c.category.toLowerCase()}
+                    </p>
+                  </div>
+                  <Badge tone={toneFor(c.status)}>
+                    {c.status.replace("_", " ").toLowerCase()}
+                  </Badge>
+                </Link>
               </li>
             ))}
           </ul>

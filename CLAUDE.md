@@ -314,7 +314,7 @@ recorder fields come from JWT sub, never the body; upserts via
   PATCH → public presign, resident-403). All metering assertions scope to the
   run's tenant ids (the platform pool sees every tenant — see harness note in
   `apps/api/CLAUDE.md`). Full suite: `pnpm --filter @pg/api test` = **63 tests /
-  6 files**.
+  6 files** at M6 (now **64** after the M7 complaint-photo endpoint).
 
 ### 🚧 Milestone 7 — Frontends (IN PROGRESS)
 Admin web app (Next.js static export) + resident mobile app (Expo), consuming the
@@ -387,16 +387,144 @@ See `apps/admin/CLAUDE.md` for admin conventions (esp. the static-export rules).
     export green, both pages prerendered) + `@pg/api-client typecheck`. **Live
     click-through still pending** — Docker/Postgres wouldn't boot in the sandbox;
     run the seed flow (§5) to exercise end-to-end.
-- **⬜ Remaining admin pages (nav stubs, not built):** property (rooms/beds +
-  edit-rent), complaints, menu, announcements, budgets, settings (branding
-  editor). Flip each nav item's `ready: true` as built.
-- **⬜ Committed admin frontend test** — none yet (dashboard/rent/residents are
-  build- + manual-verified only). A Playwright admin e2e is a deferred follow-up.
+- **✅ Property page (DONE, build-verified):** `(app)/property/page.tsx` — an
+  expandable **building → floor → room → bed tree**. Loads all four levels
+  unfiltered in one shot and groups client-side by parent id (a PG is small;
+  beats fetch-on-expand and sidesteps `useSearchParams`/Suspense since expansion
+  is local `useState`). Create dialogs at every level (building / floor / room /
+  bed) + **edit room rent** inline (the rent chip on each room opens the dialog).
+  Room-create surfaces **rent + capacity as primary required fields** (rent feeds
+  `generateMonthly`, defaults to 0 in the schema — burying it would silently bill
+  ₹0); occupation/sharing preferences are optional secondary. Bed status shown as
+  VACANT/OCCUPIED/RESERVED badges. Extended `@pg/api-client` `property` to cover
+  floors/beds/createFloor/createBed/updateRoomRent (+ typed `buildings()` off
+  `unknown[]`). Nav `ready: true`. Verified: `@pg/admin typecheck` + `build`
+  (static export green, `/property` prerendered) + `@pg/api-client typecheck`;
+  live click-through still pending (needs Docker — run the seed flow §5).
+  - **Deferred (M2 follow-up, still open):** the M2 doc promised *rename* and
+    *decommission bed* on this page too. Edit-rent is done; **rename and
+    decommission-bed are NOT** — they need new API endpoints (migrations + tests;
+    decommission must use the conditional-flip pattern since an occupied bed
+    can't be decommissioned). Built the page on the existing create/list/edit-rent
+    surface. **Decommission-bed is the likely-next backend add** (a broken bed
+    shouldn't stay allocatable).
+- **✅ Complaints page (DONE, build- + live-API-verified):**
+  `(app)/complaints/page.tsx` — list ↔ detail via `?id=` (residents pattern,
+  Suspense-wrapped). List has status-filter chips (Open / In progress / Resolved /
+  All, client-side over one fetch). Detail = header + **triage** (set status,
+  **Assign to me** via `{ assignToSelf: true }` carrying the current status) +
+  **photo view** + **comment thread** (read + add note). There is **no
+  `GET /complaints/:id`**, so detail derives the row from `complaints.list()` +
+  `complaints.updates(id)` in one `Promise.all`. Thread entries carry only
+  `authorUserId`, so each is labelled Resident / You / Staff by comparing it to
+  `complaint.residentId` and the JWT sub. Extended `@pg/api-client` `complaints`
+  (updates / addUpdate / updateStatus / photo). Nav `ready: true`.
+  - **Backend slice (photo viewing):** residents could attach a complaint photo
+    but the manager API couldn't surface it. Added `photoKey` to
+    `complaintSummarySchema` (read projection — **no migration**, the
+    `complaints.photo_key` column already existed) + a manager
+    `GET /complaints/:id/photo` (`ComplaintsService.getPhotoUrl` →
+    `StorageProvider.presignDownload`, mirroring payments `:id/screenshot` /
+    documents `:id/download`; null key → 404). Extended `operations.e2e-spec.ts`.
+  - **Verified:** full `pnpm --filter @pg/api test` (**64 tests / 6 files** green,
+    incl. the new photo round-trip) + `@pg/api-client`/`@pg/admin` typecheck +
+    `next build` (static export, `/complaints` prerendered) + **live API check**
+    (logged in as the seed manager: list returns `photoKey`, `:id/photo` returns
+    the "No photo on this complaint" 404 — confirms the running API has the new
+    route). Live **browser** click-through still the one gap (same as prior pages).
+  - **Deferred:** resident-facing complaint-photo read (mobile concern).
+- **✅ Menu page (DONE, build- + live-API-verified):** `(app)/menu/page.tsx` — a
+  **weekly grid** (meals × 7 days; rows BREAKFAST/LUNCH/SNACKS/DINNER, columns
+  Mon–Sun) with prev / this-week / next navigation. Week state is local, so **no
+  `?id=`/Suspense** needed (simplest page type). Each cell shows the published
+  `items` string or an "Add" affordance; clicking opens a dialog that upserts that
+  date+meal (`POST /menu`), then refetches the week (`GET /menu?from=&to=`).
+  Pure-frontend (no backend/`@pg/shared` change — upsert+range API already covers
+  a manager planner). Added `menu` resource to `@pg/api-client`. Nav `ready: true`.
+  - **🔑 Date landmine (locked in):** **both** menu endpoints reject unpadded
+    dates — `GET` validates `from`/`to` against `^\d{4}-\d{2}-\d{2}$`, `POST` uses
+    Zod `.date()`. The page's `ymd()` helper **zero-pads and uses local getters**
+    (NOT `toISOString().slice(0,10)`, which is UTC and shifts the day in IST).
+    `mondayOf` uses `(getDay()+6)%7`. Same `ymd` feeds both the range query and
+    the per-cell `menuDate` on upsert. Build can't catch a padding bug — only a
+    live round-trip does (verified: upsert→range read→re-upsert replaces, 1 row).
+  - **Constraint (not a bug):** no delete endpoint + `items` is `min(1)`, so a
+    manager can overwrite but not clear a meal; the dialog disables submit on
+    blank to mirror that (no "clear" affordance that would 400).
+- **✅ Announcements page (DONE, build- + live-verified):**
+  `(app)/announcements/page.tsx` — a flat reverse-chronological feed (`GET
+  /announcements`, already newest-first) + a **New announcement** dialog
+  (`POST /announcements`, title ≤160 / body ≤4000 mirrored as `maxLength`). The
+  simplest page yet: no grid, no `?id=`/Suspense, no detail route — the full
+  body is shown inline (`whitespace-pre-wrap`), so unlike complaints there's
+  nothing a drill-down would add. Pure-frontend; backend (`AnnouncementsModule`,
+  `createAnnouncementSchema`/`announcementSummarySchema`) was already built and
+  RLS-enabled in M5. Added a 2-method `announcements` resource to
+  `@pg/api-client`. Nav `ready: true`.
+  - **Verified:** `@pg/api-client`/`@pg/admin` typecheck + `next build` (static
+    export green, `/announcements` prerendered) + a **live browser
+    click-through** (Playwright via `npx`, headless Chromium — chromium binary
+    was already cached locally so no Docker/sandbox issue this time): logged in
+    as the seed manager, posted via a raw API call AND via the UI dialog,
+    confirmed both appear newest-first with correct `formatDate` rendering and
+    the teal `--brand` theming intact. **First admin page with a real
+    browser-driven verification — closes the "live click-through pending" gap
+    that every prior M7 page deferred.**
+- **✅ Budgets page (DONE, build- + live-browser-verified):**
+  `(app)/budgets/page.tsx` — the **grid/range pattern at month granularity**
+  (sibling of menu's week grid): viewed month in local state, `period =
+  ymPeriod(month)`, one `useEffect` fetches `Promise.all([budgets.summary,
+  budgets.expenses])`; no `?id=`/Suspense. A **spend-vs-budget summary table**
+  (Category | Budget | Spent | Remaining, per-row progress bar that goes red +
+  Remaining red when over budget, `—` where no budget, Σ Total footer) + an
+  **expense ledger**, with **Set budget** + **Record expense** `Dialog`s.
+  Categories are **free text** — both dialogs share a `<datalist>` of the
+  period's known categories. Pure-frontend (budgets backend was M5); added a
+  4-method `budgets` resource (summary/setBudget/expenses/recordExpense) to
+  `@pg/api-client`. **🔑 Period uses a local `ymPeriod` helper, NOT
+  `toISOString().slice(0,7)`** (UTC shifts the month in IST — the menu-page
+  landmine, one level up at month granularity). No delete endpoint
+  (set/overwrite only). Nav `ready: true`.
+  - **Verified:** `@pg/api-client`/`@pg/admin` typecheck + `next build` (static
+    export, `/budgets` prerendered) + a **live API round-trip** (set budget →
+    record expense → summary reflects ₹5,000 limit/₹1,200 spent; missing-period
+    400) + a **live browser click-through** (cached-chromium Playwright recipe):
+    drove both dialogs from the UI, watched Spent/Remaining update and go red on
+    over-budget, confirmed teal `--brand` active-nav, empty-month state, zero
+    console errors.
+- **✅ Settings page (DONE, build- + live-browser-verified):**
+  `(app)/settings/page.tsx` — the **white-label branding editor**, the last admin
+  page. Reads `useAuth().branding` (canonical, already fetched at login) so it
+  needs no `?id=`/Suspense. An **Identity** card (PG name + accent colour via a
+  native `<input type="color">` synced to a hex text field, with a **live
+  preview** of the primary-button / active-nav / swatch) saved in one `PATCH
+  /tenants/branding`, and a **Logo** card (presign `POST /tenants/logo-url` → PUT
+  the file bytes → `PATCH { logoKey }` → refetch). On save it calls
+  `useAuth().refreshBranding()`, which re-reads branding and repaints `--brand` +
+  the sidebar **live** (verified: accent → purple + name update with no reload).
+  **No api-client change** — `branding.mine/update/logoUploadUrl` already existed
+  from the foundation. **🔑 Logo upload is the admin app's first file upload**;
+  the local storage stub returns a non-functional `uploadUrl`
+  (`stub-storage.local`, no real server) so the **byte PUT only works against real
+  S3** — name/accent are fully local-verifiable, the logo round-trip is verified
+  at the API/presign level (key-not-URL, like payments/KYC). Nav `ready: true`.
+  - **Verified:** `@pg/admin` typecheck + `next build` (static export,
+    `/settings` prerendered) + **live API round-trip** (PATCH name+accent
+    reflected; logo presign → PATCH-key → presigned `logoUrl`; invalid accent
+    400; clear `logoKey:null` → `logoUrl:null`) + **live browser click-through**
+    (edit accent→#7c3aed + name, save → `--brand` repaints purple, sidebar name
+    updates live, "Saved" shown, restored to teal; zero console errors).
+
+> **🎉 M7 admin app COMPLETE** — all 8 manager pages built + verified (dashboard,
+> residents, property, rent, complaints, menu, announcements, budgets, settings).
+> Next surface is the **resident mobile app (Expo)**.
+- **⬜ Committed admin frontend test** — none yet (admin pages are build- +
+  manual-verified only). A Playwright admin e2e is a deferred follow-up.
 - **⬜ Resident mobile app (Expo)** — not started.
 
-**Recommended next sequence:** property (unlocks creating beds for the residents
-allocate flow) → complaints (clears the last dashboard panel) → menu /
-announcements / budgets → settings (branding editor) → then the mobile app.
+**Recommended next sequence:** ~~property~~ ~~complaints~~ ~~menu~~
+~~announcements~~ ~~budgets~~ ~~settings~~ (admin app DONE) → **resident mobile
+app (Expo), next**.
 
 Cross-cutting modules now in place: `StorageModule` (S3 presigned-URL seam,
 local stub), `JobsModule` (BullMQ on Redis), `NotificationsModule` (Expo push

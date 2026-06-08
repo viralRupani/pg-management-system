@@ -32,6 +32,7 @@ export const complaintSummarySchema = z.object({
   description: z.string(),
   status: z.nativeEnum(ComplaintStatus),
   assignedToUserId: z.string().uuid().nullable(),
+  photoKey: z.string().nullable(),
   createdAt: z.string(),
 });
 export type ComplaintSummary = z.infer<typeof complaintSummarySchema>;

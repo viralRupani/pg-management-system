@@ -33,13 +33,13 @@ interface NavItem {
 const NAV: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, ready: true },
   { label: "Residents", href: "/residents", icon: UsersRound, ready: true },
-  { label: "Rooms & Beds", href: "/property", icon: DoorOpen },
+  { label: "Rooms & Beds", href: "/property", icon: DoorOpen, ready: true },
   { label: "Rent", href: "/rent", icon: CreditCard, ready: true },
-  { label: "Complaints", href: "/complaints", icon: ClipboardList },
-  { label: "Menu", href: "/menu", icon: UtensilsCrossed },
-  { label: "Announcements", href: "/announcements", icon: Megaphone },
-  { label: "Budgets", href: "/budgets", icon: Wallet },
-  { label: "Settings", href: "/settings", icon: Settings },
+  { label: "Complaints", href: "/complaints", icon: ClipboardList, ready: true },
+  { label: "Menu", href: "/menu", icon: UtensilsCrossed, ready: true },
+  { label: "Announcements", href: "/announcements", icon: Megaphone, ready: true },
+  { label: "Budgets", href: "/budgets", icon: Wallet, ready: true },
+  { label: "Settings", href: "/settings", icon: Settings, ready: true },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

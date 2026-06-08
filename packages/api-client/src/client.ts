@@ -1,27 +1,43 @@
 import type {
   AllocateBedInput,
   AllocationSummary,
+  AnnouncementSummary,
   AuthTokens,
   AvailableBed,
+  BedSummary,
+  BudgetSummaryRow,
+  BuildingSummary,
+  ComplaintStatus,
   ComplaintSummary,
+  ComplaintUpdateEntry,
+  CreateAnnouncementInput,
+  CreateBedInput,
   CreateBuildingInput,
+  CreateFloorInput,
   CreateRoomInput,
   DepositSummary,
   DepositTransactionSummary,
   DocumentSummary,
   ExitSettlementInput,
+  ExpenseSummary,
+  FloorSummary,
   GenerateInvoicesInput,
   InvoiceSummary,
   ManagerLoginInput,
+  MenuItemSummary,
   PaymentSummary,
   PresignedUploadResult,
   RecordDepositInput,
+  RecordExpenseInput,
   RegisterResidentInput,
   ResidentSummary,
   RoomSummary,
+  SetBudgetInput,
   SettlementResult,
   TenantBranding,
   UpdateBrandingInput,
+  UpdateComplaintStatusInput,
+  UpsertMenuInput,
 } from "@pg/shared";
 import { Http } from "./http";
 import type { ClientConfig } from "./types";
@@ -101,12 +117,30 @@ export class PgApiClient {
   };
 
   readonly property = {
-    buildings: () => this.http.get<unknown[]>("/property/buildings"),
-    rooms: () => this.http.get<RoomSummary[]>("/property/rooms"),
+    /** The full property tree is small — list each level unfiltered and group
+     * client-side, or pass a parent id to scope. */
+    buildings: () => this.http.get<BuildingSummary[]>("/property/buildings"),
+    floors: (buildingId?: string) =>
+      this.http.get<FloorSummary[]>("/property/floors", {
+        query: { buildingId },
+      }),
+    rooms: (floorId?: string) =>
+      this.http.get<RoomSummary[]>("/property/rooms", { query: { floorId } }),
+    beds: (roomId?: string) =>
+      this.http.get<BedSummary[]>("/property/beds", { query: { roomId } }),
     createBuilding: (input: CreateBuildingInput) =>
-      this.http.post("/property/buildings", input),
+      this.http.post<{ id: string }>("/property/buildings", input),
+    createFloor: (input: CreateFloorInput) =>
+      this.http.post<{ id: string }>("/property/floors", input),
     createRoom: (input: CreateRoomInput) =>
-      this.http.post("/property/rooms", input),
+      this.http.post<{ id: string }>("/property/rooms", input),
+    createBed: (input: CreateBedInput) =>
+      this.http.post<{ id: string }>("/property/beds", input),
+    /** Edit a room's monthly rent (paise). Feeds invoice generation. */
+    updateRoomRent: (id: string, monthlyRentPaise: number) =>
+      this.http.patch<{ id: string }>(`/property/rooms/${id}/rent`, {
+        monthlyRentPaise,
+      }),
   };
 
   readonly invoices = {
@@ -132,6 +166,56 @@ export class PgApiClient {
   };
 
   readonly complaints = {
+    /** Manager: every complaint in the tenant, newest first. */
     list: () => this.http.get<ComplaintSummary[]>("/complaints"),
+    /** The complaint thread (oldest first). */
+    updates: (id: string) =>
+      this.http.get<ComplaintUpdateEntry[]>(`/complaints/${id}/updates`),
+    addUpdate: (id: string, note: string) =>
+      this.http.post<{ id: string }>(`/complaints/${id}/updates`, { note }),
+    /** Manager: change status, optionally self-assign. */
+    updateStatus: (id: string, input: UpdateComplaintStatusInput) =>
+      this.http.post<{ status: ComplaintStatus }>(
+        `/complaints/${id}/status`,
+        input,
+      ),
+    /** Manager: presigned URL for the attached photo (404 if none). */
+    photo: (id: string) =>
+      this.http.get<{ downloadUrl: string }>(`/complaints/${id}/photo`),
+  };
+
+  readonly menu = {
+    /** Tenant-shared menu for an inclusive [from, to] range (YYYY-MM-DD, both required). */
+    list: (from: string, to: string) =>
+      this.http.get<MenuItemSummary[]>("/menu", { query: { from, to } }),
+    /** Manager: publish/replace one date+meal (upsert). */
+    upsert: (input: UpsertMenuInput) =>
+      this.http.post<{ id: string }>("/menu", input),
+  };
+
+  readonly announcements = {
+    /** Tenant feed, newest first (manager + resident). */
+    list: () => this.http.get<AnnouncementSummary[]>("/announcements"),
+    /** Manager: post a new announcement. */
+    create: (input: CreateAnnouncementInput) =>
+      this.http.post<{ id: string }>("/announcements", input),
+  };
+
+  readonly budgets = {
+    /** Spend-vs-budget rows for a period (YYYY-MM). One row per category that
+     * has a budget or any spend; limitPaise is null where no budget is set. */
+    summary: (period: string) =>
+      this.http.get<BudgetSummaryRow[]>("/budgets/summary", {
+        query: { period },
+      }),
+    /** Manager: set/upsert a category budget for the period. */
+    setBudget: (input: SetBudgetInput) =>
+      this.http.post<{ id: string }>("/budgets", input),
+    /** The expense ledger for a period (YYYY-MM), newest first. */
+    expenses: (period: string) =>
+      this.http.get<ExpenseSummary[]>("/expenses", { query: { period } }),
+    /** Manager: record an expense (recorder taken from the JWT). */
+    recordExpense: (input: RecordExpenseInput) =>
+      this.http.post<{ id: string }>("/expenses", input),
   };
 }

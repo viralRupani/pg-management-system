@@ -80,6 +80,43 @@ describe("M5 operations (e2e)", () => {
       });
       expect(denied.status).toBe(403);
     });
+
+    it("manager gets a download URL for a complaint photo; no-photo 404s", async () => {
+      // The first complaint was filed without a photo → 404.
+      const noPhoto = await h.req(
+        "get",
+        `/complaints/${complaintId}/photo`,
+        pgA.managerToken,
+      );
+      expect(noPhoto.status).toBe(404);
+
+      // File a complaint WITH a photo (resident presigns an upload key first).
+      const presign = await h.req("post", "/complaints/photo-url", residentA);
+      expect(presign.status).toBe(201);
+      const photoKey = presign.body.key as string;
+
+      const filed = await h.req("post", "/complaints", residentA, {
+        category: "CLEANLINESS",
+        description: "Dirty common area",
+        photoKey,
+      });
+      expect(filed.status).toBe(201);
+
+      // Manager list exposes the photoKey, and the photo endpoint presigns it.
+      const list = await h.req("get", "/complaints", pgA.managerToken);
+      const withPhoto = list.body.find(
+        (c: { id: string }) => c.id === filed.body.id,
+      );
+      expect(withPhoto.photoKey).toBe(photoKey);
+
+      const photo = await h.req(
+        "get",
+        `/complaints/${filed.body.id}/photo`,
+        pgA.managerToken,
+      );
+      expect(photo.status).toBe(200);
+      expect(photo.body.downloadUrl).toContain(photoKey);
+    });
   });
 
   describe("menu (tenant-shared)", () => {
