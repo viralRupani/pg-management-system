@@ -407,4 +407,31 @@ describe("cross-tenant isolation (RLS gate)", () => {
     const names = rows.map((r) => r.name).sort();
     expect(names).toEqual(["Alice A", "Anita A", "Bob B"]);
   });
+
+  it("scopes a PG_OWNER's per-tenant user row like any other user (role doesn't bypass RLS)", async () => {
+    // An owner gets a per-tenant PG_OWNER `users` row in each PG they own (their
+    // in-PG actor). It's a normal RLS row — the cross-tenant owner identity lives
+    // in the no-RLS `owners`/`owner_tenants` tables, NOT here. Seed one in A via
+    // the platform pool, then prove tenant B can't see it and no-context fails
+    // closed. (Added last so it doesn't perturb the exact-count assertions above.)
+    await platformDb
+      .insert(users)
+      .values({ tenantId: tenantA, role: UserRole.PG_OWNER, name: "Owner A" });
+
+    const aSees = await tcs.run(tenantA, async () =>
+      tcs.db().select().from(users).where(eq(users.role, UserRole.PG_OWNER)),
+    );
+    expect(aSees.map((r) => r.name)).toEqual(["Owner A"]);
+
+    const bSees = await tcs.run(tenantB, async () =>
+      tcs.db().select().from(users).where(eq(users.role, UserRole.PG_OWNER)),
+    );
+    expect(bSees).toHaveLength(0);
+
+    const noCtx = await appDb
+      .select()
+      .from(users)
+      .where(eq(users.role, UserRole.PG_OWNER));
+    expect(noCtx).toHaveLength(0);
+  });
 });

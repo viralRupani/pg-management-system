@@ -31,6 +31,11 @@ export const users = pgTable("users", {
   status: text("status").notNull().default("ACTIVE"), // ResidentStatus
   joinDate: timestamp("join_date", { withTimezone: true }),
 
+  // Manager soft-deactivation (set by an owner). null = active; when set, the
+  // login credential in auth_identities is removed but this row is KEPT so the
+  // actor FKs (reviewedBy/recordedBy/…) that RESTRICT on delete stay intact.
+  deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

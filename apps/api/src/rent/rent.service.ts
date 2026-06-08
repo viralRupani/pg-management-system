@@ -161,6 +161,10 @@ export class RentService {
   ): Promise<{ id: string }> {
     const tenantId = this.ctx.currentTenantId()!;
     const invoice = await this.ownedInvoice(residentId, input.invoiceId);
+    // A settled invoice takes no further payments — blocks piling SUBMITTED rows
+    // onto an already-PAID invoice.
+    if (invoice.status === InvoiceStatus.PAID)
+      throw new ConflictException("Invoice is already paid");
     const [row] = await this.ctx
       .db()
       .insert(payments)
@@ -252,18 +256,10 @@ export class RentService {
   ): Promise<{ status: PaymentStatus }> {
     const db = this.ctx.db();
     return db.transaction(async (tx) => {
-      const [p] = await tx
-        .select()
-        .from(payments)
-        .where(eq(payments.id, paymentId));
-      if (!p) throw new NotFoundException("Payment not found");
-      // Only a pending payment can be decided — blocks double-approve / flip.
-      if (p.status !== PaymentStatus.SUBMITTED)
-        throw new ConflictException(
-          `Payment already ${p.status.toLowerCase()}`,
-        );
-
-      await tx
+      // (1) Conditional flip FIRST: only a SUBMITTED payment can be decided.
+      // A concurrent/repeat review matches 0 rows and bails before any side
+      // effect — not select-then-update, which races under READ COMMITTED.
+      const decided = await tx
         .update(payments)
         .set({
           status: decision,
@@ -271,13 +267,42 @@ export class RentService {
           reviewNote: note ?? null,
           reviewedAt: new Date(),
         })
-        .where(eq(payments.id, paymentId));
+        .where(
+          and(
+            eq(payments.id, paymentId),
+            eq(payments.status, PaymentStatus.SUBMITTED),
+          ),
+        )
+        .returning({ invoiceId: payments.invoiceId });
 
+      if (decided.length !== 1) {
+        const [exists] = await tx
+          .select({ status: payments.status })
+          .from(payments)
+          .where(eq(payments.id, paymentId));
+        if (!exists) throw new NotFoundException("Payment not found");
+        throw new ConflictException(
+          `Payment already ${exists.status.toLowerCase()}`,
+        );
+      }
+
+      // (2) The invoice PENDING -> PAID flip is the authoritative single-settle
+      // guard: a second approval (even for a different SUBMITTED payment on the
+      // same invoice) matches 0 rows here and rolls the whole txn back, so an
+      // invoice can never carry two APPROVED payments.
       if (decision === PaymentStatus.APPROVED) {
-        await tx
+        const paid = await tx
           .update(invoices)
           .set({ status: InvoiceStatus.PAID })
-          .where(eq(invoices.id, p.invoiceId));
+          .where(
+            and(
+              eq(invoices.id, decided[0].invoiceId),
+              eq(invoices.status, InvoiceStatus.PENDING),
+            ),
+          )
+          .returning({ id: invoices.id });
+        if (paid.length !== 1)
+          throw new ConflictException("Invoice is already paid");
       }
       return { status: decision };
     });

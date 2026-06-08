@@ -2,13 +2,16 @@ import { ConflictException, Inject, Injectable } from "@nestjs/common";
 import { eq } from "drizzle-orm";
 import * as argon2 from "argon2";
 import {
+  type CreateOwnerInput,
   type CreateTenantInput,
+  type OwnerSummary,
   type TenantSummary,
   TenantStatus,
   UserRole,
 } from "@pg/shared";
 import { PLATFORM_DB, type Database } from "../db/database.module";
-import { authIdentities, tenants, users } from "../db/schema";
+import { authIdentities, owners, tenants } from "../db/schema";
+import { assertSlugFree, insertManager, insertTenant } from "./onboarding.helpers";
 
 /**
  * Platform/super-admin operations that legitimately span tenants. The ONLY
@@ -20,47 +23,10 @@ export class PlatformService {
   constructor(@Inject(PLATFORM_DB) private readonly db: Database) {}
 
   async onboardTenant(input: CreateTenantInput): Promise<TenantSummary> {
-    const existing = await this.db.query.tenants.findFirst({
-      where: eq(tenants.slug, input.slug),
-    });
-    if (existing) {
-      throw new ConflictException(`PG code '${input.slug}' is already taken`);
-    }
-
-    const passwordHash = await argon2.hash(input.manager.password);
-
     return this.db.transaction(async (tx) => {
-      const [tenant] = await tx
-        .insert(tenants)
-        .values({
-          name: input.name,
-          slug: input.slug,
-          logoKey: input.logoKey ?? null,
-          accentColor: input.accentColor ?? null,
-          status: TenantStatus.ACTIVE,
-        })
-        .returning();
-
-      const [manager] = await tx
-        .insert(users)
-        .values({
-          tenantId: tenant.id,
-          role: UserRole.PG_MANAGER,
-          name: input.manager.name,
-          email: input.manager.email,
-          phone: input.manager.phone,
-        })
-        .returning();
-
-      await tx.insert(authIdentities).values({
-        tenantId: tenant.id,
-        role: UserRole.PG_MANAGER,
-        userId: manager.id,
-        email: input.manager.email,
-        phone: input.manager.phone,
-        passwordHash,
-      });
-
+      await assertSlugFree(tx, input.slug);
+      const tenant = await insertTenant(tx, input);
+      await insertManager(tx, tenant.id, input.manager);
       return {
         id: tenant.id,
         name: tenant.name,
@@ -68,6 +34,39 @@ export class PlatformService {
         status: TenantStatus.ACTIVE,
         activeResidents: 0,
       };
+    });
+  }
+
+  /**
+   * Create a PG owner: a cross-tenant identity (no tenant_id) plus its login
+   * credential. The owner then creates their own PGs via the owner module.
+   * Email is globally unique in auth_identities → duplicate raises 409.
+   */
+  async createOwner(input: CreateOwnerInput): Promise<OwnerSummary> {
+    const existing = await this.db.query.authIdentities.findFirst({
+      where: eq(authIdentities.email, input.email),
+    });
+    if (existing) {
+      throw new ConflictException(`Email '${input.email}' is already in use`);
+    }
+
+    const passwordHash = await argon2.hash(input.password);
+
+    return this.db.transaction(async (tx) => {
+      const [owner] = await tx
+        .insert(owners)
+        .values({ name: input.name, email: input.email })
+        .returning();
+
+      await tx.insert(authIdentities).values({
+        tenantId: null,
+        role: UserRole.PG_OWNER,
+        userId: owner.id,
+        email: input.email,
+        passwordHash,
+      });
+
+      return { id: owner.id, name: owner.name, email: owner.email };
     });
   }
 

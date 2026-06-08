@@ -77,6 +77,8 @@ export interface Harness {
   ): Promise<string>;
   /** Full resident phone-OTP flow (reads the dev OTP from Redis) → access token. */
   residentLogin(slug: string, tenantId: string, phone: string): Promise<string>;
+  /** Read the current OTP code from Redis (or null) — for testing the verify flow. */
+  getOtp(tenantId: string, phone: string): Promise<string | null>;
   /** Tear down: delete created tenants (cascade) and close the app. */
   close(): Promise<void>;
 }
@@ -185,6 +187,10 @@ export async function createHarness(): Promise<Harness> {
     return res.body.accessToken;
   }
 
+  function getOtp(tenantId: string, phone: string): Promise<string | null> {
+    return redis.get(`otp:${tenantId}:${phone}`);
+  }
+
   async function close(): Promise<void> {
     if (createdTenantIds.length) {
       await platformDb
@@ -202,6 +208,7 @@ export async function createHarness(): Promise<Harness> {
     managerLogin,
     registerResident,
     residentLogin,
+    getOtp,
     close,
   };
 }

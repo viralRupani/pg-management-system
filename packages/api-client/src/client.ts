@@ -14,6 +14,8 @@ import type {
   CreateBedInput,
   CreateBuildingInput,
   CreateFloorInput,
+  CreateManagerInput,
+  CreateOwnerPgInput,
   CreateRoomInput,
   DepositSummary,
   DepositTransactionSummary,
@@ -24,7 +26,9 @@ import type {
   GenerateInvoicesInput,
   InvoiceSummary,
   ManagerLoginInput,
+  ManagerSummary,
   MenuItemSummary,
+  OwnerPgSummary,
   PaymentSummary,
   PresignedUploadResult,
   RecordDepositInput,
@@ -58,6 +62,28 @@ export class PgApiClient {
     /** Manager email + password login. Returns tokens; caller persists them. */
     managerLogin: (input: ManagerLoginInput) =>
       this.http.post<AuthTokens>("/auth/manager/login", input, { auth: false }),
+  };
+
+  /**
+   * PG-owner surface. Global methods (pgs.list/create/switch) use the owner's
+   * global token; manager methods use a PG-scoped token (after pgs.switch).
+   */
+  readonly owner = {
+    pgs: {
+      list: () => this.http.get<OwnerPgSummary[]>("/owner/pgs"),
+      create: (input: CreateOwnerPgInput) =>
+        this.http.post<OwnerPgSummary>("/owner/pgs", input),
+      /** Mint a PG-scoped token for one owned PG; caller persists it. */
+      switch: (tenantId: string) =>
+        this.http.post<AuthTokens>(`/owner/pgs/${tenantId}/switch`),
+    },
+    managers: {
+      list: () => this.http.get<ManagerSummary[]>("/owner/managers"),
+      add: (input: CreateManagerInput) =>
+        this.http.post<ManagerSummary>("/owner/managers", input),
+      /** Soft-deactivate: revokes login, keeps the user row. */
+      deactivate: (id: string) => this.http.del(`/owner/managers/${id}`),
+    },
   };
 
   readonly branding = {

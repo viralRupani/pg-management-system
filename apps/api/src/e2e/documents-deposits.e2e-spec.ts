@@ -83,6 +83,13 @@ describe("M4 documents, deposits & exit (e2e)", () => {
 
       const again = await h.req("post", `/documents/${docId}/verify`, pgA.managerToken);
       expect(again.status).toBe(409);
+
+      // A decided document also can't be flipped to the other outcome — the
+      // conditional guard keys on status=PENDING, not just "not already verified".
+      const flip = await h.req("post", `/documents/${docId}/reject`, pgA.managerToken, {
+        note: "too late",
+      });
+      expect(flip.status).toBe(409);
     });
 
     it("manager rejects a second doc with a note", async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import type { JwtPayload, TenantBranding } from "@pg/shared";
+import { type JwtPayload, type TenantBranding, UserRole } from "@pg/shared";
 import {
   createContext,
   useCallback,
@@ -8,7 +8,15 @@ import {
   useEffect,
   useState,
 } from "react";
-import { api, clearTokens, currentUser, setTokens } from "./api";
+import {
+  api,
+  clearTokens,
+  currentUser,
+  getStashedGlobalTokens,
+  needsPgSelection,
+  setTokens,
+  stashGlobalTokens,
+} from "./api";
 import { applyAccentColor } from "./theme";
 
 interface AuthContextValue {
@@ -16,8 +24,14 @@ interface AuthContextValue {
   branding: TenantBranding | null;
   /** True until the initial token hydration completes (avoids flash of login). */
   loading: boolean;
+  /** A PG owner (cross-tenant). May or may not have an active PG selected. */
+  isOwner: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  /** Owner: enter one of their PGs (mints + persists a PG-scoped token). */
+  switchPg: (tenantId: string) => Promise<void>;
+  /** Owner: leave the active PG, restore the global token (→ PG chooser). */
+  exitPg: () => void;
   refreshBranding: () => Promise<void>;
 }
 
@@ -42,7 +56,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const u = currentUser();
     setUser(u);
-    if (u) void loadBranding();
+    // Branding needs a tenant context; skip for an owner who hasn't picked a PG.
+    if (u && !needsPgSelection(u)) void loadBranding();
     setLoading(false);
   }, [loadBranding]);
 
@@ -50,11 +65,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (email: string, password: string) => {
       const tokens = await api.auth.managerLogin({ email, password });
       setTokens(tokens);
+      const u = currentUser();
+      setUser(u);
+      if (needsPgSelection(u)) {
+        // Owner global token: remember it so "Switch PG" can return here; no
+        // branding yet (no active PG). The chooser is where they go next.
+        stashGlobalTokens(tokens);
+      } else {
+        await loadBranding();
+      }
+    },
+    [loadBranding],
+  );
+
+  const switchPg = useCallback(
+    async (tenantId: string) => {
+      const tokens = await api.owner.pgs.switch(tenantId);
+      setTokens(tokens); // active token is now PG-scoped
       setUser(currentUser());
       await loadBranding();
     },
     [loadBranding],
   );
+
+  const exitPg = useCallback(() => {
+    const global = getStashedGlobalTokens();
+    if (global) setTokens(global); // restore the global token as active
+    setUser(currentUser());
+    setBranding(null);
+  }, []);
 
   const logout = useCallback(() => {
     clearTokens();
@@ -65,7 +104,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, branding, loading, login, logout, refreshBranding: loadBranding }}
+      value={{
+        user,
+        branding,
+        loading,
+        isOwner: user?.role === UserRole.PG_OWNER,
+        login,
+        logout,
+        switchPg,
+        exitPg,
+        refreshBranding: loadBranding,
+      }}
     >
       {children}
     </AuthContext.Provider>

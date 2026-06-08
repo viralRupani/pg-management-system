@@ -144,4 +144,46 @@ describe("M3 rent loop (e2e)", () => {
     const invoice2 = all.body.find((i: { id: string }) => i.id === inv2);
     expect(invoice2.status).toBe("PENDING"); // rejection does not pay the invoice
   });
+
+  it("an invoice cannot be double-paid by approving a second payment for it", async () => {
+    // inv2 is still PENDING. Two SUBMITTED payments can co-exist on it (e.g. a
+    // resident re-uploads); approving the first pays the invoice, approving the
+    // second must 409 and leave exactly one APPROVED payment.
+    const p1 = (
+      await h.req("post", "/payments", resident2, {
+        invoiceId: inv2,
+        screenshotKey: "shot-2a",
+      })
+    ).body.id;
+    const p2 = (
+      await h.req("post", "/payments", resident2, {
+        invoiceId: inv2,
+        screenshotKey: "shot-2b",
+      })
+    ).body.id;
+
+    const first = await h.req("post", `/payments/${p1}/approve`, pgA.managerToken);
+    expect(first.status).toBe(201);
+
+    // Second approval for the same (now PAID) invoice is rejected, whole txn
+    // rolls back — p2 stays SUBMITTED, invoice keeps its single payment.
+    const second = await h.req("post", `/payments/${p2}/approve`, pgA.managerToken);
+    expect(second.status).toBe(409);
+
+    const invoice2 = (await h.req("get", "/invoices", pgA.managerToken)).body.find(
+      (i: { id: string }) => i.id === inv2,
+    );
+    expect(invoice2.status).toBe("PAID");
+    const stillSubmitted = await h.req("get", "/payments?status=SUBMITTED", pgA.managerToken);
+    expect(stillSubmitted.body.some((p: { id: string }) => p.id === p2)).toBe(true);
+  });
+
+  it("a resident cannot submit a payment against an already-paid invoice (409)", async () => {
+    // inv2 is now PAID from the previous test.
+    const res = await h.req("post", "/payments", resident2, {
+      invoiceId: inv2,
+      screenshotKey: "shot-2c",
+    });
+    expect(res.status).toBe(409);
+  });
 });

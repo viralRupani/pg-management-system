@@ -241,6 +241,18 @@ remain. Next surface is the **resident mobile app (Expo)**. Still outstanding:
 manual/live-API/live-browser checks) — a Playwright admin e2e is a deferred
 follow-up (the ad-hoc scripts driven this milestone are a ready template).
 
+- **PG-owner surface** (NEW) — a `PG_OWNER` owns multiple PGs. Owner login lands
+  on **`/pgs`** (a chooser OUTSIDE the `(app)` shell — the global token has no
+  active PG); opening a PG calls `owner.pgs.switch` → persists a PG-scoped token →
+  enters `/dashboard` themed to that PG. The **global token is stashed**
+  (`pg_owner_global_*` keys in `lib/api.ts`) so the topbar **"Switch PG"**
+  (`exitPg`) returns to `/pgs` without re-login. Owner-only **`/managers`** page
+  (add / deactivate, inside the shell) + owner-only nav item (`ownerOnly` flag in
+  `app-shell.tsx`). Routing helpers `needsPgSelection`/`landingPath`
+  (`lib/api.ts`); `useAuth` gains `isOwner`/`switchPg`/`exitPg`. **Build +
+  backend-e2e verified; browser click-through deferred** (run `node
+  apps/api/scripts/seed-owner.mjs` → `owner@pgowner.demo` / `password123`).
+
 ### Feature-page patterns (locked in by rent + residents)
 - **Detail/edit views = `?id=` + client fetch**, never `[id]` routes. When a page
   reads `useSearchParams()`, wrap it in `<Suspense>` or `next build` fails the

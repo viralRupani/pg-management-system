@@ -1,4 +1,6 @@
 export * from "./tenants";
+export * from "./owners";
+export * from "./owner-tenants";
 export * from "./auth-identities";
 export * from "./users";
 export * from "./buildings";
@@ -22,6 +24,8 @@ export * from "./expenses";
 export * from "./billing-snapshots";
 
 import { tenants } from "./tenants";
+import { owners } from "./owners";
+import { ownerTenants } from "./owner-tenants";
 import { authIdentities } from "./auth-identities";
 import { users } from "./users";
 import { buildings } from "./buildings";
@@ -47,6 +51,8 @@ import { billingSnapshots } from "./billing-snapshots";
 /** Full schema object passed to drizzle(). */
 export const schema = {
   tenants,
+  owners,
+  ownerTenants,
   authIdentities,
   users,
   buildings,
