@@ -1,0 +1,179 @@
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { eq } from "drizzle-orm";
+import {
+  type BedStatus,
+  type BedSummary,
+  type BuildingSummary,
+  type CreateBedInput,
+  type CreateBuildingInput,
+  type CreateFloorInput,
+  type CreateRoomInput,
+  type FloorSummary,
+  type OccupationType,
+  type RoomSummary,
+} from "@pg/shared";
+import { TenantContextService } from "../db/tenant-context";
+import { beds, buildings, floors, rooms } from "../db/schema";
+
+/**
+ * CRUD over the property hierarchy (buildings -> floors -> rooms -> beds), all
+ * under tenant RLS. Every insert sets tenant_id from context — never the body.
+ * Parent existence is checked under RLS first (so callers get a clean 404
+ * instead of an opaque composite-FK error); the composite FK is the hard
+ * security backstop that keeps a child inside its tenant.
+ */
+@Injectable()
+export class PropertyService {
+  constructor(private readonly ctx: TenantContextService) {}
+
+  // --- Buildings ---
+  async createBuilding(input: CreateBuildingInput): Promise<{ id: string }> {
+    const [row] = await this.ctx
+      .db()
+      .insert(buildings)
+      .values({
+        tenantId: this.ctx.currentTenantId()!,
+        name: input.name,
+        address: input.address ?? null,
+      })
+      .returning();
+    return { id: row.id };
+  }
+
+  async listBuildings(): Promise<BuildingSummary[]> {
+    const rows = await this.ctx.db().select().from(buildings);
+    return rows.map((b) => ({ id: b.id, name: b.name, address: b.address }));
+  }
+
+  // --- Floors ---
+  async createFloor(input: CreateFloorInput): Promise<{ id: string }> {
+    await this.assertExists(buildings, input.buildingId, "Building");
+    const [row] = await this.ctx
+      .db()
+      .insert(floors)
+      .values({
+        tenantId: this.ctx.currentTenantId()!,
+        buildingId: input.buildingId,
+        label: input.label,
+        floorNumber: input.floorNumber,
+      })
+      .returning();
+    return { id: row.id };
+  }
+
+  async listFloors(buildingId?: string): Promise<FloorSummary[]> {
+    const db = this.ctx.db();
+    const rows = buildingId
+      ? await db.select().from(floors).where(eq(floors.buildingId, buildingId))
+      : await db.select().from(floors);
+    return rows.map((f) => ({
+      id: f.id,
+      buildingId: f.buildingId,
+      label: f.label,
+      floorNumber: f.floorNumber,
+    }));
+  }
+
+  // --- Rooms ---
+  async createRoom(input: CreateRoomInput): Promise<{ id: string }> {
+    await this.assertExists(floors, input.floorId, "Floor");
+    const [row] = await this.ctx
+      .db()
+      .insert(rooms)
+      .values({
+        tenantId: this.ctx.currentTenantId()!,
+        floorId: input.floorId,
+        label: input.label,
+        capacity: input.capacity,
+        sharingType: input.sharingType ?? null,
+        monthlyRentPaise: input.monthlyRentPaise,
+        occupationPreference: input.occupationPreference ?? null,
+        genderPreference: input.genderPreference ?? null,
+        ageMin: input.ageMin ?? null,
+        ageMax: input.ageMax ?? null,
+        nativePlacePreference: input.nativePlacePreference ?? null,
+      })
+      .returning();
+    return { id: row.id };
+  }
+
+  async listRooms(floorId?: string): Promise<RoomSummary[]> {
+    const db = this.ctx.db();
+    const rows = floorId
+      ? await db.select().from(rooms).where(eq(rooms.floorId, floorId))
+      : await db.select().from(rooms);
+    return rows.map((r) => ({
+      id: r.id,
+      floorId: r.floorId,
+      label: r.label,
+      capacity: r.capacity,
+      sharingType: r.sharingType,
+      monthlyRentPaise: r.monthlyRentPaise,
+      occupationPreference: r.occupationPreference as OccupationType | null,
+      genderPreference: r.genderPreference,
+      ageMin: r.ageMin,
+      ageMax: r.ageMax,
+      nativePlacePreference: r.nativePlacePreference,
+    }));
+  }
+
+  // --- Beds ---
+  async createBed(input: CreateBedInput): Promise<{ id: string }> {
+    await this.assertExists(rooms, input.roomId, "Room");
+    const [row] = await this.ctx
+      .db()
+      .insert(beds)
+      .values({
+        tenantId: this.ctx.currentTenantId()!,
+        roomId: input.roomId,
+        label: input.label,
+      })
+      .returning();
+    return { id: row.id };
+  }
+
+  /** Edit a room's monthly rent (paise). Feeds invoice generation. */
+  async updateRoomRent(
+    roomId: string,
+    monthlyRentPaise: number,
+  ): Promise<{ id: string }> {
+    const [row] = await this.ctx
+      .db()
+      .update(rooms)
+      .set({ monthlyRentPaise })
+      .where(eq(rooms.id, roomId))
+      .returning({ id: rooms.id });
+    if (!row) throw new NotFoundException("Room not found");
+    return { id: row.id };
+  }
+
+  async listBeds(roomId?: string): Promise<BedSummary[]> {
+    const db = this.ctx.db();
+    const rows = roomId
+      ? await db.select().from(beds).where(eq(beds.roomId, roomId))
+      : await db.select().from(beds);
+    return rows.map((b) => ({
+      id: b.id,
+      roomId: b.roomId,
+      label: b.label,
+      status: b.status as BedStatus,
+    }));
+  }
+
+  /**
+   * Confirm a parent row is visible under the current tenant context. RLS scopes
+   * the lookup, so a row owned by another tenant simply isn't found -> 404.
+   */
+  private async assertExists(
+    table: typeof buildings | typeof floors | typeof rooms,
+    id: string,
+    label: string,
+  ): Promise<void> {
+    const [row] = await this.ctx
+      .db()
+      .select({ id: table.id })
+      .from(table)
+      .where(eq(table.id, id));
+    if (!row) throw new NotFoundException(`${label} not found`);
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "pg-management-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-tenant PG (paying-guest) management SaaS — manager web dashboard + resident mobile app.",
+  "packageManager": "pnpm@10.10.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "db:generate": "pnpm --filter @pg/api db:generate",
+    "db:migrate": "pnpm --filter @pg/api db:migrate"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["argon2", "esbuild", "@nestjs/core"]
+  }
+}

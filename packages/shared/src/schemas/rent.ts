@@ -1,0 +1,70 @@
+import { z } from "zod";
+import { InvoiceStatus, PaymentStatus } from "../enums";
+
+/** Billing period as 'YYYY-MM' (project-wide convention). */
+export const periodSchema = z
+  .string()
+  .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Period must be 'YYYY-MM'");
+
+/** Manager triggers monthly invoice generation for active residents. */
+export const generateInvoicesSchema = z.object({
+  period: periodSchema.optional(), // defaults to current month server-side
+  dueDate: z.string().date().optional(), // defaults to the 10th of the period
+});
+export type GenerateInvoicesInput = z.infer<typeof generateInvoicesSchema>;
+
+export const invoiceSummarySchema = z.object({
+  id: z.string().uuid(),
+  residentId: z.string().uuid(),
+  residentName: z.string(),
+  period: z.string(),
+  amountPaise: z.number().int(),
+  dueDate: z.string(),
+  status: z.nativeEnum(InvoiceStatus),
+});
+export type InvoiceSummary = z.infer<typeof invoiceSummarySchema>;
+
+/** Resident asks for a presigned URL to upload a payment screenshot. */
+export const paymentUploadUrlSchema = z.object({
+  invoiceId: z.string().uuid(),
+});
+export type PaymentUploadUrlInput = z.infer<typeof paymentUploadUrlSchema>;
+
+export const presignedUploadSchema = z.object({
+  uploadUrl: z.string(),
+  key: z.string(),
+});
+export type PresignedUploadResult = z.infer<typeof presignedUploadSchema>;
+
+/** Resident submits a payment against an invoice with the uploaded screenshot. */
+export const submitPaymentSchema = z.object({
+  invoiceId: z.string().uuid(),
+  screenshotKey: z.string().min(1),
+  amountPaise: z.number().int().positive().optional(), // defaults to invoice amount
+});
+export type SubmitPaymentInput = z.infer<typeof submitPaymentSchema>;
+
+/** Manager rejects a payment with a reason. */
+export const rejectPaymentSchema = z.object({
+  note: z.string().min(1).max(500),
+});
+export type RejectPaymentInput = z.infer<typeof rejectPaymentSchema>;
+
+export const paymentSummarySchema = z.object({
+  id: z.string().uuid(),
+  invoiceId: z.string().uuid(),
+  residentId: z.string().uuid(),
+  residentName: z.string(),
+  period: z.string(),
+  amountPaise: z.number().int(),
+  status: z.nativeEnum(PaymentStatus),
+  reviewNote: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type PaymentSummary = z.infer<typeof paymentSummarySchema>;
+
+/** Manager edits a room's rent (deferred from M2; feeds invoice generation). */
+export const updateRoomRentSchema = z.object({
+  monthlyRentPaise: z.number().int().min(0),
+});
+export type UpdateRoomRentInput = z.infer<typeof updateRoomRentSchema>;

@@ -1,0 +1,151 @@
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import { desc, eq } from "drizzle-orm";
+import {
+  type DocumentSummary,
+  DocumentStatus,
+  type DocumentType,
+  type PresignedUploadResult,
+  type SubmitDocumentInput,
+} from "@pg/shared";
+import { TenantContextService } from "../db/tenant-context";
+import { documents, users } from "../db/schema";
+import {
+  STORAGE_PROVIDER,
+  type StorageProvider,
+} from "../storage/storage.module";
+
+/**
+ * KYC / security documents. Resident uploads (presigned S3), manager verifies or
+ * rejects (PENDING -> VERIFIED | REJECTED, guarded). Resident reads filter by
+ * user_id = sub; manager reads see the whole tenant.
+ */
+@Injectable()
+export class DocumentsService {
+  constructor(
+    private readonly ctx: TenantContextService,
+    @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+  ) {}
+
+  /** Resident: presigned URL to upload a KYC file. */
+  async requestUploadUrl(): Promise<PresignedUploadResult> {
+    return this.storage.presignUpload({
+      tenantId: this.ctx.currentTenantId()!,
+      kind: "kyc",
+    });
+  }
+
+  /** Resident: register an uploaded document for review. */
+  async submit(
+    residentId: string,
+    input: SubmitDocumentInput,
+  ): Promise<{ id: string }> {
+    const [row] = await this.ctx
+      .db()
+      .insert(documents)
+      .values({
+        tenantId: this.ctx.currentTenantId()!,
+        residentId, // from JWT sub, never the body
+        type: input.type,
+        s3Key: input.s3Key,
+        status: DocumentStatus.PENDING,
+      })
+      .returning({ id: documents.id });
+    return { id: row.id };
+  }
+
+  /** Resident: their own documents. */
+  async listMine(residentId: string): Promise<DocumentSummary[]> {
+    return this.query(eq(documents.residentId, residentId));
+  }
+
+  /** Manager: all documents in the tenant. */
+  async listAll(): Promise<DocumentSummary[]> {
+    return this.query();
+  }
+
+  /** Manager: presigned download URL for a document. */
+  async getDownloadUrl(id: string): Promise<{ downloadUrl: string }> {
+    const [d] = await this.ctx
+      .db()
+      .select({ key: documents.s3Key })
+      .from(documents)
+      .where(eq(documents.id, id));
+    if (!d) throw new NotFoundException("Document not found");
+    return this.storage.presignDownload(d.key);
+  }
+
+  /** Manager: mark a PENDING document VERIFIED. */
+  async verify(id: string, reviewerId: string): Promise<{ status: string }> {
+    return this.review(id, reviewerId, DocumentStatus.VERIFIED);
+  }
+
+  /** Manager: reject a PENDING document with a note. */
+  async reject(
+    id: string,
+    reviewerId: string,
+    note: string,
+  ): Promise<{ status: string }> {
+    return this.review(id, reviewerId, DocumentStatus.REJECTED, note);
+  }
+
+  private async review(
+    id: string,
+    reviewerId: string,
+    decision: typeof DocumentStatus.VERIFIED | typeof DocumentStatus.REJECTED,
+    note?: string,
+  ): Promise<{ status: string }> {
+    const db = this.ctx.db();
+    return db.transaction(async (tx) => {
+      const [d] = await tx.select().from(documents).where(eq(documents.id, id));
+      if (!d) throw new NotFoundException("Document not found");
+      if (d.status !== DocumentStatus.PENDING)
+        throw new ConflictException(
+          `Document already ${d.status.toLowerCase()}`,
+        );
+      await tx
+        .update(documents)
+        .set({
+          status: decision,
+          reviewNote: note ?? null,
+          reviewedByUserId: reviewerId,
+          reviewedAt: new Date(),
+        })
+        .where(eq(documents.id, id));
+      return { status: decision };
+    });
+  }
+
+  private async query(
+    where?: ReturnType<typeof eq>,
+  ): Promise<DocumentSummary[]> {
+    const base = this.ctx
+      .db()
+      .select({
+        id: documents.id,
+        residentId: documents.residentId,
+        residentName: users.name,
+        type: documents.type,
+        status: documents.status,
+        reviewNote: documents.reviewNote,
+        createdAt: documents.createdAt,
+      })
+      .from(documents)
+      .innerJoin(users, eq(users.id, documents.residentId))
+      .orderBy(desc(documents.createdAt));
+    const rows = where ? await base.where(where) : await base;
+    return rows.map((r) => ({
+      id: r.id,
+      residentId: r.residentId,
+      residentName: r.residentName,
+      type: r.type as DocumentType,
+      status: r.status as DocumentStatus,
+      reviewNote: r.reviewNote,
+      createdAt: r.createdAt.toISOString(),
+    }));
+  }
+}

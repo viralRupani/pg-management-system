@@ -1,0 +1,100 @@
+export * from "./tenants";
+export * from "./auth-identities";
+export * from "./users";
+export * from "./buildings";
+export * from "./floors";
+export * from "./rooms";
+export * from "./beds";
+export * from "./allocations";
+export * from "./invoices";
+export * from "./payments";
+export * from "./notifications";
+export * from "./push-tokens";
+export * from "./documents";
+export * from "./deposits";
+export * from "./deposit-transactions";
+export * from "./complaints";
+export * from "./complaint-updates";
+export * from "./menu-items";
+export * from "./announcements";
+export * from "./budgets";
+export * from "./expenses";
+export * from "./billing-snapshots";
+
+import { tenants } from "./tenants";
+import { authIdentities } from "./auth-identities";
+import { users } from "./users";
+import { buildings } from "./buildings";
+import { floors } from "./floors";
+import { rooms } from "./rooms";
+import { beds } from "./beds";
+import { allocations } from "./allocations";
+import { invoices } from "./invoices";
+import { payments } from "./payments";
+import { notifications } from "./notifications";
+import { pushTokens } from "./push-tokens";
+import { documents } from "./documents";
+import { deposits } from "./deposits";
+import { depositTransactions } from "./deposit-transactions";
+import { complaints } from "./complaints";
+import { complaintUpdates } from "./complaint-updates";
+import { menuItems } from "./menu-items";
+import { announcements } from "./announcements";
+import { budgets } from "./budgets";
+import { expenses } from "./expenses";
+import { billingSnapshots } from "./billing-snapshots";
+
+/** Full schema object passed to drizzle(). */
+export const schema = {
+  tenants,
+  authIdentities,
+  users,
+  buildings,
+  floors,
+  rooms,
+  beds,
+  allocations,
+  invoices,
+  payments,
+  notifications,
+  pushTokens,
+  documents,
+  deposits,
+  depositTransactions,
+  complaints,
+  complaintUpdates,
+  menuItems,
+  announcements,
+  budgets,
+  expenses,
+  billingSnapshots,
+};
+
+/**
+ * Tables that are tenant-scoped and therefore MUST have RLS enabled with both
+ * USING and WITH CHECK policies. Kept here as a single source of truth so the
+ * RLS migration and the isolation test can assert against the same list.
+ * (`tenants` and `auth_identities` are intentionally excluded — see their docs.)
+ */
+export const RLS_TABLES = [
+  "users",
+  "buildings",
+  "floors",
+  "rooms",
+  "beds",
+  "allocations",
+  "invoices",
+  "payments",
+  "notifications",
+  "push_tokens",
+  "documents",
+  "deposits",
+  "deposit_transactions",
+  "complaints",
+  "complaint_updates",
+  "menu_items",
+  "announcements",
+  "budgets",
+  "expenses",
+  "billing_snapshots",
+] as const;
