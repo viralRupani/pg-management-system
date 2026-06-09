@@ -19,7 +19,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
@@ -59,6 +61,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pgName = branding?.name ?? "PG Manager";
   const nav = NAV.filter((item) => !item.ownerOnly || isOwner);
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   function switchPg() {
     exitPg();
@@ -140,7 +143,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Button variant="ghost" size="icon" aria-label="Notifications">
               <Bell className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" onClick={logout}>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmingLogout(true)}>
               <LogOut className="h-4 w-4" />
               Sign out
             </Button>
@@ -151,6 +154,36 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="mx-auto w-full max-w-6xl">{children}</div>
         </main>
       </div>
+
+      {confirmingLogout && (
+        <Dialog
+          open
+          onClose={() => setConfirmingLogout(false)}
+          title="Sign out?"
+          description="You'll need to sign in again to manage your PGs."
+        >
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setConfirmingLogout(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() => {
+                setConfirmingLogout(false);
+                logout();
+              }}
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </Button>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }

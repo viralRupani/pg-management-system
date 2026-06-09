@@ -35,6 +35,7 @@ export default function PgsPage() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [entering, setEntering] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   // Guard: only signed-in owners belong here.
   useEffect(() => {
@@ -83,7 +84,7 @@ export default function PgsPage() {
           <Building2 className="h-5 w-5 text-brand" />
           <span className="font-semibold">Your PGs</span>
         </div>
-        <Button variant="ghost" size="sm" onClick={logout}>
+        <Button variant="ghost" size="sm" onClick={() => setConfirmingLogout(true)}>
           <LogOut className="h-4 w-4" />
           Sign out
         </Button>
@@ -186,6 +187,36 @@ export default function PgsPage() {
             await enter(tenantId);
           }}
         />
+      )}
+
+      {confirmingLogout && (
+        <Dialog
+          open
+          onClose={() => setConfirmingLogout(false)}
+          title="Sign out?"
+          description="You'll need to sign in again to manage your PGs."
+        >
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setConfirmingLogout(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() => {
+                setConfirmingLogout(false);
+                logout();
+              }}
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </Button>
+          </div>
+        </Dialog>
       )}
     </div>
   );
