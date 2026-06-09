@@ -147,7 +147,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-5 md:p-8">{children}</main>
+        <main className="flex-1 overflow-y-auto p-5 md:p-8">
+          <div className="mx-auto w-full max-w-6xl">{children}</div>
+        </main>
       </div>
     </div>
   );

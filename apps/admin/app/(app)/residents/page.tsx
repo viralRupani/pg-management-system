@@ -108,7 +108,7 @@ function ResidentsList() {
   const filtered = search !== "" || status !== ResidentStatus.ACTIVE;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Residents</h1>
@@ -472,7 +472,7 @@ function ResidentDetail({ id }: { id: string }) {
 
   if (error && !data) {
     return (
-      <div className="mx-auto max-w-4xl space-y-4">
+      <div className="space-y-4">
         <BackLink />
         <ErrorBanner message={error} />
       </div>
@@ -480,7 +480,7 @@ function ResidentDetail({ id }: { id: string }) {
   }
   if (!data) {
     return (
-      <div className="mx-auto max-w-4xl space-y-4">
+      <div className="space-y-4">
         <BackLink />
         <div className="h-40 animate-pulse rounded bg-muted" />
       </div>
@@ -491,7 +491,7 @@ function ResidentDetail({ id }: { id: string }) {
   const active = resident.status === "ACTIVE";
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="space-y-6">
       <BackLink />
       <ErrorBanner message={error} />
 

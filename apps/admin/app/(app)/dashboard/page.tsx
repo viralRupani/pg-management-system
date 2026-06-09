@@ -77,7 +77,7 @@ export default function DashboardPage() {
     data?.pendingPayments.reduce((sum, p) => sum + p.amountPaise, 0) ?? 0;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground">

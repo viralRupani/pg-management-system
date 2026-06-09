@@ -177,7 +177,7 @@ export default function MenuPage() {
 
   if (!config || !slots) {
     return (
-      <div className="mx-auto max-w-6xl space-y-6">
+      <div className="space-y-6">
         <div className="h-8 w-48 animate-pulse rounded bg-muted" />
         <div className="h-48 w-full animate-pulse rounded bg-muted" />
         <div className="h-64 w-full animate-pulse rounded bg-muted" />
@@ -191,7 +191,7 @@ export default function MenuPage() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Menu</h1>
         <p className="text-sm text-muted-foreground">

@@ -77,7 +77,7 @@ function ComplaintsList() {
     complaints?.filter((c) => filter === "ALL" || c.status === filter) ?? null;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Complaints</h1>
         <p className="text-sm text-muted-foreground">
@@ -233,7 +233,7 @@ function ComplaintDetail({ id }: { id: string }) {
 
   if (error && !data) {
     return (
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="space-y-4">
         <BackLink />
         <ErrorBanner message={error} />
       </div>
@@ -241,7 +241,7 @@ function ComplaintDetail({ id }: { id: string }) {
   }
   if (!data) {
     return (
-      <div className="mx-auto max-w-3xl space-y-4">
+      <div className="space-y-4">
         <BackLink />
         <div className="h-40 animate-pulse rounded bg-muted" />
       </div>
@@ -252,7 +252,7 @@ function ComplaintDetail({ id }: { id: string }) {
   const assignedToMe = complaint.assignedToUserId === me;
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="space-y-6">
       <BackLink />
       <ErrorBanner message={error} />
 
