@@ -5,6 +5,8 @@
  * PG's colour. RLS isolates data; this is the "feels bespoke" layer.
  */
 
+export const BRAND_COLOR_KEY = "pg_brand_color";
+
 /** Pick black or white text for legibility on a hex background. */
 function readableForeground(hex: string): string {
   const h = hex.replace("#", "");
@@ -22,4 +24,11 @@ export function applyAccentColor(hex: string | null | undefined): void {
   const root = document.documentElement;
   root.style.setProperty("--brand", hex);
   root.style.setProperty("--brand-foreground", readableForeground(hex));
+  localStorage.setItem(BRAND_COLOR_KEY, hex);
+}
+
+export function clearAccentColor(): void {
+  if (typeof localStorage !== "undefined") {
+    localStorage.removeItem(BRAND_COLOR_KEY);
+  }
 }

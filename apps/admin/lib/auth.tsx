@@ -17,7 +17,7 @@ import {
   setTokens,
   stashGlobalTokens,
 } from "./api";
-import { applyAccentColor } from "./theme";
+import { applyAccentColor, clearAccentColor } from "./theme";
 
 interface AuthContextValue {
   user: JwtPayload | null;
@@ -93,10 +93,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (global) setTokens(global); // restore the global token as active
     setUser(currentUser());
     setBranding(null);
+    clearAccentColor();
   }, []);
 
   const logout = useCallback(() => {
     clearTokens();
+    clearAccentColor();
     setUser(null);
     setBranding(null);
     if (typeof window !== "undefined") location.href = "/login";

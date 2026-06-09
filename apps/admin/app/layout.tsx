@@ -7,13 +7,29 @@ export const metadata: Metadata = {
   description: "Manage your paying-guest hostel — residents, rent, and more.",
 };
 
+// Inline script run synchronously before paint — reads the cached accent color
+// from localStorage and sets --brand so buttons never flash the default purple.
+const applyBrandScript = `
+(function(){
+  try {
+    var c = localStorage.getItem('pg_brand_color');
+    if (c && /^#[0-9a-fA-F]{6}$/.test(c)) {
+      document.documentElement.style.setProperty('--brand', c);
+    }
+  } catch(e) {}
+})();
+`;
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: applyBrandScript }} />
+      </head>
       <body>
         <AuthProvider>{children}</AuthProvider>
       </body>
