@@ -8,6 +8,7 @@ import {
   type DocumentSummary,
   OccupationType,
   type ResidentSummary,
+  ResidentStatus,
 } from "@pg/shared";
 import {
   AlertCircle,
@@ -54,33 +55,55 @@ function ResidentsRouter() {
 
 /* ------------------------------------------------------------------ list --- */
 
+const PAGE_SIZE = 20;
+type StatusFilter = ResidentStatus | "ALL";
+
 function ResidentsList() {
-  const [residents, setResidents] = useState<ResidentSummary[] | null>(null);
+  const [items, setItems] = useState<ResidentSummary[] | null>(null);
+  const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [registering, setRegistering] = useState(false);
 
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<StatusFilter>(ResidentStatus.ACTIVE);
+  const [page, setPage] = useState(1);
+
+  // Debounce free-text search so we don't hit the API on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // A new search or status filter invalidates the current page.
+  useEffect(() => {
+    setPage(1);
+  }, [search, status]);
+
   const load = useCallback(async () => {
     try {
-      setResidents(await api.residents.list());
+      const result = await api.residents.list({
+        q: search || undefined,
+        status,
+        page,
+        limit: PAGE_SIZE,
+      });
+      setItems(result.items);
+      setTotal(result.total);
     } catch (err) {
       setError(toMessage(err, "Could not load residents."));
     }
-  }, []);
+  }, [search, status, page]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const list = await api.residents.list();
-        if (!cancelled) setResidents(list);
-      } catch (err) {
-        if (!cancelled) setError(toMessage(err, "Could not load residents."));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    setItems(null);
+    void load();
+  }, [load]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * PAGE_SIZE, total);
+  const filtered = search !== "" || status !== ResidentStatus.ACTIVE;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -97,17 +120,43 @@ function ResidentsList() {
         </Button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3">
+        <Input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder="Search by name or phone…"
+          className="max-w-xs"
+          aria-label="Search residents"
+        />
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value as StatusFilter)}
+          className={cn(inputClass, "w-40")}
+          aria-label="Filter by status"
+        >
+          <option value={ResidentStatus.ACTIVE}>Active</option>
+          <option value={ResidentStatus.EXITED}>Exited</option>
+          <option value="ALL">All</option>
+        </select>
+      </div>
+
       <ErrorBanner message={error} />
 
       <Card>
         <CardContent className="pt-5">
-          {residents === null ? (
+          {items === null ? (
             <ListSkeleton />
-          ) : residents.length === 0 ? (
-            <EmptyRow text="No residents yet. Register your first one." />
+          ) : items.length === 0 ? (
+            <EmptyRow
+              text={
+                filtered
+                  ? "No residents match your search."
+                  : "No residents yet. Register your first one."
+              }
+            />
           ) : (
             <ul className="divide-y divide-border">
-              {residents.map((r) => (
+              {items.map((r) => (
                 <li key={r.id}>
                   <Link
                     href={`/residents?id=${r.id}`}
@@ -135,6 +184,35 @@ function ResidentsList() {
           )}
         </CardContent>
       </Card>
+
+      {items !== null && total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+          <span>
+            Showing {rangeStart}–{rangeEnd} of {total}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Previous
+            </Button>
+            <span>
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
 
       <RegisterDialog
         open={registering}

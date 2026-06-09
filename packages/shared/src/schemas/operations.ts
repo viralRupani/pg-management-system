@@ -4,14 +4,7 @@ import { MealType } from "../enums";
 // --- Menu ---
 const dateString = z.string().date(); // 'YYYY-MM-DD'
 
-/** Manager publishes (upserts) the menu for a date + meal. */
-export const upsertMenuSchema = z.object({
-  menuDate: dateString,
-  mealType: z.nativeEnum(MealType),
-  items: z.string().min(1).max(1000),
-});
-export type UpsertMenuInput = z.infer<typeof upsertMenuSchema>;
-
+/** Materialized menu row returned by GET /menu?from=&to= (resident-compatible). */
 export const menuItemSummarySchema = z.object({
   id: z.string().uuid(),
   menuDate: z.string(),
@@ -19,6 +12,39 @@ export const menuItemSummarySchema = z.object({
   items: z.string(),
 });
 export type MenuItemSummary = z.infer<typeof menuItemSummarySchema>;
+
+/** Tenant cycle config: how many weeks repeat + which Monday anchors the cycle. */
+export const menuConfigSchema = z.object({
+  cycleLengthWeeks: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  cycleStartDate: dateString,
+});
+export type MenuConfig = z.infer<typeof menuConfigSchema>;
+
+/** One abstract template slot. */
+export const menuSlotSummarySchema = z.object({
+  id: z.string().uuid(),
+  weekNumber: z.number().int().min(1).max(3),
+  dayOfWeek: z.number().int().min(1).max(7),
+  mealType: z.nativeEnum(MealType),
+  items: z.string(),
+});
+export type MenuSlotSummary = z.infer<typeof menuSlotSummarySchema>;
+
+/** Manager upserts one template slot. */
+export const upsertMenuSlotSchema = z.object({
+  weekNumber: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  dayOfWeek: z.number().int().min(1).max(7),
+  mealType: z.nativeEnum(MealType),
+  items: z.string().min(1).max(1000),
+});
+export type UpsertMenuSlotInput = z.infer<typeof upsertMenuSlotSchema>;
+
+/** Manager updates cycle config. */
+export const updateMenuConfigSchema = z.object({
+  cycleLengthWeeks: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+  cycleStartDate: dateString,
+});
+export type UpdateMenuConfigInput = z.infer<typeof updateMenuConfigSchema>;
 
 // --- Announcements ---
 export const createAnnouncementSchema = z.object({

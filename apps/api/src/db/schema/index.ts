@@ -42,7 +42,7 @@ import { deposits } from "./deposits";
 import { depositTransactions } from "./deposit-transactions";
 import { complaints } from "./complaints";
 import { complaintUpdates } from "./complaint-updates";
-import { menuItems } from "./menu-items";
+import { menuConfig, menuSlots } from "./menu-items";
 import { announcements } from "./announcements";
 import { budgets } from "./budgets";
 import { expenses } from "./expenses";
@@ -69,7 +69,8 @@ export const schema = {
   depositTransactions,
   complaints,
   complaintUpdates,
-  menuItems,
+  menuConfig,
+  menuSlots,
   announcements,
   budgets,
   expenses,
@@ -98,7 +99,8 @@ export const RLS_TABLES = [
   "deposit_transactions",
   "complaints",
   "complaint_updates",
-  "menu_items",
+  "menu_config",
+  "menu_slots",
   "announcements",
   "budgets",
   "expenses",

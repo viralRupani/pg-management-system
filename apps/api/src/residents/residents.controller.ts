@@ -1,11 +1,13 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import {
   registerResidentSchema,
+  residentListQuerySchema,
   type RegisterResidentInput,
+  type ResidentListQuery,
   UserRole,
 } from "@pg/shared";
 import { Roles } from "../common/decorators";
-import { ZodBody } from "../common/zod-validation.pipe";
+import { ZodBody, ZodQuery } from "../common/zod-validation.pipe";
 import { ResidentsService } from "./residents.service";
 
 @Controller("residents")
@@ -21,8 +23,8 @@ export class ResidentsController {
   }
 
   @Get()
-  list() {
-    return this.residents.list();
+  list(@Query(new ZodQuery(residentListQuerySchema)) query: ResidentListQuery) {
+    return this.residents.list(query);
   }
 
   @Get(":id")

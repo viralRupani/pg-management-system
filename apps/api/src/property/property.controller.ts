@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from "@nestjs/common";
 import {
   type CreateBedInput,
   type CreateBuildingInput,
@@ -69,5 +78,20 @@ export class PropertyController {
   @Get("beds")
   listBeds(@Query("roomId") roomId?: string) {
     return this.property.listBeds(roomId);
+  }
+
+  @Delete("buildings/:id")
+  deleteBuilding(@Param("id") id: string) {
+    return this.property.deleteBuilding(id);
+  }
+
+  @Delete("rooms/:id")
+  deleteRoom(@Param("id") id: string) {
+    return this.property.deleteRoom(id);
+  }
+
+  @Delete("beds/:id")
+  deleteBed(@Param("id") id: string) {
+    return this.property.deleteBed(id);
   }
 }

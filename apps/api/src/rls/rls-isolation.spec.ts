@@ -17,7 +17,8 @@ import {
   expenses,
   floors,
   invoices,
-  menuItems,
+  menuConfig,
+  menuSlots,
   rooms,
   schema,
   tenants,
@@ -332,9 +333,15 @@ describe("cross-tenant isolation (RLS gate)", () => {
         authorUserId: residentA,
         note: "Please send a plumber.",
       });
-      await tcs.db().insert(menuItems).values({
+      await tcs.db().insert(menuConfig).values({
         tenantId: tenantA,
-        menuDate: "2026-06-08",
+        cycleLengthWeeks: 1,
+        cycleStartDate: "2026-06-02",
+      });
+      await tcs.db().insert(menuSlots).values({
+        tenantId: tenantA,
+        weekNumber: 1,
+        dayOfWeek: 1,
         mealType: "LUNCH",
         items: "Dal, Rice, Sabzi",
       });
@@ -363,14 +370,16 @@ describe("cross-tenant isolation (RLS gate)", () => {
     const bSees = await tcs.run(tenantB, async () => ({
       complaints: await tcs.db().select().from(complaints),
       complaintUpdates: await tcs.db().select().from(complaintUpdates),
-      menuItems: await tcs.db().select().from(menuItems),
+      menuConfig: await tcs.db().select().from(menuConfig),
+      menuSlots: await tcs.db().select().from(menuSlots),
       announcements: await tcs.db().select().from(announcements),
       budgets: await tcs.db().select().from(budgets),
       expenses: await tcs.db().select().from(expenses),
     }));
     expect(bSees.complaints).toHaveLength(0);
     expect(bSees.complaintUpdates).toHaveLength(0);
-    expect(bSees.menuItems).toHaveLength(0);
+    expect(bSees.menuConfig).toHaveLength(0);
+    expect(bSees.menuSlots).toHaveLength(0);
     expect(bSees.announcements).toHaveLength(0);
     expect(bSees.budgets).toHaveLength(0);
     expect(bSees.expenses).toHaveLength(0);

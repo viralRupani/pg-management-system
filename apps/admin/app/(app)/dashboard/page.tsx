@@ -1,10 +1,10 @@
 "use client";
 
 import { ApiError } from "@pg/api-client";
-import type {
-  ComplaintSummary,
-  PaymentSummary,
-  ResidentSummary,
+import {
+  type ComplaintSummary,
+  type PaymentSummary,
+  ResidentStatus,
 } from "@pg/shared";
 import {
   AlertCircle,
@@ -23,7 +23,8 @@ import { useAuth } from "@/lib/auth";
 import { formatDate, formatPaise } from "@/lib/utils";
 
 interface DashboardData {
-  residents: ResidentSummary[];
+  activeResidents: number;
+  totalResidents: number;
   occupiedBeds: number;
   pendingPayments: PaymentSummary[];
   complaints: ComplaintSummary[];
@@ -38,16 +39,19 @@ export default function DashboardPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [residents, allocations, pendingPayments, complaints] =
+        // limit: 1 — only the `total` count is needed here, not the rows.
+        const [active, all, allocations, pendingPayments, complaints] =
           await Promise.all([
-            api.residents.list(),
+            api.residents.list({ status: ResidentStatus.ACTIVE, limit: 1 }),
+            api.residents.list({ status: "ALL", limit: 1 }),
             api.allocations.list(),
             api.payments.list("SUBMITTED"),
             api.complaints.list(),
           ]);
         if (cancelled) return;
         setData({
-          residents,
+          activeResidents: active.total,
+          totalResidents: all.total,
           occupiedBeds: allocations.length,
           pendingPayments,
           complaints,
@@ -67,8 +71,6 @@ export default function DashboardPage() {
   }, []);
 
   const loading = !data && !error;
-  const activeResidents =
-    data?.residents.filter((r) => r.status === "ACTIVE").length ?? 0;
   const openComplaints =
     data?.complaints.filter((c) => c.status !== "RESOLVED").length ?? 0;
   const pendingTotal =
@@ -97,8 +99,8 @@ export default function DashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Active residents"
-          value={activeResidents}
-          hint={`${data?.residents.length ?? 0} total on record`}
+          value={data?.activeResidents ?? 0}
+          hint={`${data?.totalResidents ?? 0} total on record`}
           icon={UsersRound}
           loading={loading}
           accent

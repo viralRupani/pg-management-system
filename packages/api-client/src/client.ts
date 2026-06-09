@@ -34,6 +34,8 @@ import type {
   RecordDepositInput,
   RecordExpenseInput,
   RegisterResidentInput,
+  ResidentListQuery,
+  ResidentListResult,
   ResidentSummary,
   RoomSummary,
   SetBudgetInput,
@@ -41,7 +43,10 @@ import type {
   TenantBranding,
   UpdateBrandingInput,
   UpdateComplaintStatusInput,
-  UpsertMenuInput,
+  MenuConfig,
+  MenuSlotSummary,
+  UpdateMenuConfigInput,
+  UpsertMenuSlotInput,
 } from "@pg/shared";
 import { Http } from "./http";
 import type { ClientConfig } from "./types";
@@ -99,7 +104,8 @@ export class PgApiClient {
   };
 
   readonly residents = {
-    list: () => this.http.get<ResidentSummary[]>("/residents"),
+    list: (query?: Partial<ResidentListQuery>) =>
+      this.http.get<ResidentListResult>("/residents", { query }),
     get: (id: string) => this.http.get<ResidentSummary>(`/residents/${id}`),
     register: (input: RegisterResidentInput) =>
       this.http.post<ResidentSummary>("/residents", input),
@@ -167,6 +173,10 @@ export class PgApiClient {
       this.http.patch<{ id: string }>(`/property/rooms/${id}/rent`, {
         monthlyRentPaise,
       }),
+    deleteBuilding: (id: string) =>
+      this.http.del<void>(`/property/buildings/${id}`),
+    deleteRoom: (id: string) => this.http.del<void>(`/property/rooms/${id}`),
+    deleteBed: (id: string) => this.http.del<void>(`/property/beds/${id}`),
   };
 
   readonly invoices = {
@@ -211,12 +221,22 @@ export class PgApiClient {
   };
 
   readonly menu = {
-    /** Tenant-shared menu for an inclusive [from, to] range (YYYY-MM-DD, both required). */
+    /** Resident-compatible materialized menu for an inclusive [from, to] range. */
     list: (from: string, to: string) =>
       this.http.get<MenuItemSummary[]>("/menu", { query: { from, to } }),
-    /** Manager: publish/replace one date+meal (upsert). */
-    upsert: (input: UpsertMenuInput) =>
-      this.http.post<{ id: string }>("/menu", input),
+    /** Get (or auto-init) the tenant's cycle config. */
+    config: () => this.http.get<MenuConfig>("/menu/config"),
+    /** Manager: update cycle length and anchor Monday. */
+    updateConfig: (input: UpdateMenuConfigInput) =>
+      this.http.patch<MenuConfig>("/menu/config", input),
+    /** List all template slots. */
+    slots: () => this.http.get<MenuSlotSummary[]>("/menu/slots"),
+    /** Manager: upsert one template slot. */
+    upsertSlot: (input: UpsertMenuSlotInput) =>
+      this.http.post<{ id: string }>("/menu/slots", input),
+    /** Manager: delete a slot by natural composite key. */
+    deleteSlot: (weekNumber: number, dayOfWeek: number, mealType: string) =>
+      this.http.del<void>(`/menu/slots/${weekNumber}/${dayOfWeek}/${mealType}`),
   };
 
   readonly announcements = {

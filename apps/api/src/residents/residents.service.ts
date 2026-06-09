@@ -1,7 +1,9 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, count, eq, ilike, isNull, or } from "drizzle-orm";
 import {
   type RegisterResidentInput,
+  type ResidentListQuery,
+  type ResidentListResult,
   type ResidentSummary,
   ResidentStatus,
   UserRole,
@@ -52,11 +54,32 @@ export class ResidentsService {
     });
   }
 
-  async list(): Promise<ResidentSummary[]> {
-    const rows = await this.residentQuery().where(
-      eq(users.role, UserRole.RESIDENT),
-    );
-    return rows.map(toSummary);
+  /**
+   * Search (name/phone, case-insensitive substring) + status filter ("ALL"
+   * skips the filter) + offset pagination. Filtering happens in SQL — the
+   * `WHERE` only touches `users` columns, so the count query needs no joins.
+   */
+  async list(query: ResidentListQuery): Promise<ResidentListResult> {
+    const { q, status, page, limit } = query;
+    const conditions = [eq(users.role, UserRole.RESIDENT)];
+    if (status !== "ALL") conditions.push(eq(users.status, status));
+    if (q) {
+      const pattern = `%${q}%`;
+      conditions.push(
+        or(ilike(users.name, pattern), ilike(users.phone, pattern))!,
+      );
+    }
+    const where = and(...conditions)!;
+
+    const [rows, [{ total }]] = await Promise.all([
+      this.residentQuery()
+        .where(where)
+        .limit(limit)
+        .offset((page - 1) * limit),
+      this.ctx.db().select({ total: count() }).from(users).where(where),
+    ]);
+
+    return { items: rows.map(toSummary), total, page, limit };
   }
 
   async getById(id: string): Promise<ResidentSummary> {

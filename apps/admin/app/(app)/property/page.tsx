@@ -17,6 +17,8 @@ import {
   DoorOpen,
   Layers,
   Plus,
+  Trash2,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +70,12 @@ export default function PropertyPage() {
   const [addRoomFor, setAddRoomFor] = useState<FloorSummary | null>(null);
   const [addBedFor, setAddBedFor] = useState<RoomSummary | null>(null);
   const [editRentFor, setEditRentFor] = useState<RoomSummary | null>(null);
+  const [deleteBuildingTarget, setDeleteBuildingTarget] =
+    useState<BuildingSummary | null>(null);
+  const [deleteRoomTarget, setDeleteRoomTarget] =
+    useState<RoomSummary | null>(null);
+  const [deleteBedTarget, setDeleteBedTarget] =
+    useState<BedSummary | null>(null);
 
   const load = useCallback(async (expandAll = false) => {
     const [buildings, floors, rooms, beds] = await Promise.all([
@@ -182,14 +190,25 @@ export default function PropertyPage() {
                         )}
                       </div>
                     </button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setAddFloorFor(b)}
-                    >
-                      <Plus className="h-4 w-4" />
-                      Floor
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setAddFloorFor(b)}
+                      >
+                        <Plus className="h-4 w-4" />
+                        Floor
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDeleteBuildingTarget(b)}
+                        title="Delete building"
+                        className="text-muted-foreground hover:text-danger"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
 
                   {open && (
@@ -210,6 +229,8 @@ export default function PropertyPage() {
                             onAddRoom={() => setAddRoomFor(f)}
                             onAddBed={setAddBedFor}
                             onEditRent={setEditRentFor}
+                            onDeleteRoom={setDeleteRoomTarget}
+                            onDeleteBed={setDeleteBedTarget}
                           />
                         ))
                       )}
@@ -267,6 +288,42 @@ export default function PropertyPage() {
         }}
         onError={setError}
       />
+      <ConfirmDeleteDialog
+        open={deleteBuildingTarget !== null}
+        title={`Delete "${deleteBuildingTarget?.name}"?`}
+        description="All floors, rooms, and vacant beds in this building will be permanently deleted. Buildings with occupied or reserved beds cannot be deleted."
+        onClose={() => setDeleteBuildingTarget(null)}
+        onConfirm={async () => {
+          await api.property.deleteBuilding(deleteBuildingTarget!.id);
+          setDeleteBuildingTarget(null);
+          await refresh();
+        }}
+        onError={setError}
+      />
+      <ConfirmDeleteDialog
+        open={deleteRoomTarget !== null}
+        title={`Delete room "${deleteRoomTarget?.label}"?`}
+        description="All vacant beds in this room will also be deleted. Rooms with occupied or reserved beds cannot be deleted."
+        onClose={() => setDeleteRoomTarget(null)}
+        onConfirm={async () => {
+          await api.property.deleteRoom(deleteRoomTarget!.id);
+          setDeleteRoomTarget(null);
+          await refresh();
+        }}
+        onError={setError}
+      />
+      <ConfirmDeleteDialog
+        open={deleteBedTarget !== null}
+        title={`Delete bed "${deleteBedTarget?.label}"?`}
+        description="This vacant bed will be permanently deleted."
+        onClose={() => setDeleteBedTarget(null)}
+        onConfirm={async () => {
+          await api.property.deleteBed(deleteBedTarget!.id);
+          setDeleteBedTarget(null);
+          await refresh();
+        }}
+        onError={setError}
+      />
     </div>
   );
 }
@@ -282,6 +339,8 @@ function FloorBlock({
   onAddRoom,
   onAddBed,
   onEditRent,
+  onDeleteRoom,
+  onDeleteBed,
 }: {
   floor: FloorSummary;
   rooms: RoomSummary[];
@@ -291,6 +350,8 @@ function FloorBlock({
   onAddRoom: () => void;
   onAddBed: (room: RoomSummary) => void;
   onEditRent: (room: RoomSummary) => void;
+  onDeleteRoom: (room: RoomSummary) => void;
+  onDeleteBed: (bed: BedSummary) => void;
 }) {
   return (
     <div className="rounded-md border border-border">
@@ -329,6 +390,8 @@ function FloorBlock({
                 beds={bedsByRoom.get(r.id) ?? []}
                 onAddBed={() => onAddBed(r)}
                 onEditRent={() => onEditRent(r)}
+                onDeleteRoom={() => onDeleteRoom(r)}
+                onDeleteBed={onDeleteBed}
               />
             ))
           )}
@@ -345,11 +408,15 @@ function RoomBlock({
   beds,
   onAddBed,
   onEditRent,
+  onDeleteRoom,
+  onDeleteBed,
 }: {
   room: RoomSummary;
   beds: BedSummary[];
   onAddBed: () => void;
   onEditRent: () => void;
+  onDeleteRoom: () => void;
+  onDeleteBed: (bed: BedSummary) => void;
 }) {
   return (
     <div className="rounded-md bg-muted/40 p-3">
@@ -380,16 +447,44 @@ function RoomBlock({
             <BedDouble className="h-4 w-4" />
             Bed
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onDeleteRoom}
+            disabled={beds.some((b) => b.status !== "VACANT")}
+            title={
+              beds.some((b) => b.status !== "VACANT")
+                ? "Cannot delete: room has occupied or reserved beds"
+                : "Delete room"
+            }
+            className="text-muted-foreground hover:text-danger disabled:opacity-30"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 
       {beds.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {beds.map((bed) => (
-            <Badge key={bed.id} tone={bedTone(bed.status)}>
-              {bed.label} · {bed.status.toLowerCase()}
-            </Badge>
-          ))}
+          {beds.map((bed) =>
+            bed.status === "VACANT" ? (
+              <Badge key={bed.id} tone="success" className="gap-1 pr-1">
+                {bed.label} · vacant
+                <button
+                  type="button"
+                  onClick={() => onDeleteBed(bed)}
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-success/30"
+                  title="Delete bed"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ) : (
+              <Badge key={bed.id} tone={bedTone(bed.status)}>
+                {bed.label} · {bed.status.toLowerCase()}
+              </Badge>
+            ),
+          )}
         </div>
       )}
     </div>
@@ -788,6 +883,51 @@ function EditRentDialog({
         </Field>
         <DialogActions busy={busy} onClose={onClose} submitLabel="Save rent" />
       </form>
+    </Dialog>
+  );
+}
+
+/* --------------------------------------------------------- confirm delete --- */
+
+function ConfirmDeleteDialog({
+  open,
+  title,
+  description,
+  onClose,
+  onConfirm,
+  onError,
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+  onError: (m: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const confirm = async () => {
+    setBusy(true);
+    try {
+      await onConfirm();
+    } catch (err) {
+      onError(toMessage(err, "Delete failed."));
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} title={title} description={description}>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        <Button type="button" variant="danger" disabled={busy} onClick={confirm}>
+          {busy ? "Deleting…" : "Delete"}
+        </Button>
+      </div>
     </Dialog>
   );
 }

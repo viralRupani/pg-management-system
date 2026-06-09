@@ -1,5 +1,9 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
-import { eq } from "drizzle-orm";
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import { and, ne, eq } from "drizzle-orm";
 import {
   type BedStatus,
   type BedSummary,
@@ -130,6 +134,60 @@ export class PropertyService {
       })
       .returning();
     return { id: row.id };
+  }
+
+  async deleteBed(id: string): Promise<void> {
+    const db = this.ctx.db();
+    const [bed] = await db
+      .select({ id: beds.id, status: beds.status })
+      .from(beds)
+      .where(eq(beds.id, id));
+    if (!bed) throw new NotFoundException("Bed not found");
+    if (bed.status !== "VACANT")
+      throw new ConflictException(
+        "Cannot delete an occupied or reserved bed. Move out the resident first.",
+      );
+    await db.delete(beds).where(eq(beds.id, id));
+  }
+
+  async deleteRoom(id: string): Promise<void> {
+    const db = this.ctx.db();
+    const [room] = await db
+      .select({ id: rooms.id })
+      .from(rooms)
+      .where(eq(rooms.id, id));
+    if (!room) throw new NotFoundException("Room not found");
+    const [occupied] = await db
+      .select({ id: beds.id })
+      .from(beds)
+      .where(and(eq(beds.roomId, id), ne(beds.status, "VACANT")))
+      .limit(1);
+    if (occupied)
+      throw new ConflictException(
+        "Cannot delete a room with occupied or reserved beds. Move out all residents first.",
+      );
+    await db.delete(rooms).where(eq(rooms.id, id));
+  }
+
+  async deleteBuilding(id: string): Promise<void> {
+    const db = this.ctx.db();
+    const [building] = await db
+      .select({ id: buildings.id })
+      .from(buildings)
+      .where(eq(buildings.id, id));
+    if (!building) throw new NotFoundException("Building not found");
+    const [occupied] = await db
+      .select({ id: beds.id })
+      .from(beds)
+      .innerJoin(rooms, eq(rooms.id, beds.roomId))
+      .innerJoin(floors, eq(floors.id, rooms.floorId))
+      .where(and(eq(floors.buildingId, id), ne(beds.status, "VACANT")))
+      .limit(1);
+    if (occupied)
+      throw new ConflictException(
+        "Cannot delete a building with occupied or reserved beds. Move out all residents first.",
+      );
+    await db.delete(buildings).where(eq(buildings.id, id));
   }
 
   /** Edit a room's monthly rent (paise). Feeds invoice generation. */

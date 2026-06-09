@@ -119,31 +119,78 @@ describe("M5 operations (e2e)", () => {
     });
   });
 
-  describe("menu (tenant-shared)", () => {
-    it("manager publishes and re-publish is an upsert", async () => {
-      const first = await h.req("post", "/menu", pgA.managerToken, {
-        menuDate: "2026-06-10",
+  describe("menu (cycle-template, tenant-shared)", () => {
+    it("GET /menu/config auto-inits a default on first call", async () => {
+      const res = await h.req("get", "/menu/config", pgA.managerToken);
+      expect(res.status).toBe(200);
+      expect([1, 2, 3]).toContain(res.body.cycleLengthWeeks);
+      expect(res.body.cycleStartDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it("PATCH /menu/config rejects a non-Monday cycleStartDate", async () => {
+      const res = await h.req("patch", "/menu/config", pgA.managerToken, {
+        cycleLengthWeeks: 2,
+        cycleStartDate: "2026-06-10", // Wednesday
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("PATCH /menu/config accepts a Monday and updates the config", async () => {
+      const res = await h.req("patch", "/menu/config", pgA.managerToken, {
+        cycleLengthWeeks: 2,
+        cycleStartDate: "2026-06-02", // Monday
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.cycleLengthWeeks).toBe(2);
+      expect(res.body.cycleStartDate).toBe("2026-06-02");
+    });
+
+    it("POST /menu/slots upserts a slot; re-post replaces it (same id)", async () => {
+      const first = await h.req("post", "/menu/slots", pgA.managerToken, {
+        weekNumber: 1,
+        dayOfWeek: 2, // Tuesday (ISO)
         mealType: "LUNCH",
         items: "Dal, Rice",
       });
       expect(first.status).toBe(201);
-      const second = await h.req("post", "/menu", pgA.managerToken, {
-        menuDate: "2026-06-10",
+      const second = await h.req("post", "/menu/slots", pgA.managerToken, {
+        weekNumber: 1,
+        dayOfWeek: 2,
         mealType: "LUNCH",
         items: "Dal, Rice, Salad",
       });
-      expect(second.body.id).toBe(first.body.id); // same row, upserted
+      expect(second.body.id).toBe(first.body.id);
     });
 
-    it("resident CAN read the menu range; replaced items win", async () => {
+    it("GET /menu materializes the slot onto the correct calendar date", async () => {
+      // cycleStartDate=2026-06-02 (Mon), cycle=2 weeks.
+      // week=1, dow=2 (Tue) => 2026-06-03. Query a range that includes it.
       const res = await h.req(
         "get",
         "/menu?from=2026-06-01&to=2026-06-30",
         residentA,
       );
       expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(1);
-      expect(res.body[0].items).toBe("Dal, Rice, Salad");
+      const match = res.body.find(
+        (r: { menuDate: string; mealType: string }) =>
+          r.menuDate === "2026-06-03" && r.mealType === "LUNCH",
+      );
+      expect(match).toBeDefined();
+      expect(match.items).toBe("Dal, Rice, Salad");
+    });
+
+    it("resident can read config and slots but cannot upsert (403)", async () => {
+      const cfg = await h.req("get", "/menu/config", residentA);
+      expect(cfg.status).toBe(200);
+      const sls = await h.req("get", "/menu/slots", residentA);
+      expect(sls.status).toBe(200);
+      const denied = await h.req("post", "/menu/slots", residentA, {
+        weekNumber: 1,
+        dayOfWeek: 1,
+        mealType: "BREAKFAST",
+        items: "x",
+      });
+      expect(denied.status).toBe(403);
     });
 
     it("missing from/to => 400", async () => {
@@ -151,13 +198,57 @@ describe("M5 operations (e2e)", () => {
       expect(res.status).toBe(400);
     });
 
-    it("PG B sees none of PG A's menu (cross-tenant)", async () => {
-      const res = await h.req(
+    it("DELETE /menu/slots/:wn/:dow/:mt removes the slot", async () => {
+      const del = await h.req(
+        "delete",
+        "/menu/slots/1/2/LUNCH",
+        pgA.managerToken,
+      );
+      expect(del.status).toBe(204);
+      const sls = await h.req("get", "/menu/slots", pgA.managerToken);
+      const found = sls.body.find(
+        (s: { weekNumber: number; dayOfWeek: number; mealType: string }) =>
+          s.weekNumber === 1 && s.dayOfWeek === 2 && s.mealType === "LUNCH",
+      );
+      expect(found).toBeUndefined();
+    });
+
+    it("reducing cycle length prunes orphaned week slots", async () => {
+      // Add a week-2 slot first.
+      await h.req("post", "/menu/slots", pgA.managerToken, {
+        weekNumber: 2,
+        dayOfWeek: 1,
+        mealType: "BREAKFAST",
+        items: "Upma",
+      });
+      // Shrink to 1 week.
+      await h.req("patch", "/menu/config", pgA.managerToken, {
+        cycleLengthWeeks: 1,
+        cycleStartDate: "2026-06-02",
+      });
+      const sls = await h.req("get", "/menu/slots", pgA.managerToken);
+      const orphan = sls.body.find(
+        (s: { weekNumber: number }) => s.weekNumber === 2,
+      );
+      expect(orphan).toBeUndefined();
+    });
+
+    it("PG B sees none of PG A's config slots or materialized menu (cross-tenant)", async () => {
+      // Seed a slot for A first.
+      await h.req("post", "/menu/slots", pgA.managerToken, {
+        weekNumber: 1,
+        dayOfWeek: 3,
+        mealType: "DINNER",
+        items: "Roti, Dal",
+      });
+      const sls = await h.req("get", "/menu/slots", pgB.managerToken);
+      expect(sls.body).toHaveLength(0);
+      const mat = await h.req(
         "get",
         "/menu?from=2026-06-01&to=2026-06-30",
         pgB.managerToken,
       );
-      expect(res.body).toHaveLength(0);
+      expect(mat.body).toHaveLength(0);
     });
   });
 
