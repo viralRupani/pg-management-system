@@ -8,15 +8,17 @@ import type {
 } from "@pg/shared";
 import { OccupationType, ResidentStatus } from "@pg/shared";
 import { Megaphone, Plus, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/input";
+import { Input, Label } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { cn, formatDate, toMessage } from "@/lib/utils";
+
+const PAGE_SIZE = 5;
 
 const inputClass =
   "flex w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
@@ -35,31 +37,48 @@ const occupationLabel = (o: OccupationType) =>
 export default function AnnouncementsPage() {
   const toast = useToast();
   const [items, setItems] = useState<AnnouncementSummary[] | null>(null);
+  const [total, setTotal] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
 
-  const load = async () => {
-    setItems(await api.announcements.list());
-  };
+  // Debounce free-text search so we don't hit the API on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 600);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // A new search invalidates the current page.
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  const load = useCallback(async () => {
+    try {
+      const result = await api.announcements.list({
+        q: search || undefined,
+        page,
+        limit: PAGE_SIZE,
+      });
+      setItems(result.items);
+      setTotal(result.total);
+      setLoadFailed(false);
+    } catch (err) {
+      setLoadFailed(true);
+      toast.error(toMessage(err, "Could not load announcements."));
+    }
+  }, [search, page, toast]);
 
   useEffect(() => {
-    let cancelled = false;
     setItems(null);
-    (async () => {
-      try {
-        const list = await api.announcements.list();
-        if (!cancelled) setItems(list);
-      } catch (err) {
-        if (!cancelled) {
-          setLoadFailed(true);
-          toast.error(toMessage(err, "Could not load announcements."));
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [toast]);
+    void load();
+  }, [load]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * PAGE_SIZE, total);
 
   return (
     <div className="space-y-6">
@@ -77,6 +96,14 @@ export default function AnnouncementsPage() {
           New announcement
         </Button>
       </div>
+
+      <Input
+        value={searchInput}
+        onChange={(e) => setSearchInput(e.target.value)}
+        placeholder="Search by title…"
+        className="max-w-xs"
+        aria-label="Search announcements"
+      />
 
       {items === null ? (
         loadFailed ? (
@@ -100,7 +127,13 @@ export default function AnnouncementsPage() {
         <Card>
           <CardContent className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
             <Megaphone className="h-6 w-6" />
-            <p className="text-sm">No announcements yet.</p>
+            <p className="text-sm">
+              {search
+                ? "No announcements match your search."
+                : page > 1
+                  ? "No more announcements."
+                  : "No announcements yet."}
+            </p>
           </CardContent>
         </Card>
       ) : (
@@ -130,11 +163,41 @@ export default function AnnouncementsPage() {
         </div>
       )}
 
+      {items !== null && total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+          <span>
+            Showing {rangeStart}–{rangeEnd} of {total}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Previous
+            </Button>
+            <span>
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+
       <NewAnnouncementDialog
         open={creating}
         onClose={() => setCreating(false)}
         onDone={async () => {
           setCreating(false);
+          setPage(1);
           await load();
         }}
       />

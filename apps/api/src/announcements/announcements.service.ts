@@ -1,8 +1,9 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
-import { and, desc, eq, exists, inArray, isNull, or } from "drizzle-orm";
+import { and, count, desc, eq, exists, ilike, inArray, isNull, or } from "drizzle-orm";
 import {
   type AnnouncementAudience,
-  type AnnouncementSummary,
+  type AnnouncementListQuery,
+  type AnnouncementListResult,
   type CreateAnnouncementInput,
   ResidentStatus,
   UserRole,
@@ -187,11 +188,18 @@ export class AnnouncementsService {
    * visible to them (ALL, or where they are an explicit recipient), with the
    * audience label stripped (audience size is manager-only info).
    */
-  async list(userId: string, role: string): Promise<AnnouncementSummary[]> {
+  async list(
+    userId: string,
+    role: string,
+    query: AnnouncementListQuery,
+  ): Promise<AnnouncementListResult> {
     const db = this.ctx.db();
+    const { q, page, limit } = query;
     const isResident = role === UserRole.RESIDENT;
 
-    const where = isResident
+    const titleFilter = q ? ilike(announcements.title, `%${q}%`) : undefined;
+
+    const audienceFilter = isResident
       ? or(
           eq(announcements.audienceType, "ALL"),
           exists(
@@ -208,20 +216,32 @@ export class AnnouncementsService {
         )
       : undefined;
 
-    const rows = await db
-      .select()
-      .from(announcements)
-      .where(where)
-      .orderBy(desc(announcements.createdAt));
+    const where = and(audienceFilter, titleFilter);
 
-    return rows.map((r) => ({
-      id: r.id,
-      title: r.title,
-      body: r.body,
-      audienceType: r.audienceType,
-      audienceLabel: isResident ? null : r.audienceLabel,
-      createdAt: r.createdAt.toISOString(),
-    }));
+    const [rows, [{ total }]] = await Promise.all([
+      db
+        .select()
+        .from(announcements)
+        .where(where)
+        .orderBy(desc(announcements.createdAt))
+        .limit(limit)
+        .offset((page - 1) * limit),
+      db.select({ total: count() }).from(announcements).where(where),
+    ]);
+
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        body: r.body,
+        audienceType: r.audienceType,
+        audienceLabel: isResident ? null : r.audienceLabel,
+        createdAt: r.createdAt.toISOString(),
+      })),
+      total,
+      page,
+      limit,
+    };
   }
 }
 

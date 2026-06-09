@@ -1,7 +1,8 @@
 import type {
   AllocateBedInput,
   AllocationSummary,
-  AnnouncementSummary,
+  AnnouncementListQuery,
+  AnnouncementListResult,
   AuthTokens,
   AvailableBed,
   BedSummary,
@@ -240,8 +241,9 @@ export class PgApiClient {
   };
 
   readonly announcements = {
-    /** Tenant feed, newest first (manager + resident). */
-    list: () => this.http.get<AnnouncementSummary[]>("/announcements"),
+    /** Tenant feed, newest first (manager + resident), paginated. */
+    list: (query?: Partial<AnnouncementListQuery>) =>
+      this.http.get<AnnouncementListResult>("/announcements", { query }),
     /** Manager: post a new announcement. */
     create: (input: CreateAnnouncementInput) =>
       this.http.post<{ id: string }>("/announcements", input),

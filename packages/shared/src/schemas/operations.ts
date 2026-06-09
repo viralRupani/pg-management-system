@@ -84,6 +84,21 @@ export const announcementSummarySchema = z.object({
 });
 export type AnnouncementSummary = z.infer<typeof announcementSummarySchema>;
 
+export const announcementListQuerySchema = z.object({
+  q: z.string().trim().min(1).max(160).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+export type AnnouncementListQuery = z.infer<typeof announcementListQuerySchema>;
+
+export const announcementListResultSchema = z.object({
+  items: z.array(announcementSummarySchema),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().min(1),
+  limit: z.number().int().min(1),
+});
+export type AnnouncementListResult = z.infer<typeof announcementListResultSchema>;
+
 // --- Budgets & expenses ---
 const periodString = z
   .string()
