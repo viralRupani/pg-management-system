@@ -34,6 +34,7 @@ export const availableBedSchema = z.object({
   bedLabel: z.string(),
   roomId: z.string().uuid(),
   roomLabel: z.string(),
+  capacity: z.number().int(),
   monthlyRentPaise: z.number().int(),
   matchScore: z.number().int(),
   matchReasons: z.array(z.string()),

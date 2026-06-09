@@ -43,7 +43,6 @@ export const createRoomSchema = z.object({
   floorId: z.string().uuid(),
   label: z.string().min(1).max(60),
   capacity: z.number().int().min(1).max(20).default(1),
-  sharingType: z.string().max(40).optional(),
   monthlyRentPaise: z.number().int().min(0).default(0),
   // Allocation-preference tags (all optional).
   occupationPreference: z.nativeEnum(OccupationType).optional(),
@@ -59,7 +58,6 @@ export const roomSummarySchema = z.object({
   floorId: z.string().uuid(),
   label: z.string(),
   capacity: z.number().int(),
-  sharingType: z.string().nullable(),
   monthlyRentPaise: z.number().int(),
   occupationPreference: z.nativeEnum(OccupationType).nullable(),
   genderPreference: z.string().nullable(),

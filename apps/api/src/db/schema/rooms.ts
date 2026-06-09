@@ -27,7 +27,6 @@ export const rooms = pgTable(
     floorId: uuid("floor_id").notNull(),
     label: text("label").notNull(), // e.g. "101"
     capacity: integer("capacity").notNull().default(1),
-    sharingType: text("sharing_type"), // optional free text, e.g. "2-sharing"
     monthlyRentPaise: integer("monthly_rent_paise").notNull().default(0),
 
     // Allocation-preference tags (all optional; null = no preference / "any").

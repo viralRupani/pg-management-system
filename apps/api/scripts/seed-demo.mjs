@@ -141,7 +141,7 @@ async function main() {
   // 3. Property: building → floor → room → beds.
   const building = must(await call("post", "/property/buildings", mgr, { name: "Sunrise Block A", address: "Bopal, Ahmedabad" }), "building");
   const floor = must(await call("post", "/property/floors", mgr, { buildingId: building.id, label: "Ground Floor", floorNumber: 0 }), "floor");
-  const room = must(await call("post", "/property/rooms", mgr, { floorId: floor.id, label: "G-101", capacity: 4, sharingType: "4-sharing", monthlyRentPaise: 800000 }), "room");
+  const room = must(await call("post", "/property/rooms", mgr, { floorId: floor.id, label: "G-101", capacity: 4, monthlyRentPaise: 800000 }), "room");
   const beds = [];
   for (const label of ["A", "B", "C", "D"]) {
     beds.push(must(await call("post", "/property/beds", mgr, { roomId: room.id, label: `G-101-${label}` }), `bed ${label}`));

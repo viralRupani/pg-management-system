@@ -9,6 +9,7 @@ import {
   OccupationType,
   type ResidentSummary,
   ResidentStatus,
+  sharingLabel,
 } from "@pg/shared";
 import {
   AlertCircle,
@@ -175,7 +176,9 @@ function ResidentsList() {
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-sm text-muted-foreground">
-                        {r.bedLabel ?? "No bed"}
+                        {r.bedLabel
+                          ? `${r.bedLabel}${r.roomCapacity != null ? ` · ${sharingLabel(r.roomCapacity)}` : ""}`
+                          : "No bed"}
                       </span>
                       <Badge tone={residentTone(r.status)}>
                         {r.status.toLowerCase()}
@@ -536,7 +539,12 @@ function ResidentDetail({ id }: { id: string }) {
         <CardContent>
           <p className="text-sm">
             {resident.bedLabel ? (
-              <span className="font-medium">{resident.bedLabel}</span>
+              <span className="font-medium">
+                {resident.bedLabel}
+                {resident.roomCapacity != null
+                  ? ` · ${sharingLabel(resident.roomCapacity)}`
+                  : ""}
+              </span>
             ) : (
               <span className="text-muted-foreground">
                 Not assigned to a bed.
@@ -786,7 +794,7 @@ function AllocateDialog({
                   {b.roomLabel} · {b.bedLabel}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {formatPaise(b.monthlyRentPaise)}/mo
+                  {formatPaise(b.monthlyRentPaise)}/mo · {sharingLabel(b.capacity)}
                   {b.matchReasons.length > 0
                     ? ` · ${b.matchReasons.join(", ")}`
                     : ""}

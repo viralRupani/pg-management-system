@@ -9,7 +9,7 @@ import {
   UserRole,
 } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
-import { allocations, authIdentities, beds, users } from "../db/schema";
+import { allocations, authIdentities, beds, rooms, users } from "../db/schema";
 
 /**
  * Resident operations, all under tenant RLS. The tenant id comes from the
@@ -106,6 +106,7 @@ export class ResidentsService {
         nativePlace: users.nativePlace,
         status: users.status,
         bedLabel: beds.label,
+        roomCapacity: rooms.capacity,
       })
       .from(users)
       .leftJoin(
@@ -115,7 +116,8 @@ export class ResidentsService {
           isNull(allocations.endDate),
         ),
       )
-      .leftJoin(beds, eq(beds.id, allocations.bedId));
+      .leftJoin(beds, eq(beds.id, allocations.bedId))
+      .leftJoin(rooms, eq(rooms.id, beds.roomId));
   }
 }
 
@@ -127,6 +129,7 @@ type ResidentRow = {
   nativePlace: string | null;
   status: string;
   bedLabel: string | null;
+  roomCapacity: number | null;
 };
 
 function toSummary(r: ResidentRow): ResidentSummary {
@@ -139,5 +142,6 @@ function toSummary(r: ResidentRow): ResidentSummary {
     nativePlace: r.nativePlace,
     status: r.status as ResidentStatus,
     bedLabel: r.bedLabel,
+    roomCapacity: r.roomCapacity ?? null,
   };
 }

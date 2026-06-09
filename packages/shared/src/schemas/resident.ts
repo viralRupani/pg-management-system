@@ -22,6 +22,7 @@ export const residentSummarySchema = z.object({
   nativePlace: z.string().nullable(),
   status: z.nativeEnum(ResidentStatus),
   bedLabel: z.string().nullable(),
+  roomCapacity: z.number().int().nullable(),
 });
 export type ResidentSummary = z.infer<typeof residentSummarySchema>;
 

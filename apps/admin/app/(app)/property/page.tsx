@@ -7,6 +7,7 @@ import {
   type FloorSummary,
   OccupationType,
   type RoomSummary,
+  sharingLabel,
 } from "@pg/shared";
 import {
   AlertCircle,
@@ -426,8 +427,7 @@ function RoomBlock({
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{room.label}</p>
             <p className="text-xs text-muted-foreground">
-              cap {room.capacity}
-              {room.sharingType ? ` · ${room.sharingType}` : ""}
+              cap {room.capacity} · {sharingLabel(room.capacity)}
               {room.occupationPreference
                 ? ` · ${room.occupationPreference.toLowerCase()}`
                 : ""}
@@ -653,7 +653,6 @@ function AddRoomDialog({
   const [label, setLabel] = useState("");
   const [capacity, setCapacity] = useState("1");
   const [rent, setRent] = useState("");
-  const [sharingType, setSharingType] = useState("");
   const [occupationPreference, setOccupationPreference] = useState<
     OccupationType | ""
   >("");
@@ -664,7 +663,6 @@ function AddRoomDialog({
       setLabel("");
       setCapacity("1");
       setRent("");
-      setSharingType("");
       setOccupationPreference("");
     }
   }, [floor]);
@@ -679,7 +677,6 @@ function AddRoomDialog({
         label: label.trim(),
         capacity: Number(capacity),
         monthlyRentPaise: Math.round(Number(rent) * 100),
-        sharingType: sharingType.trim() || undefined,
         occupationPreference: occupationPreference || undefined,
       });
       await onDone();
@@ -730,14 +727,6 @@ function AddRoomDialog({
               value={capacity}
               onChange={(e) => setCapacity(e.target.value)}
               required
-            />
-          </Field>
-          <Field label="Sharing type (optional)" htmlFor="rm-sharing">
-            <Input
-              id="rm-sharing"
-              value={sharingType}
-              onChange={(e) => setSharingType(e.target.value)}
-              placeholder="e.g. 2-sharing"
             />
           </Field>
           <Field label="Occupation preference (optional)" htmlFor="rm-occ">

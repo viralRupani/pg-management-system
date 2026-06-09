@@ -1,0 +1,1 @@
+ALTER TABLE "rooms" DROP COLUMN "sharing_type";
