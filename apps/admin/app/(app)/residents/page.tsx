@@ -14,6 +14,7 @@ import {
   AlertCircle,
   ArrowLeft,
   BedDouble,
+  ChevronDown,
   Download,
   Plus,
   UserPlus,
@@ -71,7 +72,7 @@ function ResidentsList() {
 
   // Debounce free-text search so we don't hit the API on every keystroke.
   useEffect(() => {
-    const t = setTimeout(() => setSearch(searchInput.trim()), 300);
+    const t = setTimeout(() => setSearch(searchInput.trim()), 600);
     return () => clearTimeout(t);
   }, [searchInput]);
 
@@ -128,16 +129,19 @@ function ResidentsList() {
           className="max-w-xs"
           aria-label="Search residents"
         />
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value as StatusFilter)}
-          className={cn(inputClass, "w-40")}
-          aria-label="Filter by status"
-        >
-          <option value={ResidentStatus.ACTIVE}>Active</option>
-          <option value={ResidentStatus.EXITED}>Exited</option>
-          <option value="ALL">All</option>
-        </select>
+        <div className="relative w-40">
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as StatusFilter)}
+            className={cn(inputClass, "w-full appearance-none pr-8")}
+            aria-label="Filter by status"
+          >
+            <option value={ResidentStatus.ACTIVE}>Active</option>
+            <option value={ResidentStatus.EXITED}>Exited</option>
+            <option value="ALL">All</option>
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        </div>
       </div>
 
       <ErrorBanner message={error} />

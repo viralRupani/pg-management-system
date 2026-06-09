@@ -104,6 +104,7 @@ export default function DashboardPage() {
           icon={UsersRound}
           loading={loading}
           accent
+          href="/residents"
         />
         <StatCard
           label="Beds occupied"
@@ -111,6 +112,7 @@ export default function DashboardPage() {
           hint="Current allocations"
           icon={BedDouble}
           loading={loading}
+          href="/property"
         />
         <StatCard
           label="Payments to review"
@@ -118,6 +120,7 @@ export default function DashboardPage() {
           hint={pendingTotal ? `${formatPaise(pendingTotal)} awaiting` : "All clear"}
           icon={CreditCard}
           loading={loading}
+          href="/rent"
         />
         <StatCard
           label="Open complaints"
@@ -125,6 +128,7 @@ export default function DashboardPage() {
           hint={`${data?.complaints.length ?? 0} total`}
           icon={ClipboardList}
           loading={loading}
+          href="/complaints"
         />
       </div>
 
