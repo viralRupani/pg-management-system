@@ -66,9 +66,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card md:flex">
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card md:flex overflow-y-auto">
         <div className="flex h-16 items-center gap-2.5 border-b border-border px-5">
           {branding?.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -124,7 +124,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main column */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-16 items-center justify-between border-b border-border bg-card px-5">
           <div className="flex items-center gap-2 md:hidden">
             <Building2 className="h-5 w-5 text-brand" />
@@ -147,7 +147,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 p-5 md:p-8">{children}</main>
+        <main className="flex-1 overflow-y-auto p-5 md:p-8">{children}</main>
       </div>
     </div>
   );

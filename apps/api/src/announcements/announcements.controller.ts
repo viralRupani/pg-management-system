@@ -23,10 +23,10 @@ export class AnnouncementsController {
     return this.announcements.create(user.sub, dto);
   }
 
-  /** Anyone in the tenant: the announcement feed. */
+  /** Anyone in the tenant: the announcement feed (filtered to the actor). */
   @Get()
   @Roles(UserRole.PG_MANAGER, UserRole.RESIDENT)
-  list() {
-    return this.announcements.list();
+  list(@CurrentUser() user: JwtPayload) {
+    return this.announcements.list(user.sub, user.role);
   }
 }

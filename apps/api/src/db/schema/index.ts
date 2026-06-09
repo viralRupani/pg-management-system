@@ -19,6 +19,7 @@ export * from "./complaints";
 export * from "./complaint-updates";
 export * from "./menu-items";
 export * from "./announcements";
+export * from "./announcement-recipients";
 export * from "./budgets";
 export * from "./expenses";
 export * from "./billing-snapshots";
@@ -44,6 +45,7 @@ import { complaints } from "./complaints";
 import { complaintUpdates } from "./complaint-updates";
 import { menuConfig, menuSlots } from "./menu-items";
 import { announcements } from "./announcements";
+import { announcementRecipients } from "./announcement-recipients";
 import { budgets } from "./budgets";
 import { expenses } from "./expenses";
 import { billingSnapshots } from "./billing-snapshots";
@@ -72,6 +74,7 @@ export const schema = {
   menuConfig,
   menuSlots,
   announcements,
+  announcementRecipients,
   budgets,
   expenses,
   billingSnapshots,
@@ -102,6 +105,7 @@ export const RLS_TABLES = [
   "menu_config",
   "menu_slots",
   "announcements",
+  "announcement_recipients",
   "budgets",
   "expenses",
   "billing_snapshots",

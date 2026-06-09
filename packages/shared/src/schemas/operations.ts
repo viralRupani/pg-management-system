@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MealType } from "../enums";
+import { MealType, OccupationType } from "../enums";
 
 // --- Menu ---
 const dateString = z.string().date(); // 'YYYY-MM-DD'
@@ -47,9 +47,30 @@ export const updateMenuConfigSchema = z.object({
 export type UpdateMenuConfigInput = z.infer<typeof updateMenuConfigSchema>;
 
 // --- Announcements ---
+/**
+ * Who an announcement is for, resolved to a concrete resident set at post time.
+ * ALL = the whole PG (default, tenant-shared). SPECIFIC = a hand-picked set.
+ * SEGMENT = an attribute filter (occupation and/or building) over active
+ * residents.
+ */
+export const announcementAudienceSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("ALL") }),
+  z.object({
+    type: z.literal("SPECIFIC"),
+    residentIds: z.array(z.string().uuid()).min(1).max(500),
+  }),
+  z.object({
+    type: z.literal("SEGMENT"),
+    occupationType: z.nativeEnum(OccupationType).optional(),
+    buildingId: z.string().uuid().optional(),
+  }),
+]);
+export type AnnouncementAudience = z.infer<typeof announcementAudienceSchema>;
+
 export const createAnnouncementSchema = z.object({
   title: z.string().min(1).max(160),
   body: z.string().min(1).max(4000),
+  audience: announcementAudienceSchema.default({ type: "ALL" }),
 });
 export type CreateAnnouncementInput = z.infer<typeof createAnnouncementSchema>;
 
@@ -57,6 +78,8 @@ export const announcementSummarySchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
   body: z.string(),
+  audienceType: z.string(),
+  audienceLabel: z.string().nullable(), // null for residents + legacy ALL posts
   createdAt: z.string(),
 });
 export type AnnouncementSummary = z.infer<typeof announcementSummarySchema>;

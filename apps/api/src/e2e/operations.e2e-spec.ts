@@ -13,6 +13,8 @@ describe("M5 operations (e2e)", () => {
   let residentA: string; // token
   let residentA2Id: string;
   let residentA2: string; // token
+  let studentId: string;
+  let student: string; // token (occupation STUDENT)
 
   beforeAll(async () => {
     h = await createHarness();
@@ -29,6 +31,14 @@ describe("M5 operations (e2e)", () => {
       phone: phone2,
     });
     residentA2 = await h.residentLogin(pgA.slug, pgA.id, phone2);
+
+    const phone3 = randomPhone();
+    studentId = await h.registerResident(pgA.managerToken, {
+      name: "Stu Dent",
+      phone: phone3,
+      occupationType: "STUDENT",
+    });
+    student = await h.residentLogin(pgA.slug, pgA.id, phone3);
   }, 30000);
 
   afterAll(async () => {
@@ -252,8 +262,11 @@ describe("M5 operations (e2e)", () => {
     });
   });
 
-  describe("announcements (tenant-shared)", () => {
-    it("manager posts; resident can read; resident cannot post", async () => {
+  const titles = (res: { body: { title: string }[] }) =>
+    res.body.map((a) => a.title);
+
+  describe("announcements (audience-targeted)", () => {
+    it("ALL: manager posts; every resident reads; resident cannot post", async () => {
       const post = await h.req("post", "/announcements", pgA.managerToken, {
         title: "Water cut",
         body: "No water 2-4pm",
@@ -262,12 +275,58 @@ describe("M5 operations (e2e)", () => {
 
       const read = await h.req("get", "/announcements", residentA);
       expect(read.body[0].title).toBe("Water cut");
+      expect(read.body[0].audienceType).toBe("ALL");
+      // audience label is manager-only info — stripped for residents.
+      expect(read.body[0].audienceLabel).toBeNull();
+
+      // Manager sees the label.
+      const mgr = await h.req("get", "/announcements", pgA.managerToken);
+      expect(mgr.body[0].audienceLabel).toBe("Everyone");
 
       const denied = await h.req("post", "/announcements", residentA, {
         title: "x",
         body: "y",
       });
       expect(denied.status).toBe(403);
+    });
+
+    it("SPECIFIC: only the targeted resident sees the post", async () => {
+      const post = await h.req("post", "/announcements", pgA.managerToken, {
+        title: "Just for Res Two",
+        body: "Your deposit is due",
+        audience: { type: "SPECIFIC", residentIds: [residentA2Id] },
+      });
+      expect(post.status).toBe(201);
+
+      expect(titles(await h.req("get", "/announcements", residentA2))).toContain(
+        "Just for Res Two",
+      );
+      expect(
+        titles(await h.req("get", "/announcements", residentA)),
+      ).not.toContain("Just for Res Two");
+
+      const mgr = await h.req("get", "/announcements", pgA.managerToken);
+      const row = mgr.body.find(
+        (a: { title: string }) => a.title === "Just for Res Two",
+      );
+      expect(row.audienceType).toBe("SPECIFIC");
+      expect(row.audienceLabel).toBe("1 selected resident");
+    });
+
+    it("SEGMENT: only residents matching the occupation see the post", async () => {
+      const post = await h.req("post", "/announcements", pgA.managerToken, {
+        title: "Students only",
+        body: "Exam-week quiet hours",
+        audience: { type: "SEGMENT", occupationType: "STUDENT" },
+      });
+      expect(post.status).toBe(201);
+
+      expect(titles(await h.req("get", "/announcements", student))).toContain(
+        "Students only",
+      );
+      expect(
+        titles(await h.req("get", "/announcements", residentA)),
+      ).not.toContain("Students only");
     });
 
     it("PG B sees none of PG A's announcements", async () => {

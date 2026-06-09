@@ -57,7 +57,7 @@ function ResidentsRouter() {
 
 /* ------------------------------------------------------------------ list --- */
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 type StatusFilter = ResidentStatus | "ALL";
 
 function ResidentsList() {

@@ -5,6 +5,7 @@ import { eq, inArray } from "drizzle-orm";
 import { UserRole } from "@pg/shared";
 import {
   allocations,
+  announcementRecipients,
   announcements,
   beds,
   billingSnapshots,
@@ -345,11 +346,21 @@ describe("cross-tenant isolation (RLS gate)", () => {
         mealType: "LUNCH",
         items: "Dal, Rice, Sabzi",
       });
-      await tcs.db().insert(announcements).values({
+      const [ann] = await tcs
+        .db()
+        .insert(announcements)
+        .values({
+          tenantId: tenantA,
+          title: "Water cut",
+          body: "No water 2-4pm today.",
+          audienceType: "SPECIFIC",
+          createdByUserId: residentA, // any in-tenant user (composite FK)
+        })
+        .returning({ id: announcements.id });
+      await tcs.db().insert(announcementRecipients).values({
         tenantId: tenantA,
-        title: "Water cut",
-        body: "No water 2-4pm today.",
-        createdByUserId: residentA, // any in-tenant user (composite FK)
+        announcementId: ann.id,
+        recipientUserId: residentA,
       });
       await tcs.db().insert(budgets).values({
         tenantId: tenantA,
@@ -373,6 +384,10 @@ describe("cross-tenant isolation (RLS gate)", () => {
       menuConfig: await tcs.db().select().from(menuConfig),
       menuSlots: await tcs.db().select().from(menuSlots),
       announcements: await tcs.db().select().from(announcements),
+      announcementRecipients: await tcs
+        .db()
+        .select()
+        .from(announcementRecipients),
       budgets: await tcs.db().select().from(budgets),
       expenses: await tcs.db().select().from(expenses),
     }));
@@ -381,6 +396,7 @@ describe("cross-tenant isolation (RLS gate)", () => {
     expect(bSees.menuConfig).toHaveLength(0);
     expect(bSees.menuSlots).toHaveLength(0);
     expect(bSees.announcements).toHaveLength(0);
+    expect(bSees.announcementRecipients).toHaveLength(0);
     expect(bSees.budgets).toHaveLength(0);
     expect(bSees.expenses).toHaveLength(0);
   });
