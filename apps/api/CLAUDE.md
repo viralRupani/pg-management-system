@@ -1,7 +1,10 @@
 # CLAUDE.md — apps/api (NestJS backend)
 
 API-layer detail. For business context, decisions, and progress see the root
-`CLAUDE.md`. This is the only server in the system.
+`CLAUDE.md`. This is the only server in the system. The full **resident-facing
+endpoint surface** (what the M8 mobile app consumes) is tabulated in
+`apps/mobile/CLAUDE.md`; resident routes are `@Roles(UserRole.RESIDENT)` and
+derive the actor from JWT `sub`.
 
 ## Stack
 NestJS 10 (CommonJS) · Drizzle ORM + `pg` · Postgres 16 · Redis (`ioredis`) ·

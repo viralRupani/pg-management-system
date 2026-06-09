@@ -1,7 +1,7 @@
 # CLAUDE.md — PG Management System
 
 > High-level guide for any Claude session. Read first.
-> Companion docs: `apps/api/CLAUDE.md` (API layer), `apps/admin/CLAUDE.md` (admin conventions), `docs/backlog.md` (open deferred items).
+> Companion docs: `apps/api/CLAUDE.md` (API layer), `apps/admin/CLAUDE.md` (admin conventions), `apps/mobile/CLAUDE.md` (resident app — M8, planning stub + resident API surface), `docs/backlog.md` (open deferred items).
 
 ---
 
@@ -66,7 +66,7 @@ infra/             docker-compose: Postgres 16 on :5433, Redis 7 on :6379
 
 ## 4. Status
 
-**All API milestones and the admin frontend are complete. Next: resident mobile app (Expo).**
+**All API milestones and the admin frontend are complete. Now starting M8: resident mobile app (Expo).** See `apps/mobile/CLAUDE.md` for the resident API surface, auth flow, locked vs. proposed stack decisions, and the backend bits still missing for M8.
 
 | Milestone | Status | Key additions |
 |---|---|---|
@@ -78,7 +78,7 @@ infra/             docker-compose: Postgres 16 on :5433, Redis 7 on :6379
 | M6 Metering + Branding | ✅ | `billing_snapshots`; MeteringService, BrandingModule |
 | M7 Admin frontend | ✅ | All 8 pages + `packages/api-client`; owner/manager UI |
 | PG Owner role | ✅ | `owners`, `owner_tenants`; token-switch, manager deactivation |
-| M8 Resident mobile | ⬜ | Expo — not started |
+| M8 Resident mobile | 🚧 | Expo — starting; planning stub + resident API surface in `apps/mobile/CLAUDE.md` |
 
 **Test suite:** `pnpm --filter @pg/api test` → **73 tests / 7 files, all green.**
 
