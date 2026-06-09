@@ -1,11 +1,12 @@
 # CLAUDE.md — apps/mobile (Expo resident app)
 
-> **Planning stub — the app is NOT built yet (M8).** This doc captures the
-> resident API surface, already-locked decisions, and what's still missing, so
-> the build session starts with full context. Stack details marked **(proposed)**
-> are NOT decided — confirm them in the planning step before scaffolding. For
-> business context see root `CLAUDE.md`; the API is the only trust boundary
-> (`apps/api/CLAUDE.md`).
+> **Scaffolded (M8 in progress).** The Expo app is stood up with the full
+> architecture wired (expo-router, NativeWind v4, TanStack Query, SecureStore,
+> shared `@pg/shared`/`@pg/api-client`) and a Hello-World placeholder home
+> screen. **No resident feature screens or real auth yet** — those are the next
+> tasks. This doc captures the resident API surface, locked decisions, and what's
+> still missing. For business context see root `CLAUDE.md`; the API is the only
+> trust boundary (`apps/api/CLAUDE.md`).
 
 ## Who uses this
 **Residents** of a single PG — one tenant, one phone. The manager web app
@@ -35,7 +36,56 @@ Stack picks (locked around the dev hardware — see Dev workflow below):
 | Styling | **NativeWind v4** | Tailwind-for-RN; reuses admin's `--brand` accent + white-label pattern |
 | Data / state | **TanStack Query** | read-heavy resident lists + pull-to-refresh; better than hand-rolled `useEffect` here |
 
-(Directory map: none yet — written at scaffold time.)
+Stack as built (Expo **SDK 54**, RN 0.81, React 19.1): NativeWind v4 runs on
+**Tailwind CSS v3** (config-file style — *not* the admin's Tailwind v4 `@theme`).
+`tsconfig` extends **`expo/tsconfig.base`** (not the repo's `tsconfig.base.json`)
+and adds an `@/*` path alias.
+
+> **Why SDK 54, not the scaffolded 56:** `create-expo-app@latest` scaffolds SDK
+> 56 (npm tags it `latest`), but **Expo Go must support the project's SDK** and
+> the installed Expo Go capped out at **SDK 54** (client 54.0.8). A too-new SDK
+> gives *"Project is incompatible with this version of Expo Go."* Since Expo Go
+> is the locked dev loop, the SDK is pinned to **whatever the phone's Expo Go
+> supports** (54 here) — check it in the Expo Go app's home screen. Bump later
+> only when the store Go advances, or move to an **EAS dev build** (any SDK).
+> To downgrade an over-new scaffold: `pnpm add expo@~54.x` → `npx expo install
+> --fix` (realigns RN/react/expo-* to the SDK matrix) → `npx expo install
+> react-native-worklets`. If typecheck then errors on `process`, ensure the
+> generated `expo-env.d.ts` (`/// <reference types="expo/types" />`) exists.
+
+## Directory map (as scaffolded)
+```
+app/                       expo-router file-based routes
+  _layout.tsx              ROOT: imports global.css; providers stack —
+                           SafeAreaProvider → QueryClientProvider → Stack;
+                           hydrates SecureStore tokens before rendering routes
+  index.tsx                Hello-World placeholder home screen
+components/ui/             shared NativeWind primitives (Button seeded)
+lib/
+  api.ts                   PgApiClient singleton + SecureStore-backed TokenStore
+                           (in-memory cache for SYNC reads + async persist +
+                           hydrateTokens()) + decodeToken/currentUser; mirrors
+                           apps/admin/lib/api.ts (localStorage → expo-secure-store)
+  query.ts                 TanStack QueryClient (retry 1, staleTime 30s)
+  theme.ts                 pre-auth branding seam (DEFAULT_BRAND + readableForeground)
+  utils.ts                 cn(), formatPaise (₹ from paise), ymd() local-date helper
+global.css                 @tailwind directives (imported once in _layout)
+tailwind.config.js         NativeWind preset + `brand` color token (teal #0d9488)
+babel.config.js            babel-preset-expo (jsxImportSource: nativewind) + nativewind/babel
+metro.config.js            pnpm-monorepo aware (watchFolders=root, nodeModulesPaths)
+                           + withNativeWind. See the inline note: do NOT set
+                           disableHierarchicalLookup — pnpm needs hierarchical
+                           lookup to resolve nested deps.
+nativewind-env.d.ts        NativeWind className types + `*.css` module decl
+.env.example               EXPO_PUBLIC_API_URL (Mac LAN IP, NOT localhost)
+```
+
+**pnpm + Metro gotchas already solved (don't regress):** (1) `metro.config.js`
+keeps hierarchical lookup ON — the Expo guide's `disableHierarchicalLookup=true`
+breaks pnpm (`expo` can't find `expo-modules-core`). (2) `react-native-css-interop`
+is a **direct** dep of this package — the NativeWind JSX-runtime rewrite imports it
+from app code, and pnpm only exposes direct deps. (3) `@pg/shared` must be built
+(`pnpm --filter @pg/shared build`) before Metro can resolve its `dist/`.
 
 ## Dev workflow & hardware (MacBook Air M1 + Android phone, no iPhone)
 - **Primary loop = Expo Go on the physical Android phone.** `npx expo start`, scan
@@ -101,8 +151,26 @@ These resident endpoints/helpers do NOT exist yet (see `docs/backlog.md`):
   resident counterparts (mirror the table above) as the first M8 task.
 - **Real Expo push driver** — swap the `NotificationChannel` stub at deploy time.
 
-## Build / run (once scaffolded)
-The API must be reachable from the device/emulator — use the host LAN IP, not
-`localhost`, for `EXPO_PUBLIC_API_URL`. Seed a resident via
+## Build / run
+The API must be reachable from the **physical phone** — use the Mac's LAN IP, not
+`localhost`, for `EXPO_PUBLIC_API_URL` (the phone can't reach the Mac's loopback).
+
+```bash
+pnpm install                              # from repo root (one-time / after dep changes)
+pnpm --filter @pg/shared build            # Metro resolves @pg/shared's dist/ — required first
+cp apps/mobile/.env.example apps/mobile/.env
+# set EXPO_PUBLIC_API_URL to your Mac's LAN IP, e.g. http://192.168.1.42:4000
+#   find it with: ipconfig getifaddr en0
+
+cd apps/mobile && npx expo start          # scan the QR in Expo Go on the Android phone
+                                          # (phone + Mac on the same Wi-Fi)
+pnpm --filter @pg/mobile typecheck        # tsc --noEmit
+```
+
+Verify a clean Metro bundle without a device (catches resolution breaks in CI):
+`cd apps/mobile && CI=1 npx expo export --platform android --output-dir /tmp/x`.
+
+For the (future) resident login: seed a resident via
 `node apps/api/scripts/seed-demo.mjs` (Sunrise PG) and read the dev OTP from the
-API logs (`OTP_DEV_LOG=true`). Add real run commands here when the app exists.
+API logs (`OTP_DEV_LOG=true`). Push notifications need an **EAS dev build** (Expo
+Go dropped Android push) — stay in Expo Go until that screen is built.

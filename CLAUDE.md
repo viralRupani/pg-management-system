@@ -38,7 +38,7 @@
 ```
 apps/api/          NestJS backend — the ONLY server (auth, RLS, business logic)
 apps/admin/        Next.js manager dashboard (static export — all pages done)
-apps/mobile/       Expo resident app (NOT yet built)
+apps/mobile/       Expo resident app (scaffolded — architecture wired, Hello-World placeholder; no feature screens yet)
 packages/shared/   Zod schemas + enums — single source of truth for all surfaces
 packages/api-client/ Typed fetch client (ships TS source; no build step)
 infra/             docker-compose: Postgres 16 on :5433, Redis 7 on :6379
@@ -66,7 +66,7 @@ infra/             docker-compose: Postgres 16 on :5433, Redis 7 on :6379
 
 ## 4. Status
 
-**All API milestones and the admin frontend are complete. Now starting M8: resident mobile app (Expo).** See `apps/mobile/CLAUDE.md` for the resident API surface, auth flow, locked vs. proposed stack decisions, and the backend bits still missing for M8.
+**All API milestones and the admin frontend are complete. M8 (resident mobile app, Expo) is now scaffolded** — the architecture is wired (expo-router, NativeWind v4, TanStack Query, SecureStore, shared types/client) with a Hello-World placeholder; resident feature screens are next. See `apps/mobile/CLAUDE.md` for the directory map, run commands, resident API surface, auth flow, and the backend bits still missing for M8.
 
 | Milestone | Status | Key additions |
 |---|---|---|
@@ -78,7 +78,7 @@ infra/             docker-compose: Postgres 16 on :5433, Redis 7 on :6379
 | M6 Metering + Branding | ✅ | `billing_snapshots`; MeteringService, BrandingModule |
 | M7 Admin frontend | ✅ | All 8 pages + `packages/api-client`; owner/manager UI |
 | PG Owner role | ✅ | `owners`, `owner_tenants`; token-switch, manager deactivation |
-| M8 Resident mobile | 🚧 | Expo — starting; planning stub + resident API surface in `apps/mobile/CLAUDE.md` |
+| M8 Resident mobile | 🚧 | Expo **scaffolded** — expo-router + NativeWind v4 + TanStack Query + SecureStore wired, Hello-World placeholder; feature screens next. See `apps/mobile/CLAUDE.md` |
 
 **Test suite:** `pnpm --filter @pg/api test` → **73 tests / 7 files, all green.**
 
