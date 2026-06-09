@@ -104,6 +104,36 @@ describe("M4 documents, deposits & exit (e2e)", () => {
       expect(mine.body.find((d: { id: string }) => d.id === id).status).toBe("REJECTED");
     });
 
+    it("re-uploading a rejected doc replaces it in place (back to PENDING, no duplicate)", async () => {
+      // The PAN above is REJECTED. A re-submit ("ask for re-upload" loop) reuses
+      // the same row (unique tenant+resident+type) and resets it to PENDING.
+      const resubmit = await h.req("post", "/documents", r1, {
+        type: "PAN",
+        s3Key: "k2-v2",
+      });
+      expect(resubmit.status).toBe(201);
+
+      const mine = await h.req("get", "/documents/mine", r1);
+      const pans = mine.body.filter((d: { type: string }) => d.type === "PAN");
+      expect(pans).toHaveLength(1); // replaced, not duplicated
+      expect(pans[0].status).toBe("PENDING");
+    });
+
+    it("re-submitting a VERIFIED doc is blocked (409, never silently un-verified)", async () => {
+      // The AADHAAR above is VERIFIED; re-submitting must not reset it to PENDING.
+      const resubmit = await h.req("post", "/documents", r1, {
+        type: "AADHAAR",
+        s3Key: "k1-v2",
+      });
+      expect(resubmit.status).toBe(409);
+
+      const mine = await h.req("get", "/documents/mine", r1);
+      const aadhaar = mine.body.find(
+        (d: { type: string }) => d.type === "AADHAAR",
+      );
+      expect(aadhaar.status).toBe("VERIFIED"); // unchanged
+    });
+
     it("a resident does not see another resident's docs (intra-tenant)", async () => {
       const mine = await h.req("get", "/documents/mine", r2);
       expect(mine.body).toHaveLength(0);

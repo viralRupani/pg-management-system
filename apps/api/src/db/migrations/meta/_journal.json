@@ -92,6 +92,13 @@
       "when": 1781018021293,
       "tag": "0012_drop_old_emergency_contact",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1781023816036,
+      "tag": "0013_outstanding_black_bolt",
+      "breakpoints": true
     }
   ]
 }

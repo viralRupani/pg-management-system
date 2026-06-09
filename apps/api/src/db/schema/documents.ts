@@ -3,6 +3,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 import { tenants } from "./tenants";
@@ -44,6 +45,14 @@ export const documents = pgTable(
       foreignColumns: [users.id, users.tenantId],
       name: "documents_reviewed_by_user_id_tenant_id_fk",
     }),
+    // At most one document per type per resident: a re-submit replaces the
+    // existing row in place (DocumentsService.submit upserts on this target),
+    // and the resident-list KYC rollup can left-join 1:1 without fan-out.
+    residentTypeUnique: unique("documents_resident_id_type_unique").on(
+      t.tenantId,
+      t.residentId,
+      t.type,
+    ),
   }),
 );
 

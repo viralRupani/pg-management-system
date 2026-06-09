@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { EmergencyRelation, OccupationType, ResidentStatus } from "../enums";
+import {
+  EmergencyRelation,
+  KycStatus,
+  OccupationType,
+  ResidentStatus,
+} from "../enums";
 import { indianPhone } from "./phone";
 
 /**
@@ -55,6 +60,7 @@ export const residentSummarySchema = z.object({
   status: z.nativeEnum(ResidentStatus),
   bedLabel: z.string().nullable(),
   roomCapacity: z.number().int().nullable(),
+  kycStatus: z.nativeEnum(KycStatus),
 });
 export type ResidentSummary = z.infer<typeof residentSummarySchema>;
 
@@ -64,6 +70,11 @@ export const residentListQuerySchema = z.object({
   status: z
     .union([z.nativeEnum(ResidentStatus), z.literal("ALL")])
     .default(ResidentStatus.ACTIVE),
+  // KYC rollup filter: PENDING = anything not VERIFIED (not submitted, awaiting
+  // review, or rejected — i.e. KYC still needs chasing); VERIFIED = Aadhaar done.
+  kyc: z
+    .union([z.literal("ALL"), z.literal("PENDING"), z.literal("VERIFIED")])
+    .default("ALL"),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });

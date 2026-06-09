@@ -6,6 +6,7 @@ import {
   type DepositTransactionSummary,
   type DocumentSummary,
   EmergencyRelation,
+  KycStatus,
   OccupationType,
   type ResidentSummary,
   ResidentStatus,
@@ -39,6 +40,23 @@ const residentTone = (s: ResidentSummary["status"]) =>
 const docTone = (s: DocumentSummary["status"]) =>
   s === "VERIFIED" ? "success" : s === "REJECTED" ? "danger" : "warning";
 
+const kycTone = (s: KycStatus) =>
+  s === "VERIFIED"
+    ? "success"
+    : s === "REJECTED"
+      ? "danger"
+      : s === "PENDING"
+        ? "warning"
+        : "neutral";
+const kycLabel = (s: KycStatus) =>
+  s === "VERIFIED"
+    ? "KYC verified"
+    : s === "REJECTED"
+      ? "KYC rejected"
+      : s === "PENDING"
+        ? "KYC pending"
+        : "KYC not started";
+
 export default function ResidentsPage() {
   return (
     <Suspense fallback={<div className="h-40 animate-pulse rounded bg-muted" />}>
@@ -56,6 +74,7 @@ function ResidentsRouter() {
 
 const PAGE_SIZE = 10;
 type StatusFilter = ResidentStatus | "ALL";
+type KycFilter = "ALL" | "PENDING" | "VERIFIED";
 
 function ResidentsList() {
   const toast = useToast();
@@ -67,6 +86,7 @@ function ResidentsList() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>(ResidentStatus.ACTIVE);
+  const [kyc, setKyc] = useState<KycFilter>("ALL");
   const [page, setPage] = useState(1);
 
   // Debounce free-text search so we don't hit the API on every keystroke.
@@ -75,16 +95,17 @@ function ResidentsList() {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  // A new search or status filter invalidates the current page.
+  // A new search or filter invalidates the current page.
   useEffect(() => {
     setPage(1);
-  }, [search, status]);
+  }, [search, status, kyc]);
 
   const load = useCallback(async () => {
     try {
       const result = await api.residents.list({
         q: search || undefined,
         status,
+        kyc,
         page,
         limit: PAGE_SIZE,
       });
@@ -95,7 +116,7 @@ function ResidentsList() {
       setLoadFailed(true);
       toast.error(toMessage(err, "Could not load residents."));
     }
-  }, [search, status, page, toast]);
+  }, [search, status, kyc, page, toast]);
 
   useEffect(() => {
     setItems(null);
@@ -105,7 +126,8 @@ function ResidentsList() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * PAGE_SIZE, total);
-  const filtered = search !== "" || status !== ResidentStatus.ACTIVE;
+  const filtered =
+    search !== "" || status !== ResidentStatus.ACTIVE || kyc !== "ALL";
 
   return (
     <div className="space-y-6">
@@ -140,6 +162,19 @@ function ResidentsList() {
             <option value={ResidentStatus.ACTIVE}>Active</option>
             <option value={ResidentStatus.EXITED}>Exited</option>
             <option value="ALL">All</option>
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        </div>
+        <div className="relative w-44">
+          <select
+            value={kyc}
+            onChange={(e) => setKyc(e.target.value as KycFilter)}
+            className={cn(inputClass, "w-full appearance-none pr-8")}
+            aria-label="Filter by KYC status"
+          >
+            <option value="ALL">All KYC</option>
+            <option value="PENDING">KYC pending</option>
+            <option value="VERIFIED">KYC verified</option>
           </select>
           <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         </div>
@@ -182,6 +217,9 @@ function ResidentsList() {
                           ? `${r.bedLabel}${r.roomCapacity != null ? ` · ${sharingLabel(r.roomCapacity)}` : ""}`
                           : "No bed"}
                       </span>
+                      <Badge tone={kycTone(r.kycStatus)}>
+                        {kycLabel(r.kycStatus)}
+                      </Badge>
                       <Badge tone={residentTone(r.status)}>
                         {r.status.toLowerCase()}
                       </Badge>
@@ -657,7 +695,7 @@ function ResidentDetail({ id }: { id: string }) {
         </CardHeader>
         <CardContent>
           {documents.length === 0 ? (
-            <EmptyRow text="No documents uploaded yet." />
+            <EmptyRow text="Awaiting Aadhaar upload from the resident (uploaded from their app)." />
           ) : (
             <ul className="divide-y divide-border">
               {documents.map((d) => (
@@ -700,7 +738,7 @@ function ResidentDetail({ id }: { id: string }) {
                           disabled={busy}
                           onClick={() => setRejectingDoc(d)}
                         >
-                          Reject
+                          Ask for re-upload
                         </Button>
                       </>
                     )}
@@ -1155,7 +1193,7 @@ function RejectDocDialog({
       await api.documents.reject(doc.id, note.trim());
       await onDone();
     } catch (err) {
-      toast.error(toMessage(err, "Could not reject the document."));
+      toast.error(toMessage(err, "Could not request a re-upload."));
     } finally {
       setBusy(false);
     }
@@ -1165,11 +1203,11 @@ function RejectDocDialog({
     <Dialog
       open={doc !== null}
       onClose={onClose}
-      title="Reject document"
+      title="Ask for re-upload"
       description={doc ? doc.type.replace("_", " ").toLowerCase() : undefined}
     >
       <form onSubmit={submit} className="space-y-4">
-        <Field label="Reason" htmlFor="doc-note">
+        <Field label="What needs fixing?" htmlFor="doc-note">
           <textarea
             id="doc-note"
             value={note}
@@ -1177,7 +1215,7 @@ function RejectDocDialog({
             required
             maxLength={500}
             rows={3}
-            placeholder="Tell the resident what to fix…"
+            placeholder="Tell the resident what to fix so they can re-upload…"
             className={inputClass}
           />
         </Field>
@@ -1190,7 +1228,7 @@ function RejectDocDialog({
             variant="danger"
             disabled={busy || note.trim() === ""}
           >
-            Reject
+            Ask for re-upload
           </Button>
         </div>
       </form>

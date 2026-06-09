@@ -1,0 +1,1 @@
+ALTER TABLE "documents" ADD CONSTRAINT "documents_resident_id_type_unique" UNIQUE("tenant_id","resident_id","type");

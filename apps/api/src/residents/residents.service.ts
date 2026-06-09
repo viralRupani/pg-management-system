@@ -3,19 +3,34 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { and, count, eq, ilike, isNull, or } from "drizzle-orm";
+import { and, count, eq, exists, ilike, isNull, not, or } from "drizzle-orm";
 import {
   type RegisterResidentInput,
   type ResidentListQuery,
   type ResidentListResult,
   type ResidentSummary,
+  DocumentStatus,
+  DocumentType,
+  KycStatus,
   ResidentStatus,
   UserRole,
 } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
-import { allocations, authIdentities, beds, rooms, users } from "../db/schema";
+import {
+  allocations,
+  authIdentities,
+  beds,
+  documents,
+  rooms,
+  users,
+} from "../db/schema";
 
 const PG_UNIQUE_VIOLATION = "23505";
+
+// The document type that constitutes KYC today. Adding more required types
+// later means rolling the per-resident status up across all of them; for one
+// type the resident's KYC status is just that document's status.
+const KYC_REQUIRED_DOC_TYPE = DocumentType.AADHAAR;
 
 /**
  * Resident operations, all under tenant RLS. The tenant id comes from the
@@ -87,7 +102,7 @@ export class ResidentsService {
    * `WHERE` only touches `users` columns, so the count query needs no joins.
    */
   async list(query: ResidentListQuery): Promise<ResidentListResult> {
-    const { q, status, page, limit } = query;
+    const { q, status, kyc, page, limit } = query;
     const conditions = [eq(users.role, UserRole.RESIDENT)];
     if (status !== "ALL") conditions.push(eq(users.status, status));
     if (q) {
@@ -95,6 +110,25 @@ export class ResidentsService {
       conditions.push(
         or(ilike(users.name, pattern), ilike(users.phone, pattern))!,
       );
+    }
+    // KYC filter as a correlated EXISTS (not a reference to the display
+    // left-join below): the count query is `from(users)` with no join, so the
+    // condition must stand on its own and is shared by both queries.
+    if (kyc !== "ALL") {
+      const verifiedKyc = exists(
+        this.ctx
+          .db()
+          .select({ one: documents.id })
+          .from(documents)
+          .where(
+            and(
+              eq(documents.residentId, users.id),
+              eq(documents.type, KYC_REQUIRED_DOC_TYPE),
+              eq(documents.status, DocumentStatus.VERIFIED),
+            ),
+          ),
+      );
+      conditions.push(kyc === "VERIFIED" ? verifiedKyc : not(verifiedKyc));
     }
     const where = and(...conditions)!;
 
@@ -138,6 +172,7 @@ export class ResidentsService {
         status: users.status,
         bedLabel: beds.label,
         roomCapacity: rooms.capacity,
+        kycDocStatus: documents.status,
       })
       .from(users)
       .leftJoin(
@@ -148,7 +183,16 @@ export class ResidentsService {
         ),
       )
       .leftJoin(beds, eq(beds.id, allocations.bedId))
-      .leftJoin(rooms, eq(rooms.id, beds.roomId));
+      .leftJoin(rooms, eq(rooms.id, beds.roomId))
+      // 1:1 — the unique (tenant, resident, type) index means at most one
+      // Aadhaar row per resident, so this can't fan out the result set.
+      .leftJoin(
+        documents,
+        and(
+          eq(documents.residentId, users.id),
+          eq(documents.type, KYC_REQUIRED_DOC_TYPE),
+        ),
+      );
   }
 }
 
@@ -165,7 +209,23 @@ type ResidentRow = {
   status: string;
   bedLabel: string | null;
   roomCapacity: number | null;
+  kycDocStatus: string | null;
 };
+
+// No required document on file → KYC not started; otherwise the resident's KYC
+// status is the required document's own review state (values line up 1:1).
+function toKycStatus(docStatus: string | null): KycStatus {
+  switch (docStatus) {
+    case DocumentStatus.VERIFIED:
+      return KycStatus.VERIFIED;
+    case DocumentStatus.REJECTED:
+      return KycStatus.REJECTED;
+    case DocumentStatus.PENDING:
+      return KycStatus.PENDING;
+    default:
+      return KycStatus.NOT_SUBMITTED;
+  }
+}
 
 function toSummary(r: ResidentRow): ResidentSummary {
   return {
@@ -183,5 +243,6 @@ function toSummary(r: ResidentRow): ResidentSummary {
     status: r.status as ResidentStatus,
     bedLabel: r.bedLabel,
     roomCapacity: r.roomCapacity ?? null,
+    kycStatus: toKycStatus(r.kycDocStatus),
   };
 }

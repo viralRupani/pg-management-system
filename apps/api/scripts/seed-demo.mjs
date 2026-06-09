@@ -185,6 +185,27 @@ async function main() {
   must(await call("post", "/complaints", r2tok, { category: "MAINTENANCE", description: "Bathroom tap is leaking." }), "complaint 2");
   console.log(`✓ Filed 2 complaints`);
 
+  // 9. KYC documents in mixed states so the residents list shows every KYC
+  // badge + the KYC filter is exercisable: r1 verified, r2 pending, r3 rejected,
+  // r4/r5 not submitted. Residents upload (resident endpoints); manager reviews.
+  const submitAadhaar = async (tok) => {
+    const up = must(await call("post", "/documents/upload-url", tok, { type: "AADHAAR" }), "kyc upload-url");
+    return must(await call("post", "/documents", tok, { type: "AADHAAR", s3Key: up.key }), "kyc submit").id;
+  };
+  const residentToken = async (phone) => {
+    must(await call("post", "/auth/resident/otp/request", null, { pgCode: SLUG, phone }), "kyc otp request");
+    const c = readOtp(tenantId, phone);
+    return must(await call("post", "/auth/resident/otp/verify", null, { pgCode: SLUG, phone, code: c }), "kyc otp verify").accessToken;
+  };
+
+  const r1Aadhaar = await submitAadhaar(r1tok); // r1: verified
+  must(await call("post", `/documents/${r1Aadhaar}/verify`, mgr), "kyc verify r1");
+  await submitAadhaar(r2tok); // r2: pending (left for review)
+  const r3tok = await residentToken(RESIDENTS[2].phone); // r3: rejected
+  const r3Aadhaar = await submitAadhaar(r3tok);
+  must(await call("post", `/documents/${r3Aadhaar}/reject`, mgr, { note: "Photo is blurry — please re-upload a clear scan." }), "kyc reject r3");
+  console.log(`✓ KYC: 1 verified, 1 pending, 1 rejected, 2 not submitted`);
+
   printCreds();
 }
 

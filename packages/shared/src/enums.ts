@@ -96,6 +96,19 @@ export const DocumentStatus = {
 export type DocumentStatus =
   (typeof DocumentStatus)[keyof typeof DocumentStatus];
 
+/**
+ * Derived KYC rollup for a resident — NOT stored, computed from the resident's
+ * required documents (currently Aadhaar only). NOT_SUBMITTED = no document yet;
+ * PENDING/VERIFIED/REJECTED mirror the document's own review state.
+ */
+export const KycStatus = {
+  NOT_SUBMITTED: "NOT_SUBMITTED",
+  PENDING: "PENDING",
+  VERIFIED: "VERIFIED",
+  REJECTED: "REJECTED",
+} as const;
+export type KycStatus = (typeof KycStatus)[keyof typeof KycStatus];
+
 export const DepositStatus = {
   HELD: "HELD",
   SETTLED: "SETTLED",

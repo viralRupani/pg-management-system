@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import {
   type DocumentSummary,
   DocumentStatus,
@@ -39,7 +39,14 @@ export class DocumentsService {
     });
   }
 
-  /** Resident: register an uploaded document for review. */
+  /**
+   * Resident: register an uploaded document for review. At most one document per
+   * type per resident (unique on tenant_id+resident_id+type) — a re-submit
+   * replaces the existing row in place and resets it to PENDING for re-review
+   * (the "ask for re-upload" loop). An already-VERIFIED document is never
+   * silently un-verified: the conflict update is guarded on status <> VERIFIED,
+   * so re-submitting a verified doc matches 0 rows and 409s.
+   */
   async submit(
     residentId: string,
     input: SubmitDocumentInput,
@@ -54,7 +61,23 @@ export class DocumentsService {
         s3Key: input.s3Key,
         status: DocumentStatus.PENDING,
       })
+      .onConflictDoUpdate({
+        target: [documents.tenantId, documents.residentId, documents.type],
+        set: {
+          s3Key: input.s3Key,
+          status: DocumentStatus.PENDING,
+          reviewNote: null,
+          reviewedByUserId: null,
+          reviewedAt: null,
+        },
+        setWhere: ne(documents.status, DocumentStatus.VERIFIED),
+      })
       .returning({ id: documents.id });
+    if (!row) {
+      throw new ConflictException(
+        "This document is already verified and cannot be replaced",
+      );
+    }
     return { id: row.id };
   }
 
