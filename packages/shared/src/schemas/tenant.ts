@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TenantStatus } from "../enums";
+import { indianPhone } from "./phone";
 
 /**
  * Tenant onboarding — creates a PG org plus its first manager.
@@ -24,7 +25,7 @@ export const createTenantSchema = z.object({
     name: z.string().min(2).max(120),
     email: z.string().email(),
     password: z.string().min(8).max(128),
-    phone: z.string().regex(/^\+?[1-9]\d{7,14}$/),
+    phone: indianPhone,
   }),
 });
 export type CreateTenantInput = z.infer<typeof createTenantSchema>;

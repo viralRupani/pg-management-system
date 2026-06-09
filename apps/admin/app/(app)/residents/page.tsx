@@ -6,6 +6,7 @@ import {
   type DepositSummary,
   type DepositTransactionSummary,
   type DocumentSummary,
+  EmergencyRelation,
   OccupationType,
   type ResidentSummary,
   ResidentStatus,
@@ -251,9 +252,12 @@ function RegisterDialog({
   const [email, setEmail] = useState("");
   const [age, setAge] = useState("");
   const [occupationType, setOccupationType] = useState<OccupationType>(
-    OccupationType.OTHER,
+    OccupationType.STUDENT,
   );
   const [nativePlace, setNativePlace] = useState("");
+  const [ecName, setEcName] = useState("");
+  const [ecRelation, setEcRelation] = useState<EmergencyRelation | "">("");
+  const [ecPhone, setEcPhone] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -262,10 +266,17 @@ function RegisterDialog({
       setPhone("");
       setEmail("");
       setAge("");
-      setOccupationType(OccupationType.OTHER);
+      setOccupationType(OccupationType.STUDENT);
       setNativePlace("");
+      setEcName("");
+      setEcRelation("");
+      setEcPhone("");
     }
   }, [open]);
+
+  // The emergency contact is all-or-nothing: once any field is touched, the
+  // other two become required (HTML5 + the server's Zod refine both enforce it).
+  const ecTouched = Boolean(ecName.trim() || ecRelation || ecPhone.trim());
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -275,9 +286,14 @@ function RegisterDialog({
         name: name.trim(),
         phone: phone.trim(),
         email: email.trim() || undefined,
-        age: age ? Number(age) : undefined,
+        age: Number(age),
         occupationType,
         nativePlace: nativePlace.trim() || undefined,
+        emergencyContactName: ecTouched ? ecName.trim() : undefined,
+        emergencyContactRelation: ecTouched
+          ? (ecRelation as EmergencyRelation)
+          : undefined,
+        emergencyContactPhone: ecTouched ? ecPhone.trim() : undefined,
       });
       await onDone();
       router.push(`/residents?id=${created.id}`);
@@ -312,7 +328,10 @@ function RegisterDialog({
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               required
-              placeholder="+9198XXXXXXXX"
+              inputMode="tel"
+              pattern="(\+91)?[6-9]\d{9}"
+              title="A valid 10-digit Indian mobile number, optionally prefixed with +91"
+              placeholder="9876543210"
             />
           </Field>
           <Field label="Email (optional)" htmlFor="r-email">
@@ -323,14 +342,15 @@ function RegisterDialog({
               onChange={(e) => setEmail(e.target.value)}
             />
           </Field>
-          <Field label="Age (optional)" htmlFor="r-age">
+          <Field label="Age" htmlFor="r-age">
             <Input
               id="r-age"
               type="number"
-              min={16}
+              min={15}
               max={120}
               value={age}
               onChange={(e) => setAge(e.target.value)}
+              required
             />
           </Field>
           <Field label="Occupation" htmlFor="r-occ">
@@ -357,6 +377,57 @@ function RegisterDialog({
             />
           </Field>
         </div>
+
+        <div className="space-y-1 border-t border-border pt-4">
+          <p className="text-sm font-medium">Emergency contact (optional)</p>
+          <p className="text-xs text-muted-foreground">
+            Someone to reach if the resident can&apos;t be contacted. Fill all
+            three or leave them blank.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Contact name" htmlFor="r-ec-name">
+            <Input
+              id="r-ec-name"
+              value={ecName}
+              onChange={(e) => setEcName(e.target.value)}
+              required={ecTouched}
+              minLength={2}
+              placeholder="e.g. Ramesh Sharma"
+            />
+          </Field>
+          <Field label="Relation" htmlFor="r-ec-rel">
+            <select
+              id="r-ec-rel"
+              value={ecRelation}
+              onChange={(e) =>
+                setEcRelation(e.target.value as EmergencyRelation | "")
+              }
+              required={ecTouched}
+              className={inputClass}
+            >
+              <option value="">Select relation…</option>
+              {Object.values(EmergencyRelation).map((r) => (
+                <option key={r} value={r}>
+                  {r.charAt(0) + r.slice(1).toLowerCase()}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Contact phone" htmlFor="r-ec-phone">
+            <Input
+              id="r-ec-phone"
+              value={ecPhone}
+              onChange={(e) => setEcPhone(e.target.value)}
+              required={ecTouched}
+              inputMode="tel"
+              pattern="(\+91)?[6-9]\d{9}"
+              title="A valid 10-digit Indian mobile number, optionally prefixed with +91"
+              placeholder="9876543210"
+            />
+          </Field>
+        </div>
+
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
@@ -508,12 +579,36 @@ function ResidentDetail({ id }: { id: string }) {
               </Badge>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              {resident.phone} · {resident.occupationType.toLowerCase()}
+              {resident.phone}
+              {resident.age != null ? ` · ${resident.age} yrs` : ""} ·{" "}
+              {resident.occupationType.toLowerCase()}
               {resident.nativePlace ? ` · ${resident.nativePlace}` : ""}
             </p>
           </div>
         </CardContent>
       </Card>
+
+      {/* Emergency contact */}
+      {resident.emergencyContactName && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Emergency contact</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm">
+              <span className="font-medium">
+                {resident.emergencyContactName}
+              </span>
+              {resident.emergencyContactRelation
+                ? ` · ${resident.emergencyContactRelation.toLowerCase()}`
+                : ""}
+              {resident.emergencyContactPhone
+                ? ` · ${resident.emergencyContactPhone}`
+                : ""}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Allocation */}
       <Card>

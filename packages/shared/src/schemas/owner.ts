@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TenantStatus } from "../enums";
+import { indianPhone } from "./phone";
 
 /**
  * PG-owner schemas. An owner is a cross-tenant identity (created by the platform
@@ -46,7 +47,7 @@ export const createOwnerPgSchema = z.object({
       name: z.string().min(2).max(120),
       email: z.string().email(),
       password: z.string().min(8).max(128),
-      phone: z.string().regex(/^\+?[1-9]\d{7,14}$/),
+      phone: indianPhone,
     })
     .optional(),
 });
@@ -69,7 +70,7 @@ export const createManagerSchema = z.object({
   name: z.string().min(2).max(120),
   email: z.string().email(),
   password: z.string().min(8).max(128),
-  phone: z.string().regex(/^\+?[1-9]\d{7,14}$/),
+  phone: indianPhone,
 });
 export type CreateManagerInput = z.infer<typeof createManagerSchema>;
 

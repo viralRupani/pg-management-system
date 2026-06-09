@@ -70,6 +70,71 @@ describe("M2 property & allocation (e2e)", () => {
     expect(room.monthlyRentPaise).toBe(950000);
   });
 
+  it("rejects resident registration without an age (400)", async () => {
+    const res = await h.req("post", "/residents", pgA.managerToken, {
+      name: "No Age",
+      phone: randomPhone(),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a non-Indian phone number (400)", async () => {
+    const res = await h.req("post", "/residents", pgA.managerToken, {
+      name: "Bad Phone",
+      phone: "+15551234567",
+      age: 30,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a half-filled emergency contact (400)", async () => {
+    const res = await h.req("post", "/residents", pgA.managerToken, {
+      name: "Half Emergency",
+      phone: randomPhone(),
+      age: 30,
+      emergencyContactName: "Ramesh",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts a full emergency contact", async () => {
+    const res = await h.req("post", "/residents", pgA.managerToken, {
+      name: "Full Emergency",
+      phone: randomPhone(),
+      age: 30,
+      emergencyContactName: "Ramesh Sharma",
+      emergencyContactRelation: "FATHER",
+      emergencyContactPhone: randomPhone(),
+    });
+    expect(res.status).toBe(201);
+    const got = await h.req(
+      "get",
+      `/residents/${res.body.id}`,
+      pgA.managerToken,
+    );
+    expect(got.body).toMatchObject({
+      age: 30,
+      emergencyContactName: "Ramesh Sharma",
+      emergencyContactRelation: "FATHER",
+    });
+  });
+
+  it("rejects a duplicate phone within the PG with 409 (not a 500)", async () => {
+    const phone = randomPhone();
+    const first = await h.req("post", "/residents", pgA.managerToken, {
+      name: "First Phone",
+      phone,
+      age: 30,
+    });
+    expect(first.status).toBe(201);
+    const dup = await h.req("post", "/residents", pgA.managerToken, {
+      name: "Dup Phone",
+      phone,
+      age: 31,
+    });
+    expect(dup.status).toBe(409);
+  });
+
   it("allocates a resident to a bed and lists it active", async () => {
     const res = await h.req("post", "/allocations", pgA.managerToken, {
       bedId: bed1,

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { UserRole } from "../enums";
+import { indianPhone } from "./phone";
 
 /** Manager login — email + password. */
 export const managerLoginSchema = z.object({
@@ -19,9 +20,7 @@ export const otpRequestSchema = z.object({
     .min(2)
     .max(40)
     .regex(/^[a-z0-9-]+$/),
-  phone: z
-    .string()
-    .regex(/^\+?[1-9]\d{7,14}$/, "Must be a valid E.164-ish phone number"),
+  phone: indianPhone,
 });
 export type OtpRequestInput = z.infer<typeof otpRequestSchema>;
 
@@ -32,7 +31,7 @@ export const otpVerifySchema = z.object({
     .min(2)
     .max(40)
     .regex(/^[a-z0-9-]+$/),
-  phone: z.string().regex(/^\+?[1-9]\d{7,14}$/),
+  phone: indianPhone,
   code: z.string().length(6).regex(/^\d{6}$/),
 });
 export type OtpVerifyInput = z.infer<typeof otpVerifySchema>;

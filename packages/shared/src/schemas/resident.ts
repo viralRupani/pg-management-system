@@ -1,25 +1,57 @@
 import { z } from "zod";
-import { OccupationType, ResidentStatus } from "../enums";
+import { EmergencyRelation, OccupationType, ResidentStatus } from "../enums";
+import { indianPhone } from "./phone";
 
-/** Manager registers a new resident in their PG. */
-export const registerResidentSchema = z.object({
-  name: z.string().min(2).max(120),
-  phone: z.string().regex(/^\+?[1-9]\d{7,14}$/),
-  email: z.string().email().optional(),
-  age: z.number().int().min(16).max(120).optional(),
-  occupationType: z.nativeEnum(OccupationType).default(OccupationType.OTHER),
-  nativePlace: z.string().max(120).optional(),
-  emergencyContact: z.string().regex(/^\+?[1-9]\d{7,14}$/).optional(),
-  joinDate: z.string().date().optional(), // ISO date; defaults to today server-side
-});
+/**
+ * Manager registers a new resident in their PG. The emergency contact is
+ * optional as a whole, but all-or-nothing: if any of name/relation/phone is
+ * given, all three are required (a half-filled contact is useless).
+ */
+export const registerResidentSchema = z
+  .object({
+    name: z.string().min(2).max(120),
+    phone: indianPhone,
+    email: z.string().email().optional(),
+    age: z.number().int().min(15).max(120),
+    occupationType: z.nativeEnum(OccupationType).default(OccupationType.OTHER),
+    nativePlace: z.string().max(120).optional(),
+    emergencyContactName: z.string().min(2).max(120).optional(),
+    emergencyContactRelation: z.nativeEnum(EmergencyRelation).optional(),
+    emergencyContactPhone: indianPhone.optional(),
+    joinDate: z.string().date().optional(), // ISO date; defaults to today server-side
+  })
+  .superRefine((d, ctx) => {
+    const fields = [
+      ["emergencyContactName", d.emergencyContactName],
+      ["emergencyContactRelation", d.emergencyContactRelation],
+      ["emergencyContactPhone", d.emergencyContactPhone],
+    ] as const;
+    const filled = fields.filter(([, v]) => v != null);
+    if (filled.length > 0 && filled.length < fields.length) {
+      for (const [path, v] of fields) {
+        if (v == null) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [path],
+            message:
+              "Emergency contact name, relation, and phone are all required together",
+          });
+        }
+      }
+    }
+  });
 export type RegisterResidentInput = z.infer<typeof registerResidentSchema>;
 
 export const residentSummarySchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
   phone: z.string(),
+  age: z.number().int().nullable(),
   occupationType: z.nativeEnum(OccupationType),
   nativePlace: z.string().nullable(),
+  emergencyContactName: z.string().nullable(),
+  emergencyContactRelation: z.nativeEnum(EmergencyRelation).nullable(),
+  emergencyContactPhone: z.string().nullable(),
   status: z.nativeEnum(ResidentStatus),
   bedLabel: z.string().nullable(),
   roomCapacity: z.number().int().nullable(),

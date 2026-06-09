@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { and, count, eq, ilike, isNull, or } from "drizzle-orm";
 import {
   type RegisterResidentInput,
@@ -10,6 +14,8 @@ import {
 } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
 import { allocations, authIdentities, beds, rooms, users } from "../db/schema";
+
+const PG_UNIQUE_VIOLATION = "23505";
 
 /**
  * Resident operations, all under tenant RLS. The tenant id comes from the
@@ -25,6 +31,25 @@ export class ResidentsService {
     const tenantId = this.ctx.currentTenantId()!;
     const db = this.ctx.db();
 
+    try {
+      return await this.insertResident(db, tenantId, input);
+    } catch (err) {
+      // Phone is unique per tenant in auth_identities — surface a clean 409
+      // instead of leaking the raw DB unique violation as a 500.
+      if ((err as { code?: string }).code === PG_UNIQUE_VIOLATION) {
+        throw new ConflictException(
+          "A resident with this phone number already exists in this PG",
+        );
+      }
+      throw err;
+    }
+  }
+
+  private insertResident(
+    db: ReturnType<TenantContextService["db"]>,
+    tenantId: string,
+    input: RegisterResidentInput,
+  ): Promise<{ id: string }> {
     return db.transaction(async (tx) => {
       const [resident] = await tx
         .insert(users)
@@ -34,10 +59,12 @@ export class ResidentsService {
           name: input.name,
           phone: input.phone,
           email: input.email ?? null,
-          age: input.age ?? null,
+          age: input.age,
           occupationType: input.occupationType,
           nativePlace: input.nativePlace ?? null,
-          emergencyContact: input.emergencyContact ?? null,
+          emergencyContactName: input.emergencyContactName ?? null,
+          emergencyContactRelation: input.emergencyContactRelation ?? null,
+          emergencyContactPhone: input.emergencyContactPhone ?? null,
           status: ResidentStatus.ACTIVE,
           joinDate: input.joinDate ? new Date(input.joinDate) : new Date(),
         })
@@ -102,8 +129,12 @@ export class ResidentsService {
         id: users.id,
         name: users.name,
         phone: users.phone,
+        age: users.age,
         occupationType: users.occupationType,
         nativePlace: users.nativePlace,
+        emergencyContactName: users.emergencyContactName,
+        emergencyContactRelation: users.emergencyContactRelation,
+        emergencyContactPhone: users.emergencyContactPhone,
         status: users.status,
         bedLabel: beds.label,
         roomCapacity: rooms.capacity,
@@ -125,8 +156,12 @@ type ResidentRow = {
   id: string;
   name: string;
   phone: string | null;
+  age: number | null;
   occupationType: string | null;
   nativePlace: string | null;
+  emergencyContactName: string | null;
+  emergencyContactRelation: string | null;
+  emergencyContactPhone: string | null;
   status: string;
   bedLabel: string | null;
   roomCapacity: number | null;
@@ -137,9 +172,14 @@ function toSummary(r: ResidentRow): ResidentSummary {
     id: r.id,
     name: r.name,
     phone: r.phone ?? "",
+    age: r.age,
     occupationType: (r.occupationType ??
       "OTHER") as ResidentSummary["occupationType"],
     nativePlace: r.nativePlace,
+    emergencyContactName: r.emergencyContactName,
+    emergencyContactRelation:
+      r.emergencyContactRelation as ResidentSummary["emergencyContactRelation"],
+    emergencyContactPhone: r.emergencyContactPhone,
     status: r.status as ResidentStatus,
     bedLabel: r.bedLabel,
     roomCapacity: r.roomCapacity ?? null,

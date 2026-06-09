@@ -1,4 +1,6 @@
+import { sql } from "drizzle-orm";
 import {
+  check,
   integer,
   pgTable,
   text,
@@ -23,11 +25,14 @@ export const users = pgTable("users", {
   phone: text("phone"),
   email: text("email"),
 
-  // Resident profile fields (null for managers)
+  // Resident profile fields (null for managers — see role-conditional CHECKs)
   age: integer("age"),
   occupationType: text("occupation_type"), // OccupationType
   nativePlace: text("native_place"),
-  emergencyContact: text("emergency_contact"),
+  // Emergency contact person (all-or-nothing — see users_emergency_all_or_none).
+  emergencyContactName: text("emergency_contact_name"),
+  emergencyContactRelation: text("emergency_contact_relation"), // EmergencyRelation
+  emergencyContactPhone: text("emergency_contact_phone"),
   status: text("status").notNull().default("ACTIVE"), // ResidentStatus
   joinDate: timestamp("join_date", { withTimezone: true }),
 
@@ -44,6 +49,19 @@ export const users = pgTable("users", {
   // reference (id, tenant_id) and make cross-tenant references unrepresentable.
   // FK/unique checks bypass RLS, so tenant scoping must be enforced in the FK.
   idTenant: unique("users_id_tenant_id_unique").on(t.id, t.tenantId),
+  // `users` is shared by managers + residents; managers legitimately have a
+  // null age, so age is mandatory only for residents (not a column NOT NULL).
+  residentAgeRequired: check(
+    "users_resident_age_required",
+    sql`${t.role} <> 'RESIDENT' OR ${t.age} IS NOT NULL`,
+  ),
+  // The emergency contact is optional but all-or-nothing: all three columns
+  // null, or all three set.
+  emergencyAllOrNone: check(
+    "users_emergency_all_or_none",
+    sql`(${t.emergencyContactName} IS NULL AND ${t.emergencyContactRelation} IS NULL AND ${t.emergencyContactPhone} IS NULL)
+        OR (${t.emergencyContactName} IS NOT NULL AND ${t.emergencyContactRelation} IS NOT NULL AND ${t.emergencyContactPhone} IS NOT NULL)`,
+  ),
 }));
 
 export type User = typeof users.$inferSelect;

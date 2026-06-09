@@ -1,5 +1,6 @@
 export * from "./enums";
 export * from "./sharing";
+export * from "./schemas/phone";
 export * from "./schemas/auth";
 export * from "./schemas/tenant";
 export * from "./schemas/owner";

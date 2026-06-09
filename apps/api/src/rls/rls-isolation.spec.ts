@@ -89,18 +89,21 @@ describe("cross-tenant isolation (RLS gate)", () => {
           role: UserRole.RESIDENT,
           name: "Alice A",
           phone: "+910000000001",
+          age: 25,
         },
         {
           tenantId: tenantA,
           role: UserRole.RESIDENT,
           name: "Anita A",
           phone: "+910000000003",
+          age: 25,
         },
         {
           tenantId: tenantB,
           role: UserRole.RESIDENT,
           name: "Bob B",
           phone: "+910000000002",
+          age: 25,
         },
       ])
       .returning();
@@ -188,6 +191,7 @@ describe("cross-tenant isolation (RLS gate)", () => {
             tenantId: tenantB, // forged: not the context tenant
             role: UserRole.RESIDENT,
             name: "Forged",
+            age: 25,
           }),
       ),
     ).rejects.toThrow();

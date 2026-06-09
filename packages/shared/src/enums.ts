@@ -35,6 +35,20 @@ export const OccupationType = {
 export type OccupationType =
   (typeof OccupationType)[keyof typeof OccupationType];
 
+/** Relation of a resident's emergency contact person to the resident. */
+export const EmergencyRelation = {
+  FATHER: "FATHER",
+  MOTHER: "MOTHER",
+  BROTHER: "BROTHER",
+  SISTER: "SISTER",
+  SPOUSE: "SPOUSE",
+  GUARDIAN: "GUARDIAN",
+  FRIEND: "FRIEND",
+  OTHER: "OTHER",
+} as const;
+export type EmergencyRelation =
+  (typeof EmergencyRelation)[keyof typeof EmergencyRelation];
+
 export const BedStatus = {
   VACANT: "VACANT",
   OCCUPIED: "OCCUPIED",

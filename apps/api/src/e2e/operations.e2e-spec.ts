@@ -148,11 +148,11 @@ describe("M5 operations (e2e)", () => {
     it("PATCH /menu/config accepts a Monday and updates the config", async () => {
       const res = await h.req("patch", "/menu/config", pgA.managerToken, {
         cycleLengthWeeks: 2,
-        cycleStartDate: "2026-06-02", // Monday
+        cycleStartDate: "2026-06-01", // Monday
       });
       expect(res.status).toBe(200);
       expect(res.body.cycleLengthWeeks).toBe(2);
-      expect(res.body.cycleStartDate).toBe("2026-06-02");
+      expect(res.body.cycleStartDate).toBe("2026-06-01");
     });
 
     it("POST /menu/slots upserts a slot; re-post replaces it (same id)", async () => {
@@ -173,8 +173,8 @@ describe("M5 operations (e2e)", () => {
     });
 
     it("GET /menu materializes the slot onto the correct calendar date", async () => {
-      // cycleStartDate=2026-06-02 (Mon), cycle=2 weeks.
-      // week=1, dow=2 (Tue) => 2026-06-03. Query a range that includes it.
+      // cycleStartDate=2026-06-01 (Mon), cycle=2 weeks.
+      // week=1, dow=2 (Tue) => 2026-06-02. Query a range that includes it.
       const res = await h.req(
         "get",
         "/menu?from=2026-06-01&to=2026-06-30",
@@ -183,7 +183,7 @@ describe("M5 operations (e2e)", () => {
       expect(res.status).toBe(200);
       const match = res.body.find(
         (r: { menuDate: string; mealType: string }) =>
-          r.menuDate === "2026-06-03" && r.mealType === "LUNCH",
+          r.menuDate === "2026-06-02" && r.mealType === "LUNCH",
       );
       expect(match).toBeDefined();
       expect(match.items).toBe("Dal, Rice, Salad");
@@ -234,7 +234,7 @@ describe("M5 operations (e2e)", () => {
       // Shrink to 1 week.
       await h.req("patch", "/menu/config", pgA.managerToken, {
         cycleLengthWeeks: 1,
-        cycleStartDate: "2026-06-02",
+        cycleStartDate: "2026-06-01",
       });
       const sls = await h.req("get", "/menu/slots", pgA.managerToken);
       const orphan = sls.body.find(

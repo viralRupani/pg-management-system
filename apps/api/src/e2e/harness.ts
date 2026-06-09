@@ -158,7 +158,12 @@ export async function createHarness(): Promise<Harness> {
     managerToken: string,
     fields: Record<string, unknown>,
   ): Promise<string> {
-    const res = await req("post", "/residents", managerToken, fields);
+    // age is mandatory for residents; default it so specs that don't care can
+    // omit it.
+    const res = await req("post", "/residents", managerToken, {
+      age: 25,
+      ...fields,
+    });
     if (res.status !== 201 && res.status !== 200) {
       throw new Error(`register resident failed: ${res.status} ${JSON.stringify(res.body)}`);
     }
