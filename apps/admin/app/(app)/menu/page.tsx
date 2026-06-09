@@ -1,20 +1,20 @@
 "use client";
 
-import { ApiError } from "@pg/api-client";
 import {
   MealType,
   type MenuConfig,
   type MenuSlotSummary,
   type UpsertMenuSlotInput,
 } from "@pg/shared";
-import { AlertCircle, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, toMessage } from "@/lib/utils";
 
 /* ---------------------------------------------------------------- constants */
 
@@ -32,9 +32,6 @@ const MEALS: MealType[] = [
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const mealLabel = (m: MealType) => m.charAt(0) + m.slice(1).toLowerCase();
-
-const toMessage = (err: unknown, fallback: string) =>
-  err instanceof ApiError ? err.message : fallback;
 
 /* ------------------------------------------------------------------- dates */
 
@@ -90,10 +87,11 @@ interface EditTarget {
 /* -------------------------------------------------------------------- page */
 
 export default function MenuPage() {
+  const toast = useToast();
   const [config, setConfig] = useState<MenuConfig | null>(null);
   const [slots, setSlots] = useState<MenuSlotSummary[] | null>(null);
   const [activeWeek, setActiveWeek] = useState(1);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [editing, setEditing] = useState<EditTarget | null>(null);
 
   const [draftCycleLen, setDraftCycleLen] = useState<1 | 2 | 3>(1);
@@ -127,14 +125,16 @@ export default function MenuPage() {
           setDraftStart(cfg.cycleStartDate);
         }
       } catch (err) {
-        if (!cancelled) setError(toMessage(err, "Could not load menu."));
+        if (!cancelled) {
+          setLoadFailed(true);
+          toast.error(toMessage(err, "Could not load menu."));
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [toast]);
 
   const slotByKey = useMemo(() => {
     const map = new Map<string, MenuSlotSummary>();
@@ -156,7 +156,7 @@ export default function MenuPage() {
       const sls = await api.menu.slots();
       setSlots(sls);
     } catch (err) {
-      setError(toMessage(err, "Could not save settings."));
+      toast.error(toMessage(err, "Could not save settings."));
     } finally {
       setConfigBusy(false);
     }
@@ -171,16 +171,24 @@ export default function MenuPage() {
       await api.menu.deleteSlot(weekNumber, dayOfWeek, meal);
       await load();
     } catch (err) {
-      setError(toMessage(err, "Could not delete slot."));
+      toast.error(toMessage(err, "Could not delete slot."));
     }
   };
 
   if (!config || !slots) {
     return (
       <div className="space-y-6">
-        <div className="h-8 w-48 animate-pulse rounded bg-muted" />
-        <div className="h-48 w-full animate-pulse rounded bg-muted" />
-        <div className="h-64 w-full animate-pulse rounded bg-muted" />
+        {loadFailed ? (
+          <p className="text-sm text-muted-foreground">
+            Couldn&apos;t load the menu — try refreshing.
+          </p>
+        ) : (
+          <>
+            <div className="h-8 w-48 animate-pulse rounded bg-muted" />
+            <div className="h-48 w-full animate-pulse rounded bg-muted" />
+            <div className="h-64 w-full animate-pulse rounded bg-muted" />
+          </>
+        )}
       </div>
     );
   }
@@ -199,8 +207,6 @@ export default function MenuPage() {
           materialized from this template automatically.
         </p>
       </div>
-
-      <ErrorBanner message={error} />
 
       {/* ── Cycle settings ─────────────────────────────────────────────── */}
       <Card>
@@ -368,7 +374,6 @@ export default function MenuPage() {
           setEditing(null);
           await load();
         }}
-        onError={setError}
       />
     </div>
   );
@@ -380,13 +385,12 @@ function EditSlotDialog({
   target,
   onClose,
   onDone,
-  onError,
 }: {
   target: EditTarget | null;
   onClose: () => void;
   onDone: () => Promise<void> | void;
-  onError: (m: string) => void;
 }) {
+  const toast = useToast();
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -409,7 +413,7 @@ function EditSlotDialog({
       });
       await onDone();
     } catch (err) {
-      onError(toMessage(err, "Could not save the slot."));
+      toast.error(toMessage(err, "Could not save the slot."));
     } finally {
       setBusy(false);
     }
@@ -453,19 +457,5 @@ function EditSlotDialog({
         </div>
       </form>
     </Dialog>
-  );
-}
-
-/* -------------------------------------------------------------------- bits */
-
-function ErrorBanner({ message }: { message: string | null }) {
-  if (!message) return null;
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-3 pt-5 text-danger">
-        <AlertCircle className="h-5 w-5" />
-        <span className="text-sm">{message}</span>
-      </CardContent>
-    </Card>
   );
 }

@@ -1,9 +1,15 @@
+import { ApiError } from "@pg/api-client";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
 /** Merge conditional class names, de-duplicating conflicting Tailwind utilities. */
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
+}
+
+/** Surface an API error's message, falling back to a friendly default. */
+export function toMessage(err: unknown, fallback: string): string {
+  return err instanceof ApiError ? err.message : fallback;
 }
 
 /** Format an ISO date/timestamp as a short local date, e.g. "8 Jun 2026". */

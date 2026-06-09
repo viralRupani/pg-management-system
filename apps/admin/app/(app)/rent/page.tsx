@@ -1,16 +1,16 @@
 "use client";
 
-import { ApiError } from "@pg/api-client";
 import type { InvoiceSummary, PaymentSummary } from "@pg/shared";
-import { AlertCircle, ImageIcon, Plus } from "lucide-react";
+import { ImageIcon, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input, Label } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
-import { cn, formatDate, formatPaise } from "@/lib/utils";
+import { cn, formatDate, formatPaise, toMessage } from "@/lib/utils";
 
 type Tab = "payments" | "invoices";
 type StatusFilter = "SUBMITTED" | "APPROVED" | "REJECTED" | "ALL";
@@ -39,11 +39,13 @@ function invoiceTone(s: InvoiceSummary["status"]) {
 const currentPeriod = () => new Date().toISOString().slice(0, 7);
 
 export default function RentPage() {
+  const toast = useToast();
   const [tab, setTab] = useState<Tab>("payments");
   const [invoices, setInvoices] = useState<InvoiceSummary[] | null>(null);
   const [payments, setPayments] = useState<PaymentSummary[] | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("SUBMITTED");
-  const [error, setError] = useState<string | null>(null);
+  const [paymentsFailed, setPaymentsFailed] = useState(false);
+  const [invoicesFailed, setInvoicesFailed] = useState(false);
 
   // Action dialogs
   const [rejecting, setRejecting] = useState<PaymentSummary | null>(null);
@@ -54,9 +56,6 @@ export default function RentPage() {
     error: string | null;
   } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-
-  const toMessage = (err: unknown, fallback: string) =>
-    err instanceof ApiError ? err.message : fallback;
 
   const loadPayments = useCallback(async (filter: StatusFilter) => {
     const list = await api.payments.list(
@@ -73,6 +72,7 @@ export default function RentPage() {
   useEffect(() => {
     let cancelled = false;
     setPayments(null);
+    setPaymentsFailed(false);
     (async () => {
       try {
         const list = await api.payments.list(
@@ -80,13 +80,16 @@ export default function RentPage() {
         );
         if (!cancelled) setPayments(list);
       } catch (err) {
-        if (!cancelled) setError(toMessage(err, "Could not load payments."));
+        if (!cancelled) {
+          setPaymentsFailed(true);
+          toast.error(toMessage(err, "Could not load payments."));
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [statusFilter]);
+  }, [statusFilter, toast]);
 
   // Invoices load once (and after a generate).
   useEffect(() => {
@@ -96,23 +99,25 @@ export default function RentPage() {
         const list = await api.invoices.list();
         if (!cancelled) setInvoices(list);
       } catch (err) {
-        if (!cancelled) setError(toMessage(err, "Could not load invoices."));
+        if (!cancelled) {
+          setInvoicesFailed(true);
+          toast.error(toMessage(err, "Could not load invoices."));
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [toast]);
 
   const approve = async (p: PaymentSummary) => {
     setBusyId(p.id);
-    setError(null);
     try {
       await api.payments.approve(p.id);
       // Approving flips the linked invoice to PAID, so refresh both.
       await Promise.all([loadPayments(statusFilter), loadInvoices()]);
     } catch (err) {
-      setError(toMessage(err, "Could not approve the payment."));
+      toast.error(toMessage(err, "Could not approve the payment."));
     } finally {
       setBusyId(null);
     }
@@ -121,13 +126,12 @@ export default function RentPage() {
   const reject = async (note: string) => {
     if (!rejecting) return;
     setBusyId(rejecting.id);
-    setError(null);
     try {
       await api.payments.reject(rejecting.id, note);
       setRejecting(null);
       await loadPayments(statusFilter);
     } catch (err) {
-      setError(toMessage(err, "Could not reject the payment."));
+      toast.error(toMessage(err, "Could not reject the payment."));
     } finally {
       setBusyId(null);
     }
@@ -139,11 +143,9 @@ export default function RentPage() {
       const { downloadUrl } = await api.payments.screenshot(p.id);
       setScreenshot({ payment: p, url: downloadUrl, error: null });
     } catch (err) {
-      setScreenshot({
-        payment: p,
-        url: null,
-        error: toMessage(err, "Could not load the screenshot."),
-      });
+      const message = toMessage(err, "Could not load the screenshot.");
+      setScreenshot({ payment: p, url: null, error: message });
+      toast.error(message);
     }
   };
 
@@ -163,15 +165,6 @@ export default function RentPage() {
           </Button>
         )}
       </div>
-
-      {error && (
-        <Card>
-          <CardContent className="flex items-center gap-3 pt-5 text-danger">
-            <AlertCircle className="h-5 w-5" />
-            <span className="text-sm">{error}</span>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Tabs */}
       <div className="inline-flex rounded-md border border-border bg-card p-0.5">
@@ -200,6 +193,7 @@ export default function RentPage() {
       {tab === "payments" ? (
         <PaymentsTab
           payments={payments}
+          loadFailed={paymentsFailed}
           statusFilter={statusFilter}
           onFilter={setStatusFilter}
           busyId={busyId}
@@ -208,7 +202,7 @@ export default function RentPage() {
           onView={viewScreenshot}
         />
       ) : (
-        <InvoicesTab invoices={invoices} />
+        <InvoicesTab invoices={invoices} loadFailed={invoicesFailed} />
       )}
 
       <RejectDialog
@@ -224,7 +218,6 @@ export default function RentPage() {
           setGenerating(false);
           await loadInvoices();
         }}
-        onError={(m) => setError(m)}
       />
       <ScreenshotDialog
         state={screenshot}
@@ -236,6 +229,7 @@ export default function RentPage() {
 
 function PaymentsTab({
   payments,
+  loadFailed,
   statusFilter,
   onFilter,
   busyId,
@@ -244,6 +238,7 @@ function PaymentsTab({
   onView,
 }: {
   payments: PaymentSummary[] | null;
+  loadFailed: boolean;
   statusFilter: StatusFilter;
   onFilter: (f: StatusFilter) => void;
   busyId: string | null;
@@ -274,7 +269,11 @@ function PaymentsTab({
       <Card>
         <CardContent className="pt-5">
           {payments === null ? (
-            <ListSkeleton />
+            loadFailed ? (
+              <EmptyRow text="Couldn't load payments — try refreshing." />
+            ) : (
+              <ListSkeleton />
+            )
           ) : payments.length === 0 ? (
             <EmptyRow text="No payments in this view." />
           ) : (
@@ -341,12 +340,22 @@ function PaymentsTab({
   );
 }
 
-function InvoicesTab({ invoices }: { invoices: InvoiceSummary[] | null }) {
+function InvoicesTab({
+  invoices,
+  loadFailed,
+}: {
+  invoices: InvoiceSummary[] | null;
+  loadFailed: boolean;
+}) {
   return (
     <Card>
       <CardContent className="pt-5">
         {invoices === null ? (
-          <ListSkeleton />
+          loadFailed ? (
+            <EmptyRow text="Couldn't load invoices — try refreshing." />
+          ) : (
+            <ListSkeleton />
+          )
         ) : invoices.length === 0 ? (
           <EmptyRow text="No invoices yet. Generate them for the current month." />
         ) : (
@@ -450,13 +459,12 @@ function GenerateDialog({
   open,
   onClose,
   onDone,
-  onError,
 }: {
   open: boolean;
   onClose: () => void;
   onDone: () => Promise<void> | void;
-  onError: (message: string) => void;
 }) {
+  const toast = useToast();
   const [period, setPeriod] = useState(currentPeriod());
   const [dueDate, setDueDate] = useState("");
   const [busy, setBusy] = useState(false);
@@ -484,9 +492,7 @@ function GenerateDialog({
       );
       await onDone();
     } catch (err) {
-      onError(
-        err instanceof ApiError ? err.message : "Could not generate invoices.",
-      );
+      toast.error(toMessage(err, "Could not generate invoices."));
     } finally {
       setBusy(false);
     }

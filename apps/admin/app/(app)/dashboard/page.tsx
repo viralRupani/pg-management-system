@@ -1,13 +1,11 @@
 "use client";
 
-import { ApiError } from "@pg/api-client";
 import {
   type ComplaintSummary,
   type PaymentSummary,
   ResidentStatus,
 } from "@pg/shared";
 import {
-  AlertCircle,
   BedDouble,
   ClipboardList,
   CreditCard,
@@ -18,9 +16,10 @@ import { useEffect, useState } from "react";
 import { StatCard } from "@/components/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { formatDate, formatPaise } from "@/lib/utils";
+import { formatDate, formatPaise, toMessage } from "@/lib/utils";
 
 interface DashboardData {
   activeResidents: number;
@@ -32,8 +31,9 @@ interface DashboardData {
 
 export default function DashboardPage() {
   const { branding } = useAuth();
+  const toast = useToast();
   const [data, setData] = useState<DashboardData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,19 +58,16 @@ export default function DashboardPage() {
         });
       } catch (err) {
         if (cancelled) return;
-        setError(
-          err instanceof ApiError
-            ? err.message
-            : "Could not load dashboard data.",
-        );
+        setLoadFailed(true);
+        toast.error(toMessage(err, "Could not load dashboard data."));
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [toast]);
 
-  const loading = !data && !error;
+  const loading = !data && !loadFailed;
   const openComplaints =
     data?.complaints.filter((c) => c.status !== "RESOLVED").length ?? 0;
   const pendingTotal =
@@ -87,13 +84,10 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {error && (
-        <Card>
-          <CardContent className="flex items-center gap-3 pt-5 text-danger">
-            <AlertCircle className="h-5 w-5" />
-            <span className="text-sm">{error}</span>
-          </CardContent>
-        </Card>
+      {loadFailed && (
+        <p className="text-sm text-muted-foreground">
+          Couldn&apos;t load dashboard data — try refreshing.
+        </p>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

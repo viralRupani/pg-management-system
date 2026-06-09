@@ -1,6 +1,5 @@
 "use client";
 
-import { ApiError } from "@pg/api-client";
 import type { OwnerPgSummary } from "@pg/shared";
 import {
   Building2,
@@ -15,14 +14,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input, Label } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { toMessage } from "@/lib/utils";
 
 const inputClass =
   "flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
-
-const toMessage = (err: unknown, fallback: string) =>
-  err instanceof ApiError ? err.message : fallback;
 
 /**
  * Owner PG chooser. Lives OUTSIDE the (app) shell — an owner here has the global
@@ -32,8 +30,9 @@ const toMessage = (err: unknown, fallback: string) =>
 export default function PgsPage() {
   const { user, loading, isOwner, switchPg, logout } = useAuth();
   const router = useRouter();
+  const toast = useToast();
   const [pgs, setPgs] = useState<OwnerPgSummary[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [entering, setEntering] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -47,23 +46,24 @@ export default function PgsPage() {
   const load = useCallback(async () => {
     try {
       setPgs(await api.owner.pgs.list());
+      setLoadFailed(false);
     } catch (err) {
-      setError(toMessage(err, "Could not load your PGs."));
+      setLoadFailed(true);
+      toast.error(toMessage(err, "Could not load your PGs."));
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     if (!loading && isOwner) void load();
   }, [loading, isOwner, load]);
 
   async function enter(tenantId: string) {
-    setError(null);
     setEntering(tenantId);
     try {
       await switchPg(tenantId);
       router.replace("/dashboard");
     } catch (err) {
-      setError(toMessage(err, "Could not open that PG."));
+      toast.error(toMessage(err, "Could not open that PG."));
       setEntering(null);
     }
   }
@@ -105,14 +105,14 @@ export default function PgsPage() {
           </Button>
         </div>
 
-        {error && (
-          <p className="mb-4 text-sm text-danger" role="alert">
-            {error}
-          </p>
-        )}
-
         {pgs === null ? (
-          <div className="h-40 animate-pulse rounded bg-card" />
+          loadFailed ? (
+            <p className="text-sm text-muted-foreground">
+              Couldn&apos;t load your PGs — try refreshing.
+            </p>
+          ) : (
+            <div className="h-40 animate-pulse rounded bg-card" />
+          )
         ) : pgs.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
@@ -200,15 +200,14 @@ function CreatePgDialog({
   onClose: () => void;
   onCreated: (tenantId: string) => void;
 }) {
+  const toast = useToast();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [accentColor, setAccentColor] = useState("#0d9488");
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
     setSubmitting(true);
     try {
       const pg = await api.owner.pgs.create({
@@ -218,7 +217,7 @@ function CreatePgDialog({
       });
       onCreated(pg.id);
     } catch (err) {
-      setError(toMessage(err, "Could not create the PG."));
+      toast.error(toMessage(err, "Could not create the PG."));
       setSubmitting(false);
     }
   }
@@ -273,12 +272,6 @@ function CreatePgDialog({
             />
           </div>
         </div>
-
-        {error && (
-          <p className="text-sm text-danger" role="alert">
-            {error}
-          </p>
-        )}
 
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="ghost" onClick={onClose}>

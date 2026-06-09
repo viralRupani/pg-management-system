@@ -1,6 +1,5 @@
 "use client";
 
-import { ApiError } from "@pg/api-client";
 import type {
   AnnouncementAudience,
   AnnouncementSummary,
@@ -8,21 +7,19 @@ import type {
   ResidentSummary,
 } from "@pg/shared";
 import { OccupationType, ResidentStatus } from "@pg/shared";
-import { AlertCircle, Megaphone, Plus, X } from "lucide-react";
+import { Megaphone, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatDate, toMessage } from "@/lib/utils";
 
 const inputClass =
   "flex w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
-
-const toMessage = (err: unknown, fallback: string) =>
-  err instanceof ApiError ? err.message : fallback;
 
 type AudienceType = "ALL" | "SPECIFIC" | "SEGMENT";
 
@@ -36,8 +33,9 @@ const occupationLabel = (o: OccupationType) =>
   o.charAt(0) + o.slice(1).toLowerCase();
 
 export default function AnnouncementsPage() {
+  const toast = useToast();
   const [items, setItems] = useState<AnnouncementSummary[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [creating, setCreating] = useState(false);
 
   const load = async () => {
@@ -52,14 +50,16 @@ export default function AnnouncementsPage() {
         const list = await api.announcements.list();
         if (!cancelled) setItems(list);
       } catch (err) {
-        if (!cancelled)
-          setError(toMessage(err, "Could not load announcements."));
+        if (!cancelled) {
+          setLoadFailed(true);
+          toast.error(toMessage(err, "Could not load announcements."));
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [toast]);
 
   return (
     <div className="space-y-6">
@@ -78,20 +78,24 @@ export default function AnnouncementsPage() {
         </Button>
       </div>
 
-      <ErrorBanner message={error} />
-
       {items === null ? (
-        <div className="space-y-3">
-          {[0, 1, 2].map((i) => (
-            <Card key={i}>
-              <CardContent className="space-y-2 pt-5">
-                <span className="block h-4 w-1/3 animate-pulse rounded bg-muted" />
-                <span className="block h-3 w-full animate-pulse rounded bg-muted" />
-                <span className="block h-3 w-2/3 animate-pulse rounded bg-muted" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        loadFailed ? (
+          <p className="text-sm text-muted-foreground">
+            Couldn&apos;t load announcements — try refreshing.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {[0, 1, 2].map((i) => (
+              <Card key={i}>
+                <CardContent className="space-y-2 pt-5">
+                  <span className="block h-4 w-1/3 animate-pulse rounded bg-muted" />
+                  <span className="block h-3 w-full animate-pulse rounded bg-muted" />
+                  <span className="block h-3 w-2/3 animate-pulse rounded bg-muted" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )
       ) : items.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
@@ -133,7 +137,6 @@ export default function AnnouncementsPage() {
           setCreating(false);
           await load();
         }}
-        onError={setError}
       />
     </div>
   );
@@ -143,13 +146,12 @@ function NewAnnouncementDialog({
   open,
   onClose,
   onDone,
-  onError,
 }: {
   open: boolean;
   onClose: () => void;
   onDone: () => Promise<void> | void;
-  onError: (m: string) => void;
 }) {
+  const toast = useToast();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
@@ -199,7 +201,7 @@ function NewAnnouncementDialog({
     if (!trimmedTitle || !trimmedBody) return;
     const audience = buildAudience();
     if (!audience) {
-      onError("Select at least one resident.");
+      toast.error("Select at least one resident.");
       return;
     }
     setBusy(true);
@@ -211,7 +213,7 @@ function NewAnnouncementDialog({
       });
       await onDone();
     } catch (err) {
-      onError(toMessage(err, "Could not post the announcement."));
+      toast.error(toMessage(err, "Could not post the announcement."));
     } finally {
       setBusy(false);
     }
@@ -465,17 +467,5 @@ function ResidentMultiSelect({
         )}
       </div>
     </div>
-  );
-}
-
-function ErrorBanner({ message }: { message: string | null }) {
-  if (!message) return null;
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-3 pt-5 text-danger">
-        <AlertCircle className="h-5 w-5" />
-        <span className="text-sm">{message}</span>
-      </CardContent>
-    </Card>
   );
 }

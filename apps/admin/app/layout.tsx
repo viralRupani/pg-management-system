@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ToastProvider } from "@/components/ui/toast";
 import { AuthProvider } from "@/lib/auth";
 import "./globals.css";
 
@@ -31,7 +32,9 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: applyBrandScript }} />
       </head>
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <ToastProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ToastProvider>
       </body>
     </html>
   );

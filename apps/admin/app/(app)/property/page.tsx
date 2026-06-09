@@ -1,6 +1,5 @@
 "use client";
 
-import { ApiError } from "@pg/api-client";
 import {
   type BedSummary,
   type BuildingSummary,
@@ -10,7 +9,6 @@ import {
   sharingLabel,
 } from "@pg/shared";
 import {
-  AlertCircle,
   BedDouble,
   Building2,
   ChevronDown,
@@ -27,14 +25,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input, Label } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
-import { formatPaise } from "@/lib/utils";
+import { formatPaise, toMessage } from "@/lib/utils";
 
 const inputClass =
   "flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
-
-const toMessage = (err: unknown, fallback: string) =>
-  err instanceof ApiError ? err.message : fallback;
 
 const bedTone = (s: BedSummary["status"]) =>
   s === "VACANT" ? "success" : s === "OCCUPIED" ? "neutral" : "warning";
@@ -60,8 +56,9 @@ function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
 /* The property tree is small per PG, so we load every level unfiltered and group
  * client-side rather than fetch-on-expand. Expansion is purely local state. */
 export default function PropertyPage() {
+  const toast = useToast();
   const [tree, setTree] = useState<Tree | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [openBuildings, setOpenBuildings] = useState<Set<string>>(new Set());
   const [openFloors, setOpenFloors] = useState<Set<string>>(new Set());
 
@@ -107,7 +104,10 @@ export default function PropertyPage() {
       try {
         await load(true);
       } catch (err) {
-        if (!cancelled) setError(toMessage(err, "Could not load property."));
+        if (!cancelled) {
+          setLoadFailed(true);
+          toast.error(toMessage(err, "Could not load property."));
+        }
       }
     })();
     return () => {
@@ -121,7 +121,7 @@ export default function PropertyPage() {
     try {
       await load();
     } catch (err) {
-      setError(toMessage(err, "Could not refresh property."));
+      toast.error(toMessage(err, "Could not refresh property."));
     }
   };
 
@@ -148,10 +148,16 @@ export default function PropertyPage() {
         </Button>
       </div>
 
-      <ErrorBanner message={error} />
-
       {tree === null ? (
-        <ListSkeleton />
+        loadFailed ? (
+          <Card>
+            <CardContent className="pt-5">
+              <EmptyRow text="Couldn't load property — try refreshing." />
+            </CardContent>
+          </Card>
+        ) : (
+          <ListSkeleton />
+        )
       ) : tree.buildings.length === 0 ? (
         <Card>
           <CardContent className="pt-5">
@@ -251,7 +257,6 @@ export default function PropertyPage() {
           setAddBuilding(false);
           await refresh();
         }}
-        onError={setError}
       />
       <AddFloorDialog
         building={addFloorFor}
@@ -260,7 +265,6 @@ export default function PropertyPage() {
           setAddFloorFor(null);
           await refresh();
         }}
-        onError={setError}
       />
       <AddRoomDialog
         floor={addRoomFor}
@@ -269,7 +273,6 @@ export default function PropertyPage() {
           setAddRoomFor(null);
           await refresh();
         }}
-        onError={setError}
       />
       <AddBedDialog
         room={addBedFor}
@@ -278,7 +281,6 @@ export default function PropertyPage() {
           setAddBedFor(null);
           await refresh();
         }}
-        onError={setError}
       />
       <EditRentDialog
         room={editRentFor}
@@ -287,7 +289,6 @@ export default function PropertyPage() {
           setEditRentFor(null);
           await refresh();
         }}
-        onError={setError}
       />
       <ConfirmDeleteDialog
         open={deleteBuildingTarget !== null}
@@ -299,7 +300,6 @@ export default function PropertyPage() {
           setDeleteBuildingTarget(null);
           await refresh();
         }}
-        onError={setError}
       />
       <ConfirmDeleteDialog
         open={deleteRoomTarget !== null}
@@ -311,7 +311,6 @@ export default function PropertyPage() {
           setDeleteRoomTarget(null);
           await refresh();
         }}
-        onError={setError}
       />
       <ConfirmDeleteDialog
         open={deleteBedTarget !== null}
@@ -323,7 +322,6 @@ export default function PropertyPage() {
           setDeleteBedTarget(null);
           await refresh();
         }}
-        onError={setError}
       />
     </div>
   );
@@ -497,13 +495,12 @@ function AddBuildingDialog({
   open,
   onClose,
   onDone,
-  onError,
 }: {
   open: boolean;
   onClose: () => void;
   onDone: () => Promise<void> | void;
-  onError: (m: string) => void;
 }) {
+  const toast = useToast();
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [busy, setBusy] = useState(false);
@@ -525,7 +522,7 @@ function AddBuildingDialog({
       });
       await onDone();
     } catch (err) {
-      onError(toMessage(err, "Could not add the building."));
+      toast.error(toMessage(err, "Could not add the building."));
     } finally {
       setBusy(false);
     }
@@ -566,13 +563,12 @@ function AddFloorDialog({
   building,
   onClose,
   onDone,
-  onError,
 }: {
   building: BuildingSummary | null;
   onClose: () => void;
   onDone: () => Promise<void> | void;
-  onError: (m: string) => void;
 }) {
+  const toast = useToast();
   const [label, setLabel] = useState("");
   const [floorNumber, setFloorNumber] = useState("0");
   const [busy, setBusy] = useState(false);
@@ -596,7 +592,7 @@ function AddFloorDialog({
       });
       await onDone();
     } catch (err) {
-      onError(toMessage(err, "Could not add the floor."));
+      toast.error(toMessage(err, "Could not add the floor."));
     } finally {
       setBusy(false);
     }
@@ -643,13 +639,12 @@ function AddRoomDialog({
   floor,
   onClose,
   onDone,
-  onError,
 }: {
   floor: FloorSummary | null;
   onClose: () => void;
   onDone: () => Promise<void> | void;
-  onError: (m: string) => void;
 }) {
+  const toast = useToast();
   const [label, setLabel] = useState("");
   const [capacity, setCapacity] = useState("1");
   const [rent, setRent] = useState("");
@@ -681,7 +676,7 @@ function AddRoomDialog({
       });
       await onDone();
     } catch (err) {
-      onError(toMessage(err, "Could not add the room."));
+      toast.error(toMessage(err, "Could not add the room."));
     } finally {
       setBusy(false);
     }
@@ -761,13 +756,12 @@ function AddBedDialog({
   room,
   onClose,
   onDone,
-  onError,
 }: {
   room: RoomSummary | null;
   onClose: () => void;
   onDone: () => Promise<void> | void;
-  onError: (m: string) => void;
 }) {
+  const toast = useToast();
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -783,7 +777,7 @@ function AddBedDialog({
       await api.property.createBed({ roomId: room.id, label: label.trim() });
       await onDone();
     } catch (err) {
-      onError(toMessage(err, "Could not add the bed."));
+      toast.error(toMessage(err, "Could not add the bed."));
     } finally {
       setBusy(false);
     }
@@ -819,13 +813,12 @@ function EditRentDialog({
   room,
   onClose,
   onDone,
-  onError,
 }: {
   room: RoomSummary | null;
   onClose: () => void;
   onDone: () => Promise<void> | void;
-  onError: (m: string) => void;
 }) {
+  const toast = useToast();
   const [rent, setRent] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -841,7 +834,7 @@ function EditRentDialog({
       await api.property.updateRoomRent(room.id, Math.round(Number(rent) * 100));
       await onDone();
     } catch (err) {
-      onError(toMessage(err, "Could not update the rent."));
+      toast.error(toMessage(err, "Could not update the rent."));
     } finally {
       setBusy(false);
     }
@@ -884,15 +877,14 @@ function ConfirmDeleteDialog({
   description,
   onClose,
   onConfirm,
-  onError,
 }: {
   open: boolean;
   title: string;
   description: string;
   onClose: () => void;
   onConfirm: () => Promise<void>;
-  onError: (m: string) => void;
 }) {
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
 
   const confirm = async () => {
@@ -900,7 +892,7 @@ function ConfirmDeleteDialog({
     try {
       await onConfirm();
     } catch (err) {
-      onError(toMessage(err, "Delete failed."));
+      toast.error(toMessage(err, "Delete failed."));
       onClose();
     } finally {
       setBusy(false);
@@ -958,18 +950,6 @@ function Field({
       <Label htmlFor={htmlFor}>{label}</Label>
       {children}
     </div>
-  );
-}
-
-function ErrorBanner({ message }: { message: string | null }) {
-  if (!message) return null;
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-3 pt-5 text-danger">
-        <AlertCircle className="h-5 w-5" />
-        <span className="text-sm">{message}</span>
-      </CardContent>
-    </Card>
   );
 }
 

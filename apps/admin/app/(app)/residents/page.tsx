@@ -1,6 +1,5 @@
 "use client";
 
-import { ApiError } from "@pg/api-client";
 import {
   type AvailableBed,
   type DepositSummary,
@@ -13,7 +12,6 @@ import {
   sharingLabel,
 } from "@pg/shared";
 import {
-  AlertCircle,
   ArrowLeft,
   BedDouble,
   ChevronDown,
@@ -29,14 +27,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input, Label } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
-import { cn, formatDate, formatPaise } from "@/lib/utils";
+import { cn, formatDate, formatPaise, toMessage } from "@/lib/utils";
 
 const inputClass =
   "flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
-
-const toMessage = (err: unknown, fallback: string) =>
-  err instanceof ApiError ? err.message : fallback;
 
 const residentTone = (s: ResidentSummary["status"]) =>
   s === "ACTIVE" ? "success" : "neutral";
@@ -62,9 +58,10 @@ const PAGE_SIZE = 10;
 type StatusFilter = ResidentStatus | "ALL";
 
 function ResidentsList() {
+  const toast = useToast();
   const [items, setItems] = useState<ResidentSummary[] | null>(null);
   const [total, setTotal] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [registering, setRegistering] = useState(false);
 
   const [searchInput, setSearchInput] = useState("");
@@ -93,10 +90,12 @@ function ResidentsList() {
       });
       setItems(result.items);
       setTotal(result.total);
+      setLoadFailed(false);
     } catch (err) {
-      setError(toMessage(err, "Could not load residents."));
+      setLoadFailed(true);
+      toast.error(toMessage(err, "Could not load residents."));
     }
-  }, [search, status, page]);
+  }, [search, status, page, toast]);
 
   useEffect(() => {
     setItems(null);
@@ -146,12 +145,14 @@ function ResidentsList() {
         </div>
       </div>
 
-      <ErrorBanner message={error} />
-
       <Card>
         <CardContent className="pt-5">
           {items === null ? (
-            <ListSkeleton />
+            loadFailed ? (
+              <EmptyRow text="Couldn't load residents — try refreshing." />
+            ) : (
+              <ListSkeleton />
+            )
           ) : items.length === 0 ? (
             <EmptyRow
               text={
@@ -229,7 +230,6 @@ function ResidentsList() {
           setRegistering(false);
           await load();
         }}
-        onError={setError}
       />
     </div>
   );
@@ -239,13 +239,12 @@ function RegisterDialog({
   open,
   onClose,
   onDone,
-  onError,
 }: {
   open: boolean;
   onClose: () => void;
   onDone: () => Promise<void> | void;
-  onError: (m: string) => void;
 }) {
+  const toast = useToast();
   const router = useRouter();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -298,7 +297,7 @@ function RegisterDialog({
       await onDone();
       router.push(`/residents?id=${created.id}`);
     } catch (err) {
-      onError(toMessage(err, "Could not register the resident."));
+      toast.error(toMessage(err, "Could not register the resident."));
     } finally {
       setBusy(false);
     }
@@ -451,8 +450,9 @@ interface DetailData {
 }
 
 function ResidentDetail({ id }: { id: string }) {
+  const toast = useToast();
   const [data, setData] = useState<DetailData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [allocating, setAllocating] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
@@ -490,7 +490,7 @@ function ResidentDetail({ id }: { id: string }) {
           ledger: dep.ledger,
         });
       } catch (err) {
-        if (!cancelled) setError(toMessage(err, "Could not load resident."));
+        if (!cancelled) setLoadError(toMessage(err, "Could not load resident."));
       }
     })();
     return () => {
@@ -502,18 +502,17 @@ function ResidentDetail({ id }: { id: string }) {
     try {
       await load();
     } catch (err) {
-      setError(toMessage(err, "Could not refresh resident."));
+      toast.error(toMessage(err, "Could not refresh resident."));
     }
   };
 
   const moveOut = async () => {
     setBusy(true);
-    setError(null);
     try {
       await api.allocations.moveOut(id);
       await load();
     } catch (err) {
-      setError(toMessage(err, "Could not move the resident out."));
+      toast.error(toMessage(err, "Could not move the resident out."));
     } finally {
       setBusy(false);
     }
@@ -521,12 +520,11 @@ function ResidentDetail({ id }: { id: string }) {
 
   const verifyDoc = async (docId: string) => {
     setBusy(true);
-    setError(null);
     try {
       await api.documents.verify(docId);
       await load();
     } catch (err) {
-      setError(toMessage(err, "Could not verify the document."));
+      toast.error(toMessage(err, "Could not verify the document."));
     } finally {
       setBusy(false);
     }
@@ -537,15 +535,19 @@ function ResidentDetail({ id }: { id: string }) {
       const { downloadUrl } = await api.documents.download(docId);
       window.open(downloadUrl, "_blank", "noopener");
     } catch (err) {
-      setError(toMessage(err, "Could not open the document."));
+      toast.error(toMessage(err, "Could not open the document."));
     }
   };
 
-  if (error && !data) {
+  if (loadError && !data) {
     return (
       <div className="space-y-4">
         <BackLink />
-        <ErrorBanner message={error} />
+        <Card>
+          <CardContent className="pt-5 text-sm text-muted-foreground">
+            {loadError}
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -564,7 +566,6 @@ function ResidentDetail({ id }: { id: string }) {
   return (
     <div className="space-y-6">
       <BackLink />
-      <ErrorBanner message={error} />
 
       {/* Header */}
       <Card>
@@ -785,7 +786,6 @@ function ResidentDetail({ id }: { id: string }) {
           setAllocating(false);
           await refresh();
         }}
-        onError={setError}
       />
       <RecordDepositDialog
         open={depositOpen}
@@ -795,7 +795,6 @@ function ResidentDetail({ id }: { id: string }) {
           setDepositOpen(false);
           await refresh();
         }}
-        onError={setError}
       />
       <ExitDialog
         open={exitOpen}
@@ -806,7 +805,6 @@ function ResidentDetail({ id }: { id: string }) {
           setExitOpen(false);
           await refresh();
         }}
-        onError={setError}
       />
       <RejectDocDialog
         doc={rejectingDoc}
@@ -815,7 +813,6 @@ function ResidentDetail({ id }: { id: string }) {
           setRejectingDoc(null);
           await refresh();
         }}
-        onError={setError}
       />
     </div>
   );
@@ -826,14 +823,13 @@ function AllocateDialog({
   residentId,
   onClose,
   onDone,
-  onError,
 }: {
   open: boolean;
   residentId: string;
   onClose: () => void;
   onDone: () => Promise<void> | void;
-  onError: (m: string) => void;
 }) {
+  const toast = useToast();
   const [beds, setBeds] = useState<AvailableBed[] | null>(null);
   const [busyBed, setBusyBed] = useState<string | null>(null);
 
@@ -846,13 +842,13 @@ function AllocateDialog({
         const list = await api.allocations.suggestions(residentId);
         if (!cancelled) setBeds(list);
       } catch (err) {
-        if (!cancelled) onError(toMessage(err, "Could not load vacant beds."));
+        if (!cancelled) toast.error(toMessage(err, "Could not load vacant beds."));
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [open, residentId, onError]);
+  }, [open, residentId, toast]);
 
   const pick = async (bedId: string) => {
     setBusyBed(bedId);
@@ -860,7 +856,7 @@ function AllocateDialog({
       await api.allocations.allocate({ bedId, residentId });
       await onDone();
     } catch (err) {
-      onError(toMessage(err, "Could not allocate the bed."));
+      toast.error(toMessage(err, "Could not allocate the bed."));
     } finally {
       setBusyBed(null);
     }
@@ -915,14 +911,13 @@ function RecordDepositDialog({
   residentId,
   onClose,
   onDone,
-  onError,
 }: {
   open: boolean;
   residentId: string;
   onClose: () => void;
   onDone: () => Promise<void> | void;
-  onError: (m: string) => void;
 }) {
+  const toast = useToast();
   const [rupees, setRupees] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -940,7 +935,7 @@ function RecordDepositDialog({
       });
       await onDone();
     } catch (err) {
-      onError(toMessage(err, "Could not record the deposit."));
+      toast.error(toMessage(err, "Could not record the deposit."));
     } finally {
       setBusy(false);
     }
@@ -990,15 +985,14 @@ function ExitDialog({
   deposit,
   onClose,
   onDone,
-  onError,
 }: {
   open: boolean;
   residentId: string;
   deposit: DepositSummary | null;
   onClose: () => void;
   onDone: () => Promise<void> | void;
-  onError: (m: string) => void;
 }) {
+  const toast = useToast();
   const [rows, setRows] = useState<DeductionRow[]>([]);
   const [busy, setBusy] = useState(false);
   const canDeduct = deposit?.status === "HELD";
@@ -1030,7 +1024,7 @@ function ExitDialog({
       });
       await onDone();
     } catch (err) {
-      onError(toMessage(err, "Could not settle the exit."));
+      toast.error(toMessage(err, "Could not settle the exit."));
     } finally {
       setBusy(false);
     }
@@ -1141,13 +1135,12 @@ function RejectDocDialog({
   doc,
   onClose,
   onDone,
-  onError,
 }: {
   doc: DocumentSummary | null;
   onClose: () => void;
   onDone: () => Promise<void> | void;
-  onError: (m: string) => void;
 }) {
+  const toast = useToast();
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -1162,7 +1155,7 @@ function RejectDocDialog({
       await api.documents.reject(doc.id, note.trim());
       await onDone();
     } catch (err) {
-      onError(toMessage(err, "Could not reject the document."));
+      toast.error(toMessage(err, "Could not reject the document."));
     } finally {
       setBusy(false);
     }
@@ -1233,18 +1226,6 @@ function BackLink() {
       <ArrowLeft className="h-4 w-4" />
       All residents
     </Link>
-  );
-}
-
-function ErrorBanner({ message }: { message: string | null }) {
-  if (!message) return null;
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-3 pt-5 text-danger">
-        <AlertCircle className="h-5 w-5" />
-        <span className="text-sm">{message}</span>
-      </CardContent>
-    </Card>
   );
 }
 

@@ -1,28 +1,19 @@
 "use client";
 
-import { ApiError } from "@pg/api-client";
 import type { BudgetSummaryRow, ExpenseSummary } from "@pg/shared";
-import {
-  AlertCircle,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  Wallet,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input, Label } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
-import { cn, formatDate, formatPaise } from "@/lib/utils";
+import { cn, formatDate, formatPaise, toMessage } from "@/lib/utils";
 
 const inputClass =
   "flex w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
-
-const toMessage = (err: unknown, fallback: string) =>
-  err instanceof ApiError ? err.message : fallback;
 
 /** Local "YYYY-MM" (zero-padded). NOT toISOString — that's UTC and shifts the
  * month in IST. The API validates period against ^\d{4}-(0[1-9]|1[0-2])$. */
@@ -60,10 +51,11 @@ function defaultSpentOn(viewed: Date): string {
 }
 
 export default function BudgetsPage() {
+  const toast = useToast();
   const [month, setMonth] = useState(() => firstOfMonth(new Date()));
   const [summary, setSummary] = useState<BudgetSummaryRow[] | null>(null);
   const [expenses, setExpenses] = useState<ExpenseSummary[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
 
@@ -82,6 +74,7 @@ export default function BudgetsPage() {
     let cancelled = false;
     setSummary(null);
     setExpenses(null);
+    setLoadFailed(false);
     (async () => {
       try {
         const [s, e] = await Promise.all([
@@ -93,13 +86,16 @@ export default function BudgetsPage() {
           setExpenses(e);
         }
       } catch (err) {
-        if (!cancelled) setError(toMessage(err, "Could not load budgets."));
+        if (!cancelled) {
+          setLoadFailed(true);
+          toast.error(toMessage(err, "Could not load budgets."));
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [period]);
+  }, [period, toast]);
 
   // Known categories (this period) → datalist suggestions for both dialogs.
   const knownCategories = Array.from(
@@ -167,8 +163,6 @@ export default function BudgetsPage() {
         </span>
       </div>
 
-      <ErrorBanner message={error} />
-
       {/* Spend-vs-budget summary */}
       <Card>
         <CardContent className="overflow-x-auto pt-5">
@@ -183,13 +177,24 @@ export default function BudgetsPage() {
             </thead>
             <tbody>
               {summary === null ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <tr key={i} className="border-t border-border">
-                    <td colSpan={4} className="py-3">
-                      <span className="block h-4 w-full animate-pulse rounded bg-muted" />
+                loadFailed ? (
+                  <tr className="border-t border-border">
+                    <td
+                      colSpan={4}
+                      className="py-8 text-center text-muted-foreground"
+                    >
+                      Couldn&apos;t load budgets — try refreshing.
                     </td>
                   </tr>
-                ))
+                ) : (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <tr key={i} className="border-t border-border">
+                      <td colSpan={4} className="py-3">
+                        <span className="block h-4 w-full animate-pulse rounded bg-muted" />
+                      </td>
+                    </tr>
+                  ))
+                )
               ) : summary.length === 0 ? (
                 <tr className="border-t border-border">
                   <td
@@ -282,16 +287,18 @@ export default function BudgetsPage() {
           Expenses
         </h2>
         {expenses === null ? (
-          <Card>
-            <CardContent className="space-y-3 pt-5">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <span
-                  key={i}
-                  className="block h-5 w-full animate-pulse rounded bg-muted"
-                />
-              ))}
-            </CardContent>
-          </Card>
+          loadFailed ? null : (
+            <Card>
+              <CardContent className="space-y-3 pt-5">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <span
+                    key={i}
+                    className="block h-5 w-full animate-pulse rounded bg-muted"
+                  />
+                ))}
+              </CardContent>
+            </Card>
+          )
         ) : expenses.length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-sm text-muted-foreground">
@@ -344,7 +351,6 @@ export default function BudgetsPage() {
           setBudgetOpen(false);
           await load();
         }}
-        onError={setError}
       />
       <RecordExpenseDialog
         open={expenseOpen}
@@ -356,7 +362,6 @@ export default function BudgetsPage() {
           setExpenseOpen(false);
           await load();
         }}
-        onError={setError}
       />
     </div>
   );
@@ -368,15 +373,14 @@ function SetBudgetDialog({
   monthLabel,
   onClose,
   onDone,
-  onError,
 }: {
   open: boolean;
   period: string;
   monthLabel: string;
   onClose: () => void;
   onDone: () => Promise<void> | void;
-  onError: (m: string) => void;
 }) {
+  const toast = useToast();
   const [category, setCategory] = useState("");
   const [amount, setAmount] = useState("");
   const [busy, setBusy] = useState(false);
@@ -402,7 +406,7 @@ function SetBudgetDialog({
       });
       await onDone();
     } catch (err) {
-      onError(toMessage(err, "Could not save the budget."));
+      toast.error(toMessage(err, "Could not save the budget."));
     } finally {
       setBusy(false);
     }
@@ -465,7 +469,6 @@ function RecordExpenseDialog({
   maxDate,
   onClose,
   onDone,
-  onError,
 }: {
   open: boolean;
   defaultDate: string;
@@ -473,8 +476,8 @@ function RecordExpenseDialog({
   maxDate: string;
   onClose: () => void;
   onDone: () => Promise<void> | void;
-  onError: (m: string) => void;
 }) {
+  const toast = useToast();
   const [category, setCategory] = useState("");
   const [amount, setAmount] = useState("");
   const [spentOn, setSpentOn] = useState(defaultDate);
@@ -505,7 +508,7 @@ function RecordExpenseDialog({
       });
       await onDone();
     } catch (err) {
-      onError(toMessage(err, "Could not record the expense."));
+      toast.error(toMessage(err, "Could not record the expense."));
     } finally {
       setBusy(false);
     }
@@ -584,17 +587,5 @@ function RecordExpenseDialog({
         </div>
       </form>
     </Dialog>
-  );
-}
-
-function ErrorBanner({ message }: { message: string | null }) {
-  if (!message) return null;
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-3 pt-5 text-danger">
-        <AlertCircle className="h-5 w-5" />
-        <span className="text-sm">{message}</span>
-      </CardContent>
-    </Card>
   );
 }

@@ -1,17 +1,14 @@
 "use client";
 
-import { ApiError } from "@pg/api-client";
-import { AlertCircle, Building2, Check, Upload } from "lucide-react";
+import { Building2, Check, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/utils";
-
-const toMessage = (err: unknown, fallback: string) =>
-  err instanceof ApiError ? err.message : fallback;
+import { cn, toMessage } from "@/lib/utils";
 
 const DEFAULT_ACCENT = "#0d9488";
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
@@ -57,10 +54,10 @@ export default function SettingsPage() {
 /** PG name + accent colour — both go in one PATCH /tenants/branding. */
 function IdentityCard({ onSaved }: { onSaved: () => Promise<void> | void }) {
   const { branding } = useAuth();
+  const toast = useToast();
   const [name, setName] = useState("");
   const [accent, setAccent] = useState(DEFAULT_ACCENT);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   // (Re)seed the form whenever the canonical branding changes.
@@ -86,14 +83,13 @@ function IdentityCard({ onSaved }: { onSaved: () => Promise<void> | void }) {
     e.preventDefault();
     if (!nameValid || !accentValid) return;
     setBusy(true);
-    setError(null);
     setSaved(false);
     try {
       await api.branding.update({ name: name.trim(), accentColor: accent });
       await onSaved(); // repaints --brand + sidebar from canonical branding
       setSaved(true);
     } catch (err) {
-      setError(toMessage(err, "Could not save branding."));
+      toast.error(toMessage(err, "Could not save branding."));
     } finally {
       setBusy(false);
     }
@@ -157,8 +153,6 @@ function IdentityCard({ onSaved }: { onSaved: () => Promise<void> | void }) {
 
           <AccentPreview accent={accentValid ? accent : DEFAULT_ACCENT} />
 
-          <ErrorBanner message={error} />
-
           <div className="flex items-center gap-3">
             <Button
               type="submit"
@@ -216,11 +210,11 @@ function LogoCard({
   name: string;
   onSaved: () => Promise<void> | void;
 }) {
+  const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   // Local object-URL preview of the picked file; revoked on change/unmount.
   useEffect(() => {
@@ -235,9 +229,8 @@ function LogoCard({
 
   const pick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
-    setError(null);
     if (f && f.size > 2 * 1024 * 1024) {
-      setError("Logo must be under 2 MB.");
+      toast.error("Logo must be under 2 MB.");
       setFile(null);
       return;
     }
@@ -247,7 +240,6 @@ function LogoCard({
   const upload = async () => {
     if (!file) return;
     setBusy(true);
-    setError(null);
     try {
       const { uploadUrl, key } = await api.branding.logoUploadUrl();
       const res = await fetch(uploadUrl, {
@@ -261,7 +253,7 @@ function LogoCard({
       setFile(null);
       if (fileRef.current) fileRef.current.value = "";
     } catch (err) {
-      setError(
+      toast.error(
         toMessage(
           err,
           "Could not upload the logo. Storage may be unavailable in local dev.",
@@ -312,8 +304,6 @@ function LogoCard({
           </div>
         </div>
 
-        <ErrorBanner message={error} />
-
         <div className="flex justify-end">
           <Button onClick={upload} disabled={!file || busy}>
             <Upload className="h-4 w-4" />
@@ -322,15 +312,5 @@ function LogoCard({
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function ErrorBanner({ message }: { message: string | null }) {
-  if (!message) return null;
-  return (
-    <div className="flex items-center gap-2 rounded-md bg-danger/10 px-3 py-2 text-sm text-danger">
-      <AlertCircle className="h-4 w-4 shrink-0" />
-      <span>{message}</span>
-    </div>
   );
 }

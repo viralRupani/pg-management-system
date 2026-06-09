@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { currentUser, landingPath } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
@@ -18,9 +19,9 @@ import { useAuth } from "@/lib/auth";
 export default function LoginPage() {
   const { login, user, loading } = useAuth();
   const router = useRouter();
+  const toast = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Already signed in → skip the form (owners land on the PG chooser).
@@ -30,13 +31,12 @@ export default function LoginPage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
     setSubmitting(true);
     try {
       await login(email.trim(), password);
       router.replace(landingPath(currentUser()));
     } catch (err) {
-      setError(
+      toast.error(
         err instanceof ApiError && err.status === 401
           ? "Incorrect email or password."
           : "Could not sign in. Please try again.",
@@ -86,12 +86,6 @@ export default function LoginPage() {
                   placeholder="••••••••"
                 />
               </div>
-
-              {error && (
-                <p className="text-sm text-danger" role="alert">
-                  {error}
-                </p>
-              )}
 
               <Button type="submit" className="w-full" disabled={submitting}>
                 {submitting && <Loader2 className="h-4 w-4 animate-spin" />}

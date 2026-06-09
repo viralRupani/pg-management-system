@@ -6,7 +6,7 @@ import {
   type ComplaintSummary,
   type ComplaintUpdateEntry,
 } from "@pg/shared";
-import { AlertCircle, ArrowLeft, ImageIcon, Send, UserCheck } from "lucide-react";
+import { ArrowLeft, ImageIcon, Send, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
@@ -14,14 +14,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
+import { useToast } from "@/components/ui/toast";
 import { api, currentUser } from "@/lib/api";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatDate, toMessage } from "@/lib/utils";
 
 const inputClass =
   "flex w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
-
-const toMessage = (err: unknown, fallback: string) =>
-  err instanceof ApiError ? err.message : fallback;
 
 const statusTone = (s: ComplaintStatus) =>
   s === "OPEN" ? "danger" : s === "IN_PROGRESS" ? "warning" : "success";
@@ -54,8 +52,9 @@ function ComplaintsRouter() {
 /* ------------------------------------------------------------------ list --- */
 
 function ComplaintsList() {
+  const toast = useToast();
   const [complaints, setComplaints] = useState<ComplaintSummary[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [filter, setFilter] = useState<Filter>("ALL");
 
   useEffect(() => {
@@ -65,13 +64,16 @@ function ComplaintsList() {
         const list = await api.complaints.list();
         if (!cancelled) setComplaints(list);
       } catch (err) {
-        if (!cancelled) setError(toMessage(err, "Could not load complaints."));
+        if (!cancelled) {
+          setLoadFailed(true);
+          toast.error(toMessage(err, "Could not load complaints."));
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [toast]);
 
   const shown =
     complaints?.filter((c) => filter === "ALL" || c.status === filter) ?? null;
@@ -84,8 +86,6 @@ function ComplaintsList() {
           Review and resolve what residents have raised.
         </p>
       </div>
-
-      <ErrorBanner message={error} />
 
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
@@ -108,7 +108,11 @@ function ComplaintsList() {
       <Card>
         <CardContent className="pt-5">
           {shown === null ? (
-            <ListSkeleton />
+            loadFailed ? (
+              <EmptyRow text="Couldn't load complaints — try refreshing." />
+            ) : (
+              <ListSkeleton />
+            )
           ) : shown.length === 0 ? (
             <EmptyRow text="No complaints in this view." />
           ) : (
@@ -156,8 +160,9 @@ interface DetailData {
 }
 
 function ComplaintDetail({ id }: { id: string }) {
+  const toast = useToast();
   const [data, setData] = useState<DetailData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
   const me = currentUser()?.sub;
@@ -184,12 +189,12 @@ function ComplaintDetail({ id }: { id: string }) {
         if (cancelled) return;
         const complaint = list.find((c) => c.id === id);
         if (!complaint) {
-          setError("Complaint not found.");
+          setLoadError("Complaint not found.");
           return;
         }
         setData({ complaint, updates });
       } catch (err) {
-        if (!cancelled) setError(toMessage(err, "Could not load complaint."));
+        if (!cancelled) setLoadError(toMessage(err, "Could not load complaint."));
       }
     })();
     return () => {
@@ -201,18 +206,17 @@ function ComplaintDetail({ id }: { id: string }) {
     try {
       await load();
     } catch (err) {
-      setError(toMessage(err, "Could not refresh complaint."));
+      toast.error(toMessage(err, "Could not refresh complaint."));
     }
   };
 
   const setStatus = async (status: ComplaintStatus, assignToSelf = false) => {
     setBusy(true);
-    setError(null);
     try {
       await api.complaints.updateStatus(id, { status, assignToSelf });
       await load();
     } catch (err) {
-      setError(toMessage(err, "Could not update the complaint."));
+      toast.error(toMessage(err, "Could not update the complaint."));
     } finally {
       setBusy(false);
     }
@@ -220,22 +224,25 @@ function ComplaintDetail({ id }: { id: string }) {
 
   const addNote = async (note: string) => {
     setBusy(true);
-    setError(null);
     try {
       await api.complaints.addUpdate(id, note);
       await load();
     } catch (err) {
-      setError(toMessage(err, "Could not post your note."));
+      toast.error(toMessage(err, "Could not post your note."));
     } finally {
       setBusy(false);
     }
   };
 
-  if (error && !data) {
+  if (loadError && !data) {
     return (
       <div className="space-y-4">
         <BackLink />
-        <ErrorBanner message={error} />
+        <Card>
+          <CardContent className="pt-5 text-sm text-muted-foreground">
+            {loadError}
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -254,7 +261,6 @@ function ComplaintDetail({ id }: { id: string }) {
   return (
     <div className="space-y-6">
       <BackLink />
-      <ErrorBanner message={error} />
 
       {/* Header */}
       <Card>
@@ -426,6 +432,7 @@ function PhotoDialog({
   complaintId: string;
   onClose: () => void;
 }) {
+  const toast = useToast();
   const [state, setState] = useState<{
     url: string | null;
     error: string | null;
@@ -440,17 +447,17 @@ function PhotoDialog({
         const { downloadUrl } = await api.complaints.photo(complaintId);
         if (!cancelled) setState({ url: downloadUrl, error: null });
       } catch (err) {
-        if (!cancelled)
-          setState({
-            url: null,
-            error: toMessage(err, "Could not load the photo."),
-          });
+        if (!cancelled) {
+          const message = toMessage(err, "Could not load the photo.");
+          setState({ url: null, error: message });
+          toast.error(message);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [open, complaintId]);
+  }, [open, complaintId, toast]);
 
   return (
     <Dialog open={open} onClose={onClose} title="Complaint photo">
@@ -481,18 +488,6 @@ function BackLink() {
       <ArrowLeft className="h-4 w-4" />
       All complaints
     </Link>
-  );
-}
-
-function ErrorBanner({ message }: { message: string | null }) {
-  if (!message) return null;
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-3 pt-5 text-danger">
-        <AlertCircle className="h-5 w-5" />
-        <span className="text-sm">{message}</span>
-      </CardContent>
-    </Card>
   );
 }
 
