@@ -94,41 +94,37 @@ export default function ComplaintThreadScreen() {
         <ScrollView
           ref={scrollRef}
           showsVerticalScrollIndicator={false}
-          className="bg-[#ECE5DD]"
-          contentContainerClassName="px-3 py-3"
+          className="bg-page"
+          contentContainerClassName="gap-2.5 px-3 py-4"
           onContentSizeChange={() => scrollToBottom(false)}
         >
-          {/* Date chip */}
+          {/* Day pill */}
           {complaint ? (
-            <View className="my-2 items-center">
-              <Text className="rounded-md bg-white/80 px-2.5 py-1 text-[11px] font-medium text-[#54656f]">
-                {new Date(complaint.createdAt).toLocaleDateString(undefined, {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                })}
-              </Text>
-            </View>
+            <Text className="self-center rounded-pill border border-line bg-surface px-3 py-1 text-[11px] font-semibold text-ink2">
+              {new Date(complaint.createdAt).toLocaleDateString(undefined, {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+              })}
+            </Text>
           ) : null}
 
           {/* The complaint itself = the resident's first (outgoing) message */}
           {complaint ? (
-            <View className="my-0.5 max-w-[82%] self-end">
-              <View className="rounded-2xl rounded-tr-sm bg-brand p-1.5 shadow-sm shadow-black/10">
-                {photo.data?.downloadUrl ? (
-                  <Image
-                    source={{ uri: photo.data.downloadUrl }}
-                    className="h-44 w-60 rounded-xl"
-                    resizeMode="cover"
-                  />
-                ) : null}
-                <Text className="px-2 pt-1.5 text-[15px] leading-5 text-brand-foreground">
-                  {complaint.description}
-                </Text>
-                <Text className="px-2 pb-0.5 pt-1 text-right text-[10px] text-brand-foreground/70">
-                  {clock(complaint.createdAt)}
-                </Text>
-              </View>
+            <View className="max-w-[78%] self-end rounded-[15px] rounded-br-[4px] bg-brand p-1.5 shadow-sm shadow-black/5">
+              {photo.data?.downloadUrl ? (
+                <Image
+                  source={{ uri: photo.data.downloadUrl }}
+                  className="h-44 w-60 rounded-xl"
+                  resizeMode="cover"
+                />
+              ) : null}
+              <Text className="px-2 pt-1.5 text-[13.5px] leading-[19px] text-brand-foreground">
+                {complaint.description}
+              </Text>
+              <Text className="px-2 pb-0.5 pt-1 text-[10.5px] text-brand-foreground/70">
+                You · {clock(complaint.createdAt)}
+              </Text>
             </View>
           ) : null}
 
@@ -137,63 +133,51 @@ export default function ComplaintThreadScreen() {
             return (
               <View
                 key={u.id}
-                className={cn('my-0.5 max-w-[82%]', mine ? 'self-end' : 'self-start')}
+                className={cn(
+                  'max-w-[78%] px-[13px] py-[10px] shadow-sm shadow-black/5',
+                  mine
+                    ? 'self-end rounded-[15px] rounded-br-[4px] bg-brand'
+                    : 'self-start rounded-[15px] rounded-bl-[4px] bg-surface',
+                )}
               >
-                <View
+                <Text
                   className={cn(
-                    'rounded-2xl px-3.5 pb-1.5 pt-2 shadow-sm shadow-black/10',
-                    mine ? 'rounded-tr-sm bg-brand' : 'rounded-tl-sm bg-white',
+                    'text-[13.5px] leading-[19px]',
+                    mine ? 'text-brand-foreground' : 'text-ink',
                   )}
                 >
-                  {!mine ? (
-                    <Text className="mb-0.5 text-[12px] font-semibold text-brand">Manager</Text>
-                  ) : null}
-                  <Text
-                    className={cn(
-                      'text-[15px] leading-5',
-                      mine ? 'text-brand-foreground' : 'text-[#111b21]',
-                    )}
-                  >
-                    {u.note}
-                  </Text>
-                  <View className="mt-1 flex-row items-center justify-end gap-1">
-                    <Text
-                      className={cn(
-                        'text-[10px]',
-                        mine ? 'text-brand-foreground/70' : 'text-[#667781]',
-                      )}
-                    >
-                      {clock(u.createdAt)}
-                    </Text>
-                    {mine ? (
-                      <Ionicons name="checkmark-done" size={14} color="rgba(255,255,255,0.85)" />
-                    ) : null}
-                  </View>
-                </View>
+                  {u.note}
+                </Text>
+                <Text
+                  className={cn(
+                    'mt-1 text-[10.5px]',
+                    mine ? 'text-brand-foreground/70' : 'text-ink3',
+                  )}
+                >
+                  {mine ? 'You' : 'Manager'} · {clock(u.createdAt)}
+                </Text>
               </View>
             );
           })}
 
           {thread.data && thread.data.length === 0 ? (
-            <View className="my-3 items-center">
-              <Text className="rounded-md bg-white/80 px-3 py-1.5 text-center text-[12px] text-[#54656f]">
-                No replies yet. Add a note for your manager.
-              </Text>
-            </View>
+            <Text className="my-2 self-center rounded-pill border border-line bg-surface px-3 py-1.5 text-center text-[12px] text-ink2">
+              No replies yet. Add a note for your manager.
+            </Text>
           ) : null}
         </ScrollView>
 
         {/* Reply bar */}
         <View
-          className="flex-row items-end gap-1.5 bg-[#ECE5DD] px-2 pt-1.5"
-          style={{ paddingBottom: insets.bottom + 8 }}
+          className="flex-row items-end gap-2.5 border-t border-line bg-surface px-3.5 pt-2.5"
+          style={{ paddingBottom: insets.bottom + 10 }}
         >
           <TextInput
             value={note}
             onChangeText={setNote}
-            placeholder="Message"
-            placeholderTextColor="#8696a0"
-            className="max-h-28 flex-1 rounded-3xl bg-white px-4 py-2.5 text-[15px] text-[#111b21] shadow-sm shadow-black/10"
+            placeholder="Message…"
+            placeholderTextColor="#9ca3af"
+            className="max-h-28 flex-1 rounded-btn border-[1.5px] border-line bg-surface px-3.5 py-2.5 text-[15px] text-ink"
             multiline
           />
           <Pressable
