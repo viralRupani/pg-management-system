@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PG Resident App — UI Design Prototype</title>
+<style>
+:root{
+  /* ===== WHITE-LABEL ACCENT (driven by PG slug at login) ===== */
+  --accent:#0d9488;                 /* teal demo default */
+  --accent-ink:#ffffff;             /* text on accent */
+  /* derived tints/shades — auto-adapt to ANY accent via color-mix */
+  --accent-press: color-mix(in srgb, var(--accent) 82%, #000);
+  --accent-soft:  color-mix(in srgb, var(--accent) 12%, #fff);
+  --accent-soft2: color-mix(in srgb, var(--accent) 20%, #fff);
+  --accent-line:  color-mix(in srgb, var(--accent) 30%, #fff);
+  --accent-deep:  color-mix(in srgb, var(--accent) 88%, #000);
+
+  /* ===== NEUTRALS ===== */
+  --ink:#111827; --ink2:#6b7280; --ink3:#9ca3af; --ink4:#c7ccd4;
+  --surface:#ffffff; --surface2:#f8fafc; --bg:#f3f4f6; --line:#e9ebef; --line2:#f1f2f5;
+
+  /* ===== SEMANTIC STATUS (fixed, tuned to sit beside any accent) ===== */
+  --amber:#b45309; --amber-bg:#fff7ed; --amber-dot:#f59e0b;
+  --green:#15803d; --green-bg:#ecfdf3; --green-dot:#22c55e;
+  --red:#b91c1c;   --red-bg:#fef2f2;   --red-dot:#ef4444;
+  --blue:#1d4ed8;  --blue-bg:#eff6ff;  --blue-dot:#3b82f6;
+
+  /* ===== SCALE ===== */
+  --r-card:18px; --r-btn:12px; --r-sheet:22px; --r-pill:999px;
+  --sh-card:0 1px 2px rgba(16,24,40,.04), 0 4px 16px rgba(16,24,40,.06);
+  --sh-pop:0 8px 30px rgba(16,24,40,.16);
+  --fams:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{font-family:var(--fams);background:#eceef2;color:var(--ink);line-height:1.45;padding:0 0 80px}
+
+/* ============ PAGE CHROME ============ */
+.page-head{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.86);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:18px 28px;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.page-head h1{font-size:19px;font-weight:700;letter-spacing:-.02em}
+.page-head .sub{font-size:13px;color:var(--ink2);font-weight:500}
+.swatches{display:flex;align-items:center;gap:10px;margin-left:auto;flex-wrap:wrap}
+.swatches .lbl{font-size:12px;color:var(--ink2);font-weight:600;letter-spacing:.02em}
+.swatch{width:26px;height:26px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line),0 1px 3px rgba(0,0,0,.15);cursor:pointer;transition:transform .12s}
+.swatch:hover{transform:scale(1.12)}
+.swatch.on{box-shadow:0 0 0 2px var(--accent),0 1px 3px rgba(0,0,0,.2)}
+.hex{font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2);background:#fff;border:1px solid var(--line);padding:4px 8px;border-radius:7px}
+
+.wrap{max-width:1500px;margin:0 auto;padding:34px 28px}
+.section-title{font-size:15px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);margin:42px 0 6px}
+.section-desc{font-size:14px;color:var(--ink2);max-width:760px;margin-bottom:22px}
+.gallery{display:flex;flex-wrap:wrap;gap:26px 24px;align-items:flex-start}
+
+/* ============ PHONE FRAME ============ */
+.device{width:392px}
+.phone{width:392px;height:812px;background:#000;border-radius:46px;padding:11px;box-shadow:0 30px 60px -20px rgba(16,24,40,.4),0 0 0 2px #1a1c20;position:relative}
+.screen{width:100%;height:100%;background:var(--bg);border-radius:36px;overflow:hidden;position:relative;display:flex;flex-direction:column}
+.caption{margin-top:13px;font-size:13.5px;font-weight:600;color:var(--ink)}
+.caption span{display:block;font-weight:500;color:var(--ink3);font-size:12px;margin-top:1px}
+
+/* status bar (iOS-ish, neutral) */
+.statusbar{height:46px;flex:0 0 46px;display:flex;align-items:center;justify-content:space-between;padding:0 26px 0 30px;font-size:14px;font-weight:600;color:var(--ink);z-index:5}
+.statusbar.onaccent{color:var(--accent-ink)}
+.statusbar .ico{display:flex;gap:6px;align-items:center}
+.statusbar svg{display:block}
+
+/* scroll body */
+.body{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+.body::-webkit-scrollbar{width:0}
+.pad{padding:4px 18px 26px}
+
+/* appbar */
+.appbar{display:flex;align-items:center;gap:12px;padding:6px 18px 14px}
+.appbar .back{width:38px;height:38px;border-radius:50%;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;flex:0 0 38px;box-shadow:var(--sh-card)}
+.appbar h2{font-size:19px;font-weight:700;letter-spacing:-.01em}
+.appbar .act{margin-left:auto;width:38px;height:38px;border-radius:50%;background:var(--surface);border:1px solid var(--line);display:grid;place-items:center;box-shadow:var(--sh-card)}
+
+/* ============ COMPONENTS ============ */
+.card{background:var(--surface);border-radius:var(--r-card);box-shadow:var(--sh-card);padding:16px;margin-bottom:14px}
+.card.flat{box-shadow:none;border:1px solid var(--line)}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:inherit;font-size:15px;font-weight:650;border-radius:var(--r-btn);padding:13px 18px;border:0;cursor:pointer;width:100%;letter-spacing:-.01em}
+.btn-pri{background:var(--accent);color:var(--accent-ink);box-shadow:0 4px 12px -2px color-mix(in srgb,var(--accent) 55%,transparent)}
+.btn-pri:active{background:var(--accent-press)}
+.btn-sec{background:var(--accent-soft);color:var(--accent-deep)}
+.btn-ghost{background:transparent;color:var(--ink2);border:1.5px solid var(--line)}
+.btn-sm{padding:9px 14px;font-size:13.5px;width:auto}
+.btn-row{display:flex;gap:10px}
+
+/* badges / pills */
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:4px 10px 4px 8px;border-radius:var(--r-pill);letter-spacing:.01em}
+.badge .d{width:7px;height:7px;border-radius:50%}
+.badge.amber{background:var(--amber-bg);color:var(--amber)} .badge.amber .d{background:var(--amber-dot)}
+.badge.green{background:var(--green-bg);color:var(--green)} .badge.green .d{background:var(--green-dot)}
+.badge.red{background:var(--red-bg);color:var(--red)}       .badge.red .d{background:var(--red-dot)}
+.badge.blue{background:var(--blue-bg);color:var(--blue)}    .badge.blue .d{background:var(--blue-dot)}
+.badge.neutral{background:#f3f4f6;color:var(--ink2)} .badge.neutral .d{background:var(--ink3)}
+
+/* list row */
+.row{display:flex;align-items:center;gap:13px;padding:14px 4px}
+.row+.row{border-top:1px solid var(--line2)}
+.ricon{width:42px;height:42px;border-radius:12px;flex:0 0 42px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-deep)}
+.ricon.amber{background:var(--amber-bg);color:var(--amber)}
+.ricon.green{background:var(--green-bg);color:var(--green)}
+.ricon.red{background:var(--red-bg);color:var(--red)}
+.ricon.blue{background:var(--blue-bg);color:var(--blue)}
+.ricon.gray{background:#f1f2f5;color:var(--ink2)}
+.rmeta{flex:1;min-width:0}
+.rmeta .t{font-size:14.5px;font-weight:650;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rmeta .s{font-size:12.5px;color:var(--ink2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chev{color:var(--ink4);flex:0 0 auto}
+
+.inputbox{background:var(--surface);border:1.5px solid var(--line);border-radius:var(--r-btn);padding:14px 15px;font-size:16px;color:var(--ink);width:100%;display:flex;align-items:center;gap:10px}
+.inputbox.focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+.inputbox .ph{color:var(--ink3)}
+.label{font-size:13px;font-weight:650;color:var(--ink);margin:0 2px 8px}
+
+/* skeleton */
+.sk{background:linear-gradient(90deg,#eef0f3 25%,#f6f7f9 37%,#eef0f3 63%);background-size:400% 100%;animation:sh 1.4s ease infinite;border-radius:8px}
+@keyframes sh{0%{background-position:100% 0}100%{background-position:0 0}}
+
+/* empty state */
+.empty{text-align:center;padding:44px 24px;color:var(--ink2)}
+.empty .ic{width:72px;height:72px;border-radius:50%;background:var(--accent-soft);color:var(--accent-deep);display:grid;place-items:center;margin:0 auto 16px}
+.empty h4{font-size:16px;color:var(--ink);font-weight:700;margin-bottom:5px}
+.empty p{font-size:13.5px;max-width:240px;margin:0 auto}
+
+/* bottom tab bar */
+.tabbar{flex:0 0 auto;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border-top:1px solid var(--line);display:flex;padding:9px 8px 26px;justify-content:space-around}
+.tab{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--ink3);flex:1}
+.tab.on{color:var(--accent)}
+.tab svg{display:block}
+
+/* FAB */
+.fab{position:absolute;right:18px;bottom:96px;width:56px;height:56px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;box-shadow:0 8px 20px -4px color-mix(in srgb,var(--accent) 60%,transparent);z-index:8}
+
+/* bottom sheet (rendered inline within a frame to show the pattern) */
+.sheet-scrim{position:absolute;inset:0;background:rgba(16,24,40,.42);z-index:9;border-radius:36px;display:flex;align-items:flex-end}
+.sheet{background:var(--surface);width:100%;border-radius:var(--r-sheet) var(--r-sheet) 0 0;padding:10px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:var(--sh-pop)}
+.grab{width:38px;height:5px;border-radius:99px;background:#e3e6ea;margin:4px auto 14px}
+.sheet h3{font-size:18px;font-weight:700;margin-bottom:4px}
+.sheet .sub{font-size:13.5px;color:var(--ink2);margin-bottom:16px}
+.opt{display:flex;align-items:center;gap:13px;padding:13px 6px;border-radius:12px}
+.opt+.opt{border-top:1px solid var(--line2)}
+.opt .oi{width:42px;height:42px;border-radius:12px;background:var(--accent-soft);color:var(--accent-deep);display:grid;place-items:center;flex:0 0 42px}
+.opt .ot{font-size:15px;font-weight:600}
+.opt .os{font-size:12.5px;color:var(--ink2)}
+
+/* misc text helpers */
+.h-amt{font-size:30px;font-weight:800;letter-spacing:-.02em}
+.muted{color:var(--ink2)} .small{font-size:12.5px} .tiny{font-size:11px}
+.b{font-weight:700} .sb{font-weight:650}
+.rowflex{display:flex;align-items:center;justify-content:space-between}
+.divider{height:1px;background:var(--line2);margin:12px 0}
+.chiprow{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.chip{flex:0 0 auto;font-size:13px;font-weight:600;padding:8px 14px;border-radius:var(--r-pill);background:var(--surface);border:1px solid var(--line);color:var(--ink2)}
+.chip.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.gridlinks{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.ql{display:flex;flex-direction:column;align-items:center;gap:7px;background:var(--surface);border-radius:14px;padding:13px 4px;box-shadow:var(--sh-card)}
+.ql .qi{width:44px;height:44px;border-radius:13px;background:var(--accent-soft);color:var(--accent-deep);display:grid;place-items:center}
+.ql .qt{font-size:11.5px;font-weight:600;color:var(--ink);text-align:center}
+
+/* hero / accent header block */
+.hero{background:var(--accent);color:var(--accent-ink);padding:0 0 22px;border-radius:0 0 26px 26px;position:relative;overflow:hidden}
+.hero:after{content:"";position:absolute;right:-40px;top:-60px;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.08)}
+.hero .pad{padding:2px 20px 0}
+.logo-dot{width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.18);display:grid;place-items:center;font-weight:800;font-size:17px}
+
+/* progress dots (auth) */
+.steps{display:flex;gap:6px;align-items:center}
+.steps i{height:5px;border-radius:99px;background:var(--line);width:22px;display:block}
+.steps i.on{background:var(--accent);width:30px}
+
+/* OTP boxes */
+.otp{display:flex;gap:9px;justify-content:space-between}
+.otp .c{flex:1;height:58px;border:1.5px solid var(--line);border-radius:13px;display:grid;place-items:center;font-size:23px;font-weight:700;background:var(--surface)}
+.otp .c.fill{border-color:var(--accent);color:var(--ink)}
+.otp .c.cur{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
+
+.thumb{width:100%;height:150px;border-radius:14px;background:var(--surface2);border:1px dashed var(--accent-line);display:grid;place-items:center;color:var(--ink2);overflow:hidden}
+.photo{background:linear-gradient(135deg,#dbe4ea,#c3d0d8)}
+
+/* chat thread */
+.bubble{max-width:78%;padding:10px 13px;border-radius:15px;font-size:13.5px;line-height:1.4}
+.bubble .tm{font-size:10.5px;margin-top:4px;opacity:.7}
+.b-them{background:var(--surface);box-shadow:var(--sh-card);border-radius:15px 15px 15px 4px}
+.b-me{background:var(--accent);color:var(--accent-ink);border-radius:15px 15px 4px 15px;align-self:flex-end}
+.thread{display:flex;flex-direction:column;gap:10px}
+.thread .turn{display:flex}
+.thread .turn.me{justify-content:flex-end}
+.daypill{align-self:center;font-size:11px;font-weight:600;color:var(--ink2);background:#fff;border:1px solid var(--line);padding:4px 12px;border-radius:99px;margin:4px auto}
+
+/* mess grid */
+.mealrow{display:flex;gap:10px;align-items:stretch;margin-bottom:10px}
+.daycol{flex:0 0 44px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--surface2);border-radius:12px;font-weight:700;color:var(--ink2)}
+.daycol.on{background:var(--accent);color:var(--accent-ink)}
+.daycol .dn{font-size:11px;font-weight:600} .daycol .dd{font-size:17px}
+.meals{flex:1;display:flex;flex-direction:column;gap:6px}
+.meal{background:var(--surface);border-radius:12px;box-shadow:var(--sh-card);padding:9px 12px;font-size:12.5px}
+.meal b{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent-deep);display:block;margin-bottom:1px}
+
+/* notification unread */
+.notif{display:flex;gap:12px;padding:14px 6px;position:relative}
+.notif+.notif{border-top:1px solid var(--line2)}
+.notif.unread{background:var(--accent-soft);border-radius:12px;border-top:0;margin:2px 0}
+.notif .dotu{position:absolute;left:-2px;top:18px;width:8px;height:8px;border-radius:50%;background:var(--accent)}
+
+/* timeline (deposit ledger / complaint) */
+.tl{position:relative;padding-left:26px}
+.tl:before{content:"";position:absolute;left:9px;top:6px;bottom:6px;width:2px;background:var(--line)}
+.tl .node{position:relative;margin-bottom:16px}
+.tl .node:before{content:"";position:absolute;left:-22px;top:3px;width:14px;height:14px;border-radius:50%;background:#fff;border:3px solid var(--accent)}
+.tl .node.done:before{background:var(--accent)}
+
+/* component-sheet specifics */
+.sheetgrid{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start}
+.speccard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px 20px;width:340px;box-shadow:var(--sh-card)}
+.speccard h4{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink2);margin-bottom:14px}
+.tokrow{display:flex;align-items:center;gap:10px;font-size:13px;margin-bottom:9px}
+.tokrow .sw{width:30px;height:30px;border-radius:8px;border:1px solid rgba(0,0,0,.06);flex:0 0 30px}
+.tokrow code{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--ink2)}
+.typescale > div{margin-bottom:10px;border-bottom:1px dashed var(--line);padding-bottom:8px}
+.note{font-size:12px;color:var(--ink2);background:var(--surface2);border-left:3px solid var(--accent);padding:10px 12px;border-radius:8px;margin-top:8px}
+.swatch-lg{height:48px;border-radius:10px;display:flex;align-items:flex-end;padding:6px 8px;font-size:10.5px;font-weight:700;color:#fff}
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <div>
+    <h1>PG Resident App — UI Design</h1>
+    <div class="sub">React Native · Expo · NativeWind v4 · 390×844 · white-label accent</div>
+  </div>
+  <div class="swatches">
+    <span class="lbl">PG accent:</span>
+    <span class="swatch on" style="background:#0d9488" data-c="#0d9488" title="Teal (demo)"></span>
+    <span class="swatch" style="background:#4f46e5" data-c="#4f46e5" title="Indigo"></span>
+    <span class="swatch" style="background:#e11d48" data-c="#e11d48" title="Rose"></span>
+    <span class="swatch" style="background:#ea580c" data-c="#ea580c" title="Orange"></span>
+    <span class="swatch" style="background:#7c3aed" data-c="#7c3aed" title="Violet"></span>
+    <span class="swatch" style="background:#0284c7" data-c="#0284c7" title="Sky"></span>
+    <span class="hex" id="hex">#0d9488</span>
+  </div>
+</div>
+
+<div class="wrap">
+  <p class="section-desc" style="margin-top:6px">
+    Tap a swatch above to re-skin every screen live — this demonstrates the white-label system: a single
+    accent variable drives buttons, active states, highlights and brand touches, while layout/structure stay fixed.
+    Semantic status colors (amber / green / red / blue) are intentionally independent of the accent.
+  </p>
+
+  <div class="section-title">Auth flow · 3 screens</div>
+  <p class="section-desc">Phone-only login. Minimal steps, large targets, progress dots. Branding is a neutral placeholder until the PG slug resolves — then the PG logo + accent load (screens 2–3).</p>
+  <div class="gallery">
+
+    <!-- AUTH 1: PG slug -->
+    <div class="device">
+      <div class="phone"><div class="screen" style="background:#fff">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="body"><div class="pad" style="padding-top:24px">
+          <div style="width:60px;height:60px;border-radius:17px;background:#f1f2f5;display:grid;place-items:center;margin-bottom:26px">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.8"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01"/></svg>
+          </div>
+          <div class="steps" style="margin-bottom:24px"><i class="on"></i><i></i><i></i></div>
+          <h2 style="font-size:25px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px">Welcome to your PG</h2>
+          <p class="muted" style="font-size:14.5px;margin-bottom:28px">Enter the PG code your manager shared. We'll load your home's branding and details.</p>
+          <div class="label">PG code</div>
+          <div class="inputbox focus" style="font-weight:600;letter-spacing:.12em;text-transform:uppercase"><span>GREENNEST</span><span style="margin-left:auto;width:9px;height:20px;background:var(--accent);border-radius:2px"></span></div>
+          <p class="small muted" style="margin:10px 2px 0;display:flex;gap:6px;align-items:center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg> Don't have it? Ask your PG manager.</p>
+          <div style="margin-top:26px"><button class="btn btn-pri">Continue</button></div>
+        </div></div>
+      </div></div>
+      <div class="caption">1 · PG code / slug<span>Neutral placeholder branding</span></div>
+    </div>
+
+    <!-- AUTH 2: phone -->
+    <div class="device">
+      <div class="phone"><div class="screen" style="background:#fff">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="body"><div class="pad" style="padding-top:24px">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:26px">
+            <div class="logo-dot" style="background:var(--accent);color:var(--accent-ink)">G</div>
+            <div><div class="b" style="font-size:15px">GreenNest PG</div><div class="tiny muted">Koramangala, Bengaluru</div></div>
+          </div>
+          <div class="steps" style="margin-bottom:24px"><i class="on"></i><i class="on"></i><i></i></div>
+          <h2 style="font-size:25px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px">Verify your number</h2>
+          <p class="muted" style="font-size:14.5px;margin-bottom:28px">We'll text a 6-digit code to confirm it's you. No password needed.</p>
+          <div class="label">Mobile number</div>
+          <div class="inputbox focus"><span class="b" style="padding-right:11px;border-right:1px solid var(--line)">🇮🇳 +91</span><span>98765 43210</span></div>
+          <p class="small muted" style="margin:10px 2px 0">Standard SMS rates may apply.</p>
+          <div style="margin-top:26px"><button class="btn btn-pri">Send OTP</button></div>
+        </div></div>
+      </div></div>
+      <div class="caption">2 · Phone number<span>PG branding + accent resolved</span></div>
+    </div>
+
+    <!-- AUTH 3: OTP -->
+    <div class="device">
+      <div class="phone"><div class="screen" style="background:#fff">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="body"><div class="pad" style="padding-top:24px">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:26px">
+            <div class="logo-dot" style="background:var(--accent);color:var(--accent-ink)">G</div>
+            <div><div class="b" style="font-size:15px">GreenNest PG</div><div class="tiny muted">Koramangala, Bengaluru</div></div>
+          </div>
+          <div class="steps" style="margin-bottom:24px"><i class="on"></i><i class="on"></i><i class="on"></i></div>
+          <h2 style="font-size:25px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px">Enter the code</h2>
+          <p class="muted" style="font-size:14.5px;margin-bottom:26px">Sent to <span class="b" style="color:var(--ink)">+91 98765 43210</span> · <span style="color:var(--accent)" class="sb">Edit</span></p>
+          <div class="otp" style="margin-bottom:22px">
+            <div class="c fill">2</div><div class="c fill">9</div><div class="c fill">4</div><div class="c cur"></div><div class="c"></div><div class="c"></div>
+          </div>
+          <div class="rowflex"><span class="small muted">Didn't get it?</span><span class="small muted">Resend in <span class="b" style="color:var(--ink)">0:24</span></span></div>
+          <div style="margin-top:26px"><button class="btn btn-pri">Verify &amp; continue</button></div>
+          <p class="tiny muted" style="text-align:center;margin-top:18px">🔒 Your number is only used to log in.</p>
+        </div></div>
+      </div></div>
+      <div class="caption">3 · OTP (6-digit)<span>Resend + live countdown</span></div>
+    </div>
+
+  </div>
+
+  <div class="section-title">Core screens</div>
+  <p class="section-desc">Bottom tab bar = <b>Home · Rent · Complaints · More</b>. Everything else (Announcements, Mess, Deposit, Documents, Notifications) is reachable in 1 tap from Home shortcuts or the More tab — keeping <i>Pay rent</i> and <i>Raise complaint</i> always within 1–2 taps.</p>
+  <div class="gallery">
+
+    <!-- HOME -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="hero">
+          <div class="statusbar onaccent"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".5"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".6"/></svg></span></div>
+          <div class="pad" style="padding-bottom:46px">
+            <div class="rowflex">
+              <div style="display:flex;align-items:center;gap:10px">
+                <div class="logo-dot">G</div>
+                <div><div style="font-size:12.5px;opacity:.85">Good morning 👋</div><div class="b" style="font-size:17px">Aarav Mehta</div></div>
+              </div>
+              <div style="position:relative;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.16);display:grid;place-items:center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+                <span style="position:absolute;top:7px;right:8px;width:8px;height:8px;border-radius:50%;background:#ef4444;border:1.5px solid var(--accent)"></span>
+              </div>
+            </div>
+            <div style="margin-top:14px;display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.16);padding:6px 12px;border-radius:99px;font-size:12.5px;font-weight:600">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14"/></svg> Room 204 · Bed B
+            </div>
+          </div>
+        </div>
+        <div class="body"><div class="pad" style="margin-top:-34px">
+          <!-- rent status card -->
+          <div class="card" style="padding:17px 17px 16px">
+            <div class="rowflex"><span class="eyebrow">June 2026 · Rent</span><span class="badge amber"><i class="d"></i>Pending</span></div>
+            <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:9px">
+              <div><div class="h-amt">₹8,500</div><div class="small muted" style="margin-top:2px">Due 15 Jun · in 5 days</div></div>
+              <button class="btn btn-pri btn-sm" style="padding:11px 20px">Pay now</button>
+            </div>
+          </div>
+          <!-- quick links -->
+          <div class="gridlinks" style="margin:4px 0 16px">
+            <div class="ql"><div class="qi"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.7 6.3a4 4 0 0 1-5.4 5.4l-5 5a2 2 0 0 0 2.8 2.8l5-5a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.3-2.3z"/></svg></div><div class="qt">Complaints</div></div>
+            <div class="ql"><div class="qi"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3v5h5M14 3H6v18h12V8z"/></svg></div><div class="qt">Documents</div></div>
+            <div class="ql"><div class="qi"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.4-3 7.4-7 8-4-.6-7-3.6-7-8V6z"/></svg></div><div class="qt">Deposit</div></div>
+            <div class="ql"><div class="qi"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3v8M8 3v8M6.5 11v10M17 3c-1.5.5-2.5 2.5-2.5 5s1 4 2.5 4.2V21"/></svg></div><div class="qt">Mess</div></div>
+          </div>
+          <!-- announcement -->
+          <div class="card">
+            <div class="rowflex" style="margin-bottom:7px"><span class="eyebrow">📣 Latest announcement</span><span class="tiny muted">2h ago</span></div>
+            <div class="sb" style="font-size:14.5px">Water tanker cleaning — Sat 8 AM</div>
+            <p class="small muted" style="margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">Water supply will pause between 8–10 AM this Saturday for the half-yearly tank cleaning. Please store water in advance.</p>
+          </div>
+          <!-- mess preview -->
+          <div class="card" style="margin-bottom:6px">
+            <div class="rowflex" style="margin-bottom:10px"><span class="eyebrow">🍽️ Today's mess</span><span class="small sb" style="color:var(--accent)">Full menu ›</span></div>
+            <div class="rowflex small" style="padding:5px 0"><span class="muted">🌅 Breakfast</span><span class="sb">Poha · Tea</span></div>
+            <div class="divider"></div>
+            <div class="rowflex small" style="padding:5px 0"><span class="muted">☀️ Lunch</span><span class="sb">Rajma · Rice · Roti</span></div>
+            <div class="divider"></div>
+            <div class="rowflex small" style="padding:5px 0"><span class="muted">🌙 Dinner</span><span class="sb">Paneer · Dal · Roti</span></div>
+          </div>
+        </div></div>
+        <div class="tabbar">
+          <div class="tab on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>Home</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18"/></svg>Rent</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5A8.4 8.4 0 1 1 21 11.5z"/></svg>Complaints</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>More</div>
+        </div>
+      </div></div>
+      <div class="caption">1 · Home / Dashboard<span>Greeting · rent · shortcuts · announcement · mess</span></div>
+    </div>
+
+    <!-- RENT LIST -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar"><h2>Rent &amp; Payments</h2></div>
+        <div class="body"><div class="pad" style="padding-top:0">
+          <!-- current due summary -->
+          <div class="card" style="background:var(--accent);color:var(--accent-ink);box-shadow:0 8px 22px -6px color-mix(in srgb,var(--accent) 55%,transparent)">
+            <div style="font-size:12.5px;opacity:.85;font-weight:600">JUNE 2026 · DUE IN 5 DAYS</div>
+            <div class="h-amt" style="margin:6px 0 12px">₹8,500</div>
+            <button class="btn" style="background:#fff;color:var(--accent-deep)">Pay now</button>
+          </div>
+          <div class="eyebrow" style="margin:18px 4px 6px">Invoice history</div>
+          <div class="card" style="padding:6px 14px">
+            <div class="row"><div class="ricon amber"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M14 3v5h5M14 3H6v18h12V8z"/></svg></div><div class="rmeta"><div class="t">June 2026</div><div class="s">Due 15 Jun · ₹8,500</div></div><span class="badge amber"><i class="d"></i>Pending</span></div>
+            <div class="row"><div class="ricon blue"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M14 3v5h5M14 3H6v18h12V8z"/></svg></div><div class="rmeta"><div class="t">May 2026</div><div class="s">Submitted 4 May · ₹8,500</div></div><span class="badge blue"><i class="d"></i>Submitted</span></div>
+            <div class="row"><div class="ricon green"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M20 6 9 17l-5-5"/></svg></div><div class="rmeta"><div class="t">April 2026</div><div class="s">Paid 3 Apr · ₹8,500</div></div><span class="badge green"><i class="d"></i>Paid</span></div>
+            <div class="row"><div class="ricon red"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M18 6 6 18M6 6l12 12"/></svg></div><div class="rmeta"><div class="t">March 2026</div><div class="s">Rejected · wrong amount</div></div><span class="badge red"><i class="d"></i>Rejected</span></div>
+            <div class="row"><div class="ricon green"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M20 6 9 17l-5-5"/></svg></div><div class="rmeta"><div class="t">February 2026</div><div class="s">Paid 2 Feb · ₹8,500</div></div><span class="badge green"><i class="d"></i>Paid</span></div>
+          </div>
+        </div></div>
+        <div class="tabbar">
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>Home</div>
+          <div class="tab on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18"/></svg>Rent</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5A8.4 8.4 0 1 1 21 11.5z"/></svg>Complaints</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>More</div>
+        </div>
+      </div></div>
+      <div class="caption">2 · Rent &amp; Payments<span>Current due + invoice history with status badges</span></div>
+    </div>
+
+    <!-- DEPOSIT -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar"><div class="back"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 19l-7-7 7-7"/></svg></div><h2>Security Deposit</h2></div>
+        <div class="body"><div class="pad" style="padding-top:0">
+          <div class="card" style="background:var(--accent);color:var(--accent-ink);text-align:center;padding:24px 16px;box-shadow:0 8px 22px -6px color-mix(in srgb,var(--accent) 55%,transparent)">
+            <div style="font-size:12.5px;opacity:.85;font-weight:600">DEPOSIT HELD</div>
+            <div style="font-size:38px;font-weight:800;letter-spacing:-.02em;margin:4px 0">₹17,000</div>
+            <div style="font-size:12.5px;opacity:.9">Paid 12 Jan 2026 · refundable on move-out</div>
+          </div>
+          <div class="eyebrow" style="margin:18px 4px 10px">Ledger</div>
+          <div class="card">
+            <div class="tl">
+              <div class="node done"><div class="rowflex"><span class="sb small">Deposit received</span><span class="sb small">+₹18,000</span></div><div class="tiny muted">12 Jan 2026</div></div>
+              <div class="node done"><div class="rowflex"><span class="sb small">Late-rent adjustment</span><span class="sb small" style="color:var(--red)">−₹1,000</span></div><div class="tiny muted">5 Apr 2026 · Mar rent delay</div></div>
+              <div class="node"><div class="rowflex"><span class="sb small">Current balance</span><span class="sb small">₹17,000</span></div><div class="tiny muted">As of today</div></div>
+            </div>
+          </div>
+          <button class="btn btn-ghost" style="margin-top:6px">Request to move out</button>
+          <p class="tiny muted" style="text-align:center;margin-top:10px">Deductions are reviewed with you before any refund.</p>
+        </div></div>
+        <div class="tabbar">
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>Home</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18"/></svg>Rent</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5A8.4 8.4 0 1 1 21 11.5z"/></svg>Complaints</div>
+          <div class="tab on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>More</div>
+        </div>
+      </div></div>
+      <div class="caption">3 · Security Deposit<span>Amount held · ledger · move-out entry</span></div>
+    </div>
+
+    <!-- KYC -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar"><div class="back"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 19l-7-7 7-7"/></svg></div><h2>KYC Documents</h2></div>
+        <div class="body"><div class="pad" style="padding-top:0">
+          <div class="card flat" style="display:flex;gap:12px;align-items:center;background:var(--accent-soft);border:0">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent-deep)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <span class="small" style="color:var(--accent-deep)">2 of 3 verified. Upload your rental agreement to complete KYC.</span>
+          </div>
+          <div class="card" style="padding:6px 14px">
+            <div class="row"><div class="ricon green"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M3 16l4-3 3 2 4-3 7 5"/></svg></div><div class="rmeta"><div class="t">Aadhaar card</div><div class="s">Verified 14 Jan</div></div><span class="badge green"><i class="d"></i>Verified</span></div>
+            <div class="row"><div class="ricon green"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="4" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M3 16l4-3 3 2 4-3 7 5"/></svg></div><div class="rmeta"><div class="t">Photo (passport size)</div><div class="s">Verified 14 Jan</div></div><span class="badge green"><i class="d"></i>Verified</span></div>
+            <div class="row"><div class="ricon red"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M14 3v5h5M14 3H6v18h12V8z"/></svg></div><div class="rmeta"><div class="t">College ID</div><div class="s" style="color:var(--red)">Rejected · blurry, re-upload</div></div><span class="badge red"><i class="d"></i>Rejected</span></div>
+            <div class="row"><div class="ricon gray"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 5v14M5 12h14"/></svg></div><div class="rmeta"><div class="t">Rental agreement</div><div class="s">Not uploaded yet</div></div><span class="badge neutral"><i class="d"></i>Pending</span></div>
+          </div>
+          <button class="btn btn-pri" style="margin-top:6px">+ Upload a document</button>
+        </div></div>
+        <div class="tabbar">
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>Home</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18"/></svg>Rent</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5A8.4 8.4 0 1 1 21 11.5z"/></svg>Complaints</div>
+          <div class="tab on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>More</div>
+        </div>
+      </div></div>
+      <div class="caption">4 · KYC Documents<span>Required docs · status · rejection reasons</span></div>
+    </div>
+
+    <!-- COMPLAINTS LIST -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar"><h2>Complaints</h2></div>
+        <div class="body"><div class="pad" style="padding-top:0">
+          <div class="chiprow" style="margin-bottom:14px"><span class="chip on">All</span><span class="chip">Open</span><span class="chip">In progress</span><span class="chip">Resolved</span></div>
+          <div class="card" style="padding:6px 14px">
+            <div class="row"><div class="ricon amber"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg></div><div class="rmeta"><div class="t">Tube light not working</div><div class="s">Electrical · raised 2h ago</div></div><span class="badge amber"><i class="d"></i>Open</span></div>
+            <div class="row"><div class="ricon blue"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg></div><div class="rmeta"><div class="t">Bathroom tap leaking</div><div class="s">Plumbing · updated 1h ago</div></div><span class="badge blue"><i class="d"></i>In progress</span></div>
+            <div class="row"><div class="ricon green"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 12l4 4L9 8M13 7h8M13 12h8M13 17h5"/></svg></div><div class="rmeta"><div class="t">Room not cleaned</div><div class="s">Cleaning · resolved 2 days ago</div></div><span class="badge green"><i class="d"></i>Resolved</span></div>
+            <div class="row"><div class="ricon green"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 18V5l12-2v13M9 9l12-2"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div><div class="rmeta"><div class="t">WiFi very slow at night</div><div class="s">Internet · resolved 5 days ago</div></div><span class="badge green"><i class="d"></i>Resolved</span></div>
+          </div>
+        </div></div>
+        <div class="fab"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></div>
+        <div class="tabbar">
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>Home</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18"/></svg>Rent</div>
+          <div class="tab on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5A8.4 8.4 0 1 1 21 11.5z"/></svg>Complaints</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>More</div>
+        </div>
+      </div></div>
+      <div class="caption">5 · Complaints<span>Filter chips · category icons · FAB to raise</span></div>
+    </div>
+
+    <!-- ANNOUNCEMENTS -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar"><div class="back"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 19l-7-7 7-7"/></svg></div><h2>Announcements</h2></div>
+        <div class="body"><div class="pad" style="padding-top:0">
+          <div class="card" style="border-left:3px solid var(--accent)">
+            <div class="rowflex" style="margin-bottom:6px"><span class="badge" style="background:var(--accent-soft);color:var(--accent-deep)"><i class="d" style="background:var(--accent)"></i>Pinned</span><span class="tiny muted">2h ago</span></div>
+            <div class="b" style="font-size:15px;margin-bottom:4px">Water tanker cleaning — Saturday 8 AM</div>
+            <p class="small muted">Water supply will pause between 8–10 AM this Saturday for the half-yearly tank cleaning. Please store water in advance. Sorry for the inconvenience.</p>
+          </div>
+          <div class="card">
+            <div class="rowflex" style="margin-bottom:6px"><span class="eyebrow">Mess</span><span class="tiny muted">Yesterday</span></div>
+            <div class="b" style="font-size:15px;margin-bottom:4px">Special dinner this Sunday 🎉</div>
+            <p class="small muted">Veg biryani + gulab jamun for dinner on Sunday to celebrate the festival. Timings as usual, 8–10 PM.</p>
+          </div>
+          <div class="card">
+            <div class="rowflex" style="margin-bottom:6px"><span class="eyebrow">Maintenance</span><span class="tiny muted">3 days ago</span></div>
+            <div class="b" style="font-size:15px;margin-bottom:4px">Lift servicing on 8 June</div>
+            <p class="small muted">The lift will be unavailable 11 AM–1 PM on Sunday for routine servicing. Please plan accordingly.</p>
+          </div>
+          <div class="card" style="margin-bottom:4px">
+            <div class="rowflex" style="margin-bottom:6px"><span class="eyebrow">Rent</span><span class="tiny muted">1 week ago</span></div>
+            <div class="b" style="font-size:15px;margin-bottom:4px">June rent invoices generated</div>
+            <p class="small muted">Your June invoice is now available under Rent. Kindly pay before the 15th to avoid late adjustment.</p>
+          </div>
+        </div></div>
+        <div class="tabbar">
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>Home</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18"/></svg>Rent</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5A8.4 8.4 0 1 1 21 11.5z"/></svg>Complaints</div>
+          <div class="tab on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>More</div>
+        </div>
+      </div></div>
+      <div class="caption">6 · Announcements<span>Pinned + reverse-chronological feed</span></div>
+    </div>
+
+    <!-- MESS -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar"><div class="back"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 19l-7-7 7-7"/></svg></div><h2>Mess Menu</h2></div>
+        <div class="body"><div class="pad" style="padding-top:0">
+          <div class="rowflex" style="margin-bottom:12px;background:var(--surface);border-radius:12px;padding:5px;box-shadow:var(--sh-card)">
+            <span style="flex:1;text-align:center;padding:8px;border-radius:9px;font-size:13px;font-weight:600;color:var(--ink3)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><path d="M15 19l-7-7 7-7"/></svg></span>
+            <span style="flex:3;text-align:center;padding:8px;border-radius:9px;font-size:13.5px;font-weight:700;background:var(--accent-soft);color:var(--accent-deep)">This week · 9–15 Jun</span>
+            <span style="flex:1;text-align:center;padding:8px;border-radius:9px;font-size:13px;font-weight:600;color:var(--ink3)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px"><path d="M9 5l7 7-7 7"/></svg></span>
+          </div>
+          <div class="mealrow"><div class="daycol on"><span class="dn">TUE</span><span class="dd">10</span></div><div class="meals"><div class="meal"><b>Breakfast</b>Poha · Tea</div><div class="meal"><b>Lunch</b>Rajma · Rice · Roti · Salad</div><div class="meal"><b>Dinner</b>Paneer · Dal · Roti</div></div></div>
+          <div class="mealrow"><div class="daycol"><span class="dn">WED</span><span class="dd">11</span></div><div class="meals"><div class="meal"><b>Breakfast</b>Idli · Sambar</div><div class="meal"><b>Lunch</b>Chole · Rice · Roti</div><div class="meal"><b>Dinner</b>Veg Pulao · Raita</div></div></div>
+          <div class="mealrow"><div class="daycol"><span class="dn">THU</span><span class="dd">12</span></div><div class="meals"><div class="meal"><b>Breakfast</b>Aloo Paratha · Curd</div><div class="meal"><b>Lunch</b>Kadhi · Rice · Roti</div><div class="meal"><b>Dinner</b>Egg Curry · Roti</div></div></div>
+          <div class="mealrow" style="margin-bottom:4px"><div class="daycol"><span class="dn">FRI</span><span class="dd">13</span></div><div class="meals"><div class="meal"><b>Breakfast</b>Upma · Tea</div><div class="meal"><b>Lunch</b>Mix Veg · Rice · Roti</div><div class="meal"><b>Dinner</b>Chicken / Veg · Roti</div></div></div>
+        </div></div>
+        <div class="tabbar">
+          <div class="tab on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>Home</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18"/></svg>Rent</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5A8.4 8.4 0 1 1 21 11.5z"/></svg>Complaints</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>More</div>
+        </div>
+      </div></div>
+      <div class="caption">7 · Mess Menu<span>Week switcher · today highlighted · B/L/D</span></div>
+    </div>
+
+    <!-- NOTIFICATIONS -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar"><div class="back"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 19l-7-7 7-7"/></svg></div><h2>Notifications</h2><span class="act" style="width:auto;border-radius:99px;padding:0 12px;font-size:12px;font-weight:650;color:var(--accent-deep)">Mark all read</span></div>
+        <div class="body"><div class="pad" style="padding-top:0">
+          <div class="eyebrow" style="margin:0 4px 4px">Today</div>
+          <div class="card" style="padding:4px 12px">
+            <div class="notif unread"><span class="dotu"></span><div class="ricon red" style="width:38px;height:38px;flex:0 0 38px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 2v6m0 4v.01M12 22a10 10 0 1 0 0-20"/></svg></div><div class="rmeta" style="white-space:normal"><div class="t" style="white-space:normal">Rent due in 5 days</div><div class="s" style="white-space:normal">₹8,500 for June — pay before 15 Jun.</div><div class="tiny muted" style="margin-top:2px">9:00 AM</div></div></div>
+            <div class="notif unread"><span class="dotu"></span><div class="ricon blue" style="width:38px;height:38px;flex:0 0 38px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5A8.4 8.4 0 1 1 21 11.5z"/></svg></div><div class="rmeta" style="white-space:normal"><div class="t" style="white-space:normal">Complaint update</div><div class="s" style="white-space:normal">"Bathroom tap leaking" is now In&nbsp;Progress.</div><div class="tiny muted" style="margin-top:2px">8:12 AM</div></div></div>
+          </div>
+          <div class="eyebrow" style="margin:14px 4px 4px">Earlier</div>
+          <div class="card" style="padding:4px 12px">
+            <div class="notif"><div class="ricon gray" style="width:38px;height:38px;flex:0 0 38px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/></svg></div><div class="rmeta" style="white-space:normal"><div class="t" style="white-space:normal">New announcement</div><div class="s" style="white-space:normal">Water tanker cleaning — Saturday 8 AM.</div><div class="tiny muted" style="margin-top:2px">Yesterday</div></div></div>
+            <div class="notif"><div class="ricon green" style="width:38px;height:38px;flex:0 0 38px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M20 6 9 17l-5-5"/></svg></div><div class="rmeta" style="white-space:normal"><div class="t" style="white-space:normal">Aadhaar verified</div><div class="s" style="white-space:normal">Your KYC document was approved.</div><div class="tiny muted" style="margin-top:2px">2 days ago</div></div></div>
+          </div>
+        </div></div>
+        <div class="tabbar">
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>Home</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18"/></svg>Rent</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5A8.4 8.4 0 1 1 21 11.5z"/></svg>Complaints</div>
+          <div class="tab on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>More</div>
+        </div>
+      </div></div>
+      <div class="caption">8 · Notifications<span>Grouped · unread highlight + dot · mark read</span></div>
+    </div>
+
+    <!-- PROFILE / MORE -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar"><h2>More</h2></div>
+        <div class="body"><div class="pad" style="padding-top:0">
+          <div class="card" style="display:flex;align-items:center;gap:14px">
+            <div style="width:56px;height:56px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-size:22px;font-weight:700">A</div>
+            <div style="flex:1"><div class="b" style="font-size:17px">Aarav Mehta</div><div class="small muted">+91 98765 43210</div><div class="small" style="color:var(--accent-deep);font-weight:600;margin-top:2px">Room 204 · Bed B</div></div>
+            <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
+          <div class="card flat" style="display:flex;align-items:center;gap:12px"><div class="logo-dot" style="background:var(--accent);color:var(--accent-ink)">G</div><div style="flex:1"><div class="sb small">GreenNest PG</div><div class="tiny muted">Koramangala, Bengaluru · Manager: Ramesh</div></div></div>
+          <div class="card" style="padding:4px 14px">
+            <div class="row"><div class="ricon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3v5h5M14 3H6v18h12V8z"/></svg></div><div class="rmeta"><div class="t">My Documents (KYC)</div></div><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
+            <div class="row"><div class="ricon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.4-3 7.4-7 8-4-.6-7-3.6-7-8V6z"/></svg></div><div class="rmeta"><div class="t">Security Deposit</div></div><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
+            <div class="row"><div class="ricon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3v8M8 3v8M6.5 11v10M17 3c-1.5.5-2.5 2.5-2.5 5s1 4 2.5 4.2V21"/></svg></div><div class="rmeta"><div class="t">Mess Menu</div></div><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
+            <div class="row"><div class="ricon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8"/></svg></div><div class="rmeta"><div class="t">Notification settings</div></div><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
+            <div class="row"><div class="ricon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.5 1.5c0 1.5-2 2-2 3M12 17h.01"/></svg></div><div class="rmeta"><div class="t">Help &amp; support</div></div><svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>
+          </div>
+          <button class="btn btn-ghost" style="color:var(--red);border-color:var(--red-bg);background:var(--red-bg)">Log out</button>
+        </div></div>
+        <div class="tabbar">
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>Home</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="6" width="18" height="13" rx="3"/><path d="M3 10h18"/></svg>Rent</div>
+          <div class="tab"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5A8.4 8.4 0 1 1 21 11.5z"/></svg>Complaints</div>
+          <div class="tab on"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>More</div>
+        </div>
+      </div></div>
+      <div class="caption">9 · Profile / More<span>Identity · PG info · nested links · logout</span></div>
+    </div>
+
+  </div>
+
+  <div class="section-title">Key flows &amp; bottom sheets</div>
+  <p class="section-desc">The action-heavy moments: paying rent, requesting move-out, uploading KYC, raising and tracking a complaint. Actions use bottom sheets over modals where possible. Loading and empty states close out the set.</p>
+  <div class="gallery">
+
+    <!-- INVOICE DETAIL -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar"><div class="back"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 19l-7-7 7-7"/></svg></div><h2>Invoice</h2></div>
+        <div class="body"><div class="pad" style="padding-top:0">
+          <div class="card">
+            <div class="rowflex"><div><div class="eyebrow">June 2026</div><div class="tiny muted" style="margin-top:2px">#INV-2606-204</div></div><span class="badge amber"><i class="d"></i>Pending</span></div>
+            <div class="divider"></div>
+            <div class="rowflex small" style="margin-bottom:8px"><span class="muted">Room rent</span><span class="sb">₹8,000</span></div>
+            <div class="rowflex small" style="margin-bottom:8px"><span class="muted">Electricity (units)</span><span class="sb">₹500</span></div>
+            <div class="divider"></div>
+            <div class="rowflex"><span class="b">Total payable</span><span class="b" style="font-size:18px">₹8,500</span></div>
+            <div class="small muted" style="margin-top:6px">Due 15 Jun 2026</div>
+          </div>
+          <div class="card" style="background:var(--surface2);box-shadow:none;border:1px solid var(--line)">
+            <div class="eyebrow" style="margin-bottom:8px">Pay to (UPI)</div>
+            <div class="rowflex"><span class="sb" style="font-family:ui-monospace,Menlo,monospace;font-size:13px">greennest@okhdfcbank</span><span class="btn btn-sec btn-sm">Copy</span></div>
+            <p class="tiny muted" style="margin-top:8px">Pay via any UPI app, then submit the payment screenshot for approval.</p>
+          </div>
+          <button class="btn btn-pri">Submit payment</button>
+        </div></div>
+      </div></div>
+      <div class="caption">Invoice detail<span>Line-item breakdown · UPI · submit CTA</span></div>
+    </div>
+
+    <!-- SUBMIT PAYMENT SHEET -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar" style="opacity:.5"><div class="back"></div><h2>Invoice</h2></div>
+        <div class="body" style="opacity:.45"><div class="pad" style="padding-top:0"><div class="card" style="height:120px"></div><div class="card" style="height:90px"></div></div></div>
+        <div class="sheet-scrim">
+          <div class="sheet">
+            <div class="grab"></div>
+            <h3>Submit payment</h3>
+            <p class="sub">For June 2026 · ₹8,500. A manager will review and approve it.</p>
+            <div class="label">Payment screenshot</div>
+            <div class="thumb photo" style="margin-bottom:16px;position:relative"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" style="opacity:.9"><rect x="3" y="4" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M3 16l4-3 3 2 4-3 7 5"/></svg><span style="position:absolute;bottom:8px;right:8px;background:#fff;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;color:var(--accent-deep)">upi-pay.png ✓</span></div>
+            <div class="label">Amount paid</div>
+            <div class="inputbox" style="margin-bottom:14px"><span class="b">₹ 8,500</span></div>
+            <div class="label">UPI reference (optional)</div>
+            <div class="inputbox" style="margin-bottom:18px"><span class="ph">e.g. 4459 2031 8847</span></div>
+            <div class="btn-row"><button class="btn btn-ghost" style="flex:0 0 38%">Cancel</button><button class="btn btn-pri">Submit for review</button></div>
+          </div>
+        </div>
+      </div></div>
+      <div class="caption">Submit payment ↑ sheet<span>Upload screenshot → submit → "Submitted" status</span></div>
+    </div>
+
+    <!-- MOVE OUT SHEET -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar" style="opacity:.5"><div class="back"></div><h2>Security Deposit</h2></div>
+        <div class="body" style="opacity:.45"><div class="pad" style="padding-top:0"><div class="card" style="height:110px;background:var(--accent)"></div><div class="card" style="height:120px"></div></div></div>
+        <div class="sheet-scrim">
+          <div class="sheet">
+            <div class="grab"></div>
+            <h3>Request to move out</h3>
+            <p class="sub">Let your manager know your planned exit. They'll acknowledge and start the deposit settlement.</p>
+            <div class="label">Preferred move-out date</div>
+            <div class="inputbox focus" style="margin-bottom:14px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg><span class="b">30 June 2026</span></div>
+            <div class="label">Note (optional)</div>
+            <div class="inputbox" style="align-items:flex-start;height:78px;margin-bottom:16px"><span class="ph">Reason or anything the manager should know…</span></div>
+            <div class="note" style="margin-bottom:18px">Most PGs need 30 days' notice. Your ₹17,000 deposit will be settled after the final room check.</div>
+            <div class="btn-row"><button class="btn btn-ghost" style="flex:0 0 38%">Cancel</button><button class="btn btn-pri">Submit request</button></div>
+          </div>
+        </div>
+      </div></div>
+      <div class="caption">Request to move out ↑ sheet<span>Date picker + note → pending/acknowledged</span></div>
+    </div>
+
+    <!-- KYC UPLOAD SHEET -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar" style="opacity:.5"><div class="back"></div><h2>KYC Documents</h2></div>
+        <div class="body" style="opacity:.45"><div class="pad" style="padding-top:0"><div class="card" style="height:60px"></div><div class="card" style="height:200px"></div></div></div>
+        <div class="sheet-scrim">
+          <div class="sheet">
+            <div class="grab"></div>
+            <h3>Upload document</h3>
+            <p class="sub">Rental agreement</p>
+            <div class="label">Document type</div>
+            <div class="inputbox focus" style="margin-bottom:18px"><span class="b">Rental agreement</span><svg style="margin-left:auto" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
+            <div class="opt"><div class="oi"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.5 4h-5L8 6H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-4z"/><circle cx="12" cy="13" r="3.5"/></svg></div><div style="flex:1"><div class="ot">Take a photo</div><div class="os">Use camera to capture the document</div></div></div>
+            <div class="opt"><div class="oi"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M3 16l4-3 3 2 4-3 7 5"/></svg></div><div style="flex:1"><div class="ot">Choose from gallery</div><div class="os">Pick an existing image or PDF</div></div></div>
+            <div style="margin-top:16px"><button class="btn btn-ghost">Cancel</button></div>
+          </div>
+        </div>
+      </div></div>
+      <div class="caption">Upload document ↑ sheet<span>Type picker · camera / gallery options</span></div>
+    </div>
+
+    <!-- RAISE COMPLAINT -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar"><div class="back"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 19l-7-7 7-7"/></svg></div><h2>Raise a complaint</h2></div>
+        <div class="body"><div class="pad" style="padding-top:0">
+          <div class="label">Category</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:18px">
+            <div class="ql" style="box-shadow:none;border:1.5px solid var(--accent);background:var(--accent-soft)"><div class="qi" style="background:var(--accent);color:var(--accent-ink)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg></div><div class="qt">Electrical</div></div>
+            <div class="ql" style="box-shadow:none;border:1px solid var(--line)"><div class="qi"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg></div><div class="qt">Plumbing</div></div>
+            <div class="ql" style="box-shadow:none;border:1px solid var(--line)"><div class="qi"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 12l4 4L9 8M13 7h8M13 12h8M13 17h5"/></svg></div><div class="qt">Cleaning</div></div>
+            <div class="ql" style="box-shadow:none;border:1px solid var(--line)"><div class="qi"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div><div class="qt">Internet</div></div>
+            <div class="ql" style="box-shadow:none;border:1px solid var(--line)"><div class="qi"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M5 3v8M8 3v8M6.5 11v10M17 3c-1.5.5-2.5 2.5-2.5 5s1 4 2.5 4.2V21"/></svg></div><div class="qt">Mess / food</div></div>
+            <div class="ql" style="box-shadow:none;border:1px solid var(--line)"><div class="qi"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg></div><div class="qt">Other</div></div>
+          </div>
+          <div class="label">Describe the issue</div>
+          <div class="inputbox focus" style="align-items:flex-start;height:96px;margin-bottom:16px"><span>The tube light in my room flickers and won't stay on.</span></div>
+          <div class="label">Add a photo (optional)</div>
+          <div style="display:flex;gap:10px;margin-bottom:20px">
+            <div style="width:74px;height:74px;border-radius:12px;border:1.5px dashed var(--accent-line);display:grid;place-items:center;color:var(--accent-deep)"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg></div>
+            <div style="width:74px;height:74px;border-radius:12px" class="photo"></div>
+          </div>
+          <button class="btn btn-pri">Submit complaint</button>
+        </div></div>
+      </div></div>
+      <div class="caption">Raise a complaint<span>Category grid · description · optional photo</span></div>
+    </div>
+
+    <!-- COMPLAINT THREAD -->
+    <div class="device">
+      <div class="phone"><div class="screen" style="background:var(--bg)">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar" style="background:var(--surface);padding-bottom:12px;box-shadow:var(--sh-card);border-radius:0 0 16px 16px"><div class="back"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 19l-7-7 7-7"/></svg></div><div style="flex:1"><h2 style="font-size:16px">Bathroom tap leaking</h2><div class="tiny muted">Plumbing · #C-318</div></div><span class="badge blue"><i class="d"></i>In progress</span></div>
+        <div class="body"><div class="pad" style="padding-top:14px">
+          <div class="thread">
+            <div class="daypill">8 June</div>
+            <div class="turn"><div class="bubble b-them"><div>The tap in my bathroom keeps dripping all night.</div><div class="photo" style="height:90px;border-radius:10px;margin-top:8px"></div><div class="tm">You · 9:10 PM</div></div></div>
+            <div class="daypill">Today</div>
+            <div style="text-align:center;font-size:11.5px;color:var(--ink2);margin:2px 0"><span class="badge blue" style="font-size:10.5px"><i class="d"></i>Status → In progress</span></div>
+            <div class="turn"><div class="bubble b-me"><div>Thanks Aarav, plumber will visit between 4–6 PM today.</div><div class="tm">Manager · 8:15 AM</div></div></div>
+            <div class="turn"><div class="bubble b-them"><div>Got it, I'll be in my room. 👍</div><div class="tm">You · 8:20 AM</div></div></div>
+          </div>
+        </div></div>
+        <div style="flex:0 0 auto;background:var(--surface);border-top:1px solid var(--line);padding:10px 14px 26px;display:flex;gap:10px;align-items:center">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ink3)" stroke-width="1.8"><rect x="3" y="4" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M3 16l4-3 3 2 4-3 7 5"/></svg>
+          <div class="inputbox" style="padding:10px 14px;flex:1"><span class="ph">Message…</span></div>
+          <div style="width:42px;height:42px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:0 0 42px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg></div>
+        </div>
+      </div></div>
+      <div class="caption">Complaint thread<span>Chat-like timeline · status events · reply bar</span></div>
+    </div>
+
+    <!-- SKELETON LOADING -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar"><h2>Rent &amp; Payments</h2></div>
+        <div class="body"><div class="pad" style="padding-top:0">
+          <div class="card" style="height:120px;display:flex;flex-direction:column;gap:10px;justify-content:center"><div class="sk" style="height:12px;width:45%"></div><div class="sk" style="height:26px;width:60%"></div><div class="sk" style="height:40px;width:100%;border-radius:12px"></div></div>
+          <div class="sk" style="height:14px;width:35%;margin:18px 4px 12px"></div>
+          <div class="card" style="padding:14px">
+            <div style="display:flex;gap:13px;align-items:center;margin-bottom:16px"><div class="sk" style="width:42px;height:42px;border-radius:12px;flex:0 0 42px"></div><div style="flex:1"><div class="sk" style="height:13px;width:55%;margin-bottom:7px"></div><div class="sk" style="height:11px;width:75%"></div></div><div class="sk" style="width:60px;height:22px;border-radius:99px"></div></div>
+            <div style="display:flex;gap:13px;align-items:center;margin-bottom:16px"><div class="sk" style="width:42px;height:42px;border-radius:12px;flex:0 0 42px"></div><div style="flex:1"><div class="sk" style="height:13px;width:50%;margin-bottom:7px"></div><div class="sk" style="height:11px;width:70%"></div></div><div class="sk" style="width:60px;height:22px;border-radius:99px"></div></div>
+            <div style="display:flex;gap:13px;align-items:center"><div class="sk" style="width:42px;height:42px;border-radius:12px;flex:0 0 42px"></div><div style="flex:1"><div class="sk" style="height:13px;width:60%;margin-bottom:7px"></div><div class="sk" style="height:11px;width:65%"></div></div><div class="sk" style="width:60px;height:22px;border-radius:99px"></div></div>
+          </div>
+        </div></div>
+      </div></div>
+      <div class="caption">Skeleton loading<span>Shimmer placeholders during data fetch</span></div>
+    </div>
+
+    <!-- EMPTY STATE -->
+    <div class="device">
+      <div class="phone"><div class="screen">
+        <div class="statusbar"><b style="font-weight:600">9:41</b><span class="ico"><svg width="17" height="11" viewBox="0 0 17 11" fill="currentColor"><rect y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/><rect x="13.5" width="3" height="11" rx="1"/></svg><svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 11.5l2-2.4a3 3 0 0 0-4 0zM3.2 6.7l1.4 1.4a5 5 0 0 1 6.8 0l1.4-1.4a7 7 0 0 0-9.6 0zM.7 4.2 2.1 5.6a9 9 0 0 1 11.8 0l1.4-1.4a11 11 0 0 0-14.6 0z"/></svg><svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="1.5" fill="currentColor"/><rect x="23" y="4" width="1.5" height="4" rx="1" fill="currentColor" opacity=".5"/></svg></span></div>
+        <div class="appbar"><h2>Complaints</h2></div>
+        <div class="body"><div class="pad" style="padding-top:0">
+          <div class="chiprow" style="margin-bottom:14px"><span class="chip on">All</span><span class="chip">Open</span><span class="chip">In progress</span><span class="chip">Resolved</span></div>
+          <div class="empty" style="padding-top:80px">
+            <div class="ic"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5A8.4 8.4 0 1 1 21 11.5z"/><path d="M9 11h6M9 8h6"/></svg></div>
+            <h4>No complaints yet</h4>
+            <p>All good here! When something needs fixing, raise it and track updates from the manager.</p>
+            <div style="max-width:230px;margin:20px auto 0"><button class="btn btn-pri">Raise a complaint</button></div>
+          </div>
+        </div></div>
+        <div class="fab"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg></div>
+      </div></div>
+      <div class="caption">Empty state<span>Friendly icon · explainer · primary action</span></div>
+    </div>
+
+  </div>
+
+  <div class="section-title">Component &amp; style reference</div>
+  <p class="section-desc">The reusable patterns behind every screen. Colors are CSS variables — swap <code>--accent</code> per PG; the semantic status palette stays fixed so meaning is consistent across brands.</p>
+  <div class="sheetgrid">
+
+    <!-- COLORS -->
+    <div class="speccard">
+      <h4>Accent (white-label)</h4>
+      <div class="swatch-lg" style="background:var(--accent);margin-bottom:8px">--accent &nbsp;(per-PG)</div>
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <div style="flex:1;height:30px;border-radius:7px;background:var(--accent-soft)"></div>
+        <div style="flex:1;height:30px;border-radius:7px;background:var(--accent-soft2)"></div>
+        <div style="flex:1;height:30px;border-radius:7px;background:var(--accent)"></div>
+        <div style="flex:1;height:30px;border-radius:7px;background:var(--accent-press)"></div>
+        <div style="flex:1;height:30px;border-radius:7px;background:var(--accent-deep)"></div>
+      </div>
+      <code style="font-size:10.5px;color:var(--ink3)">soft · soft2 · base · press · deep — all derived via color-mix()</code>
+      <div class="note">Tints/shades are computed from one variable, so any accent works without hand-picking shades.</div>
+    </div>
+
+    <!-- NEUTRALS -->
+    <div class="speccard">
+      <h4>Neutrals &amp; text</h4>
+      <div class="tokrow"><span class="sw" style="background:#111827"></span> Ink (primary) <code>#111827</code></div>
+      <div class="tokrow"><span class="sw" style="background:#6b7280"></span> Ink-2 (muted) <code>#6b7280</code></div>
+      <div class="tokrow"><span class="sw" style="background:#9ca3af"></span> Ink-3 (hint) <code>#9ca3af</code></div>
+      <div class="tokrow"><span class="sw" style="background:#e9ebef"></span> Line <code>#e9ebef</code></div>
+      <div class="tokrow"><span class="sw" style="background:#f3f4f6;border:1px solid #e5e7eb"></span> Page bg <code>#f3f4f6</code></div>
+      <div class="tokrow"><span class="sw" style="background:#fff;border:1px solid #e5e7eb"></span> Surface <code>#ffffff</code></div>
+    </div>
+
+    <!-- STATUS BADGES -->
+    <div class="speccard" style="width:360px">
+      <h4>Status badges — fixed semantics</h4>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <span class="badge amber"><i class="d"></i>Pending</span>
+        <span class="badge blue"><i class="d"></i>Submitted</span>
+        <span class="badge blue"><i class="d"></i>In progress</span>
+        <span class="badge green"><i class="d"></i>Paid</span>
+        <span class="badge green"><i class="d"></i>Verified</span>
+        <span class="badge green"><i class="d"></i>Resolved</span>
+        <span class="badge red"><i class="d"></i>Overdue</span>
+        <span class="badge red"><i class="d"></i>Rejected</span>
+        <span class="badge neutral"><i class="d"></i>Not started</span>
+      </div>
+      <div style="font-size:12.5px;color:var(--ink2);line-height:1.7">
+        <div><b style="color:var(--amber)">Amber</b> — awaiting action (Pending)</div>
+        <div><b style="color:var(--blue)">Blue</b> — in motion (Submitted / In progress)</div>
+        <div><b style="color:var(--green)">Green</b> — success (Paid / Verified / Resolved)</div>
+        <div><b style="color:var(--red)">Red</b> — needs attention (Overdue / Rejected)</div>
+      </div>
+      <div class="note">Soft tinted fills (not solid) so badges read clearly beside <i>any</i> brand accent and never clash with it.</div>
+    </div>
+
+    <!-- BUTTONS -->
+    <div class="speccard">
+      <h4>Buttons</h4>
+      <button class="btn btn-pri" style="margin-bottom:10px">Primary · accent</button>
+      <button class="btn btn-sec" style="margin-bottom:10px">Secondary · accent tint</button>
+      <button class="btn btn-ghost" style="margin-bottom:14px">Ghost · outline</button>
+      <div style="display:flex;gap:8px"><button class="btn btn-pri btn-sm">Small</button><button class="btn btn-sec btn-sm">Small</button></div>
+      <div class="note">Min height 48px for comfortable tap targets. Full-width primary at the bottom of forms/sheets.</div>
+    </div>
+
+    <!-- TYPOGRAPHY -->
+    <div class="speccard">
+      <h4>Type scale</h4>
+      <div class="typescale">
+        <div><span style="font-size:30px;font-weight:800;letter-spacing:-.02em">₹8,500</span> <code>· 30 / 800 amount</code></div>
+        <div><span style="font-size:25px;font-weight:800">Heading</span> <code>· 25 / 800 screen title</code></div>
+        <div><span style="font-size:19px;font-weight:700">Appbar</span> <code>· 19 / 700</code></div>
+        <div><span style="font-size:15px;font-weight:650">Body / row</span> <code>· 15 / 650</code></div>
+        <div><span style="font-size:13px;color:var(--ink2)">Secondary</span> <code>· 13 / muted</code></div>
+        <div style="border:0"><span style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)">Eyebrow</span> <code>· 11 / caps</code></div>
+      </div>
+    </div>
+
+    <!-- SPACING / RADII -->
+    <div class="speccard">
+      <h4>Spacing, radius &amp; elevation</h4>
+      <div class="tokrow">Spacing — 4 · 8 · 12 · 16 · 24 px scale</div>
+      <div style="display:flex;gap:10px;align-items:center;margin:10px 0 14px">
+        <div style="width:46px;height:46px;background:var(--accent-soft);border-radius:8px"></div>
+        <div style="width:46px;height:46px;background:var(--accent-soft);border-radius:12px"></div>
+        <div style="width:46px;height:46px;background:var(--accent-soft);border-radius:18px"></div>
+        <div style="width:46px;height:46px;background:var(--accent-soft);border-radius:22px"></div>
+      </div>
+      <code style="font-size:10.5px;color:var(--ink3)">btn 12 · card 18 · sheet 22 · pill 999</code>
+      <div style="height:46px;border-radius:14px;background:#fff;box-shadow:var(--sh-card);margin-top:14px;display:grid;place-items:center;font-size:12px;color:var(--ink2)">Card shadow (soft, low)</div>
+    </div>
+
+    <!-- BADGE + ROW PATTERN -->
+    <div class="speccard">
+      <h4>List row &amp; bottom sheet</h4>
+      <div class="card flat" style="padding:4px 12px;margin-bottom:12px">
+        <div class="row"><div class="ricon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3v5h5M14 3H6v18h12V8z"/></svg></div><div class="rmeta"><div class="t">List row title</div><div class="s">Supporting text</div></div><span class="badge green"><i class="d"></i>Done</span></div>
+      </div>
+      <div style="border:1px solid var(--line);border-radius:14px 14px 0 0;padding:8px 14px 14px;background:#fff">
+        <div class="grab"></div>
+        <div class="sb" style="font-size:14px">Bottom sheet header</div>
+        <div class="tiny muted" style="margin-bottom:8px">Pulls up from the bottom for actions</div>
+        <button class="btn btn-pri btn-sm" style="width:100%">Action</button>
+      </div>
+      <div class="note">Pull-to-refresh on all lists · safe-area padding on sheets &amp; tab bar.</div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+  const root=document.documentElement, hex=document.getElementById('hex');
+  document.querySelectorAll('.swatch').forEach(s=>{
+    s.addEventListener('click',()=>{
+      document.querySelectorAll('.swatch').forEach(x=>x.classList.remove('on'));
+      s.classList.add('on');
+      const c=s.dataset.c; root.style.setProperty('--accent',c); hex.textContent=c;
+    });
+  });
+</script>
+</body>
+</html>
