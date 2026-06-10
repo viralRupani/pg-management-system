@@ -38,6 +38,14 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+  // Dev convenience: force every issued OTP to this fixed 6-digit code so the
+  // mobile app can be exercised without reading Redis/logs. Kept a STRING (never
+  // coerced — leading zeros are significant). Force-cleared in production below
+  // so a fixed code can never weaken a real deployment.
+  OTP_DEV_FIXED_CODE: z
+    .string()
+    .regex(/^\d{6}$/, "Must be exactly 6 digits")
+    .optional(),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
@@ -52,6 +60,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   }
   // Defense in depth: never log OTP codes in production, whatever the env says.
   if (parsed.data.NODE_ENV === "production") parsed.data.OTP_DEV_LOG = false;
+  // ...and never honour a fixed dev OTP in production, whatever the env says.
+  if (parsed.data.NODE_ENV === "production")
+    parsed.data.OTP_DEV_FIXED_CODE = undefined;
   return parsed.data;
 }
 

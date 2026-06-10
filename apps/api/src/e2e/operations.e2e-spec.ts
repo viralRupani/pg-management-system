@@ -262,8 +262,8 @@ describe("M5 operations (e2e)", () => {
     });
   });
 
-  const titles = (res: { body: { title: string }[] }) =>
-    res.body.map((a) => a.title);
+  const titles = (res: { body: { items: { title: string }[] } }) =>
+    res.body.items.map((a) => a.title);
 
   describe("announcements (audience-targeted)", () => {
     it("ALL: manager posts; every resident reads; resident cannot post", async () => {
@@ -274,14 +274,14 @@ describe("M5 operations (e2e)", () => {
       expect(post.status).toBe(201);
 
       const read = await h.req("get", "/announcements", residentA);
-      expect(read.body[0].title).toBe("Water cut");
-      expect(read.body[0].audienceType).toBe("ALL");
+      expect(read.body.items[0].title).toBe("Water cut");
+      expect(read.body.items[0].audienceType).toBe("ALL");
       // audience label is manager-only info — stripped for residents.
-      expect(read.body[0].audienceLabel).toBeNull();
+      expect(read.body.items[0].audienceLabel).toBeNull();
 
       // Manager sees the label.
       const mgr = await h.req("get", "/announcements", pgA.managerToken);
-      expect(mgr.body[0].audienceLabel).toBe("Everyone");
+      expect(mgr.body.items[0].audienceLabel).toBe("Everyone");
 
       const denied = await h.req("post", "/announcements", residentA, {
         title: "x",
@@ -306,7 +306,7 @@ describe("M5 operations (e2e)", () => {
       ).not.toContain("Just for Res Two");
 
       const mgr = await h.req("get", "/announcements", pgA.managerToken);
-      const row = mgr.body.find(
+      const row = mgr.body.items.find(
         (a: { title: string }) => a.title === "Just for Res Two",
       );
       expect(row.audienceType).toBe("SPECIFIC");
@@ -331,7 +331,8 @@ describe("M5 operations (e2e)", () => {
 
     it("PG B sees none of PG A's announcements", async () => {
       const res = await h.req("get", "/announcements", pgB.managerToken);
-      expect(res.body).toHaveLength(0);
+      expect(res.body.items).toHaveLength(0);
+      expect(res.body.total).toBe(0);
     });
   });
 

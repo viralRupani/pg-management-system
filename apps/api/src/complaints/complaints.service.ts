@@ -182,13 +182,25 @@ export class ComplaintsService {
     }));
   }
 
-  /** Manager: presigned download URL for a complaint's photo (if any). */
-  async getPhotoUrl(complaintId: string): Promise<{ downloadUrl: string }> {
+  /**
+   * Presigned download URL for a complaint's photo (if any). Manager
+   * (residentId undefined) reads any in-tenant complaint; a resident must own it.
+   */
+  async getPhotoUrl(
+    complaintId: string,
+    residentId?: string,
+  ): Promise<{ downloadUrl: string }> {
+    const where = residentId
+      ? and(
+          eq(complaints.id, complaintId),
+          eq(complaints.residentId, residentId),
+        )
+      : eq(complaints.id, complaintId);
     const [row] = await this.ctx
       .db()
       .select({ key: complaints.photoKey })
       .from(complaints)
-      .where(eq(complaints.id, complaintId));
+      .where(where);
     if (!row) throw new NotFoundException("Complaint not found");
     if (!row.key) throw new NotFoundException("No photo on this complaint");
     return this.storage.presignDownload(row.key);

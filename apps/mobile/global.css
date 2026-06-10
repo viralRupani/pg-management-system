@@ -1,3 +1,18 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * White-label accent defaults (teal — matches the "Sunrise PG" demo). These are
+ * the fallback values for the `brand` palette in tailwind.config.js; the
+ * ThemeProvider repaints them at runtime from GET /branding/:slug. The soft/deep
+ * tints are pre-derived from the default accent (see lib/theme.ts:brandPalette).
+ */
+:root {
+  --brand: #0d9488;
+  --brand-foreground: #ffffff;
+  --brand-soft: #e0f1ef;
+  --brand-softer: #c6e6e2;
+  --brand-line: #9bd0ca;
+  --brand-deep: #0b7d73;
+}

@@ -21,19 +21,28 @@ import type {
   DepositSummary,
   DepositTransactionSummary,
   DocumentSummary,
+  DocumentUploadUrlInput,
+  ExitRequestInput,
+  ExitRequestSummary,
   ExitSettlementInput,
   ExpenseSummary,
+  FileComplaintInput,
   FloorSummary,
   GenerateInvoicesInput,
   InvoiceSummary,
   ManagerLoginInput,
   ManagerSummary,
   MenuItemSummary,
+  NotificationSummary,
+  OtpRequestInput,
+  OtpVerifyInput,
   OwnerPgSummary,
   PaymentSummary,
+  PaymentUploadUrlInput,
   PresignedUploadResult,
   RecordDepositInput,
   RecordExpenseInput,
+  RegisterPushTokenInput,
   RegisterResidentInput,
   ResidentListQuery,
   ResidentListResult,
@@ -41,6 +50,8 @@ import type {
   RoomSummary,
   SetBudgetInput,
   SettlementResult,
+  SubmitDocumentInput,
+  SubmitPaymentInput,
   TenantBranding,
   UpdateBrandingInput,
   UpdateComplaintStatusInput,
@@ -68,6 +79,25 @@ export class PgApiClient {
     /** Manager email + password login. Returns tokens; caller persists them. */
     managerLogin: (input: ManagerLoginInput) =>
       this.http.post<AuthTokens>("/auth/manager/login", input, { auth: false }),
+    /** Resident: request an OTP for (pgCode, phone). Always `{ sent: true }`. */
+    requestResidentOtp: (input: OtpRequestInput) =>
+      this.http.post<{ sent: boolean }>(
+        "/auth/resident/otp/request",
+        input,
+        { auth: false },
+      ),
+    /** Resident: verify the OTP → tokens (role RESIDENT). Caller persists them. */
+    verifyResidentOtp: (input: OtpVerifyInput) =>
+      this.http.post<AuthTokens>("/auth/resident/otp/verify", input, {
+        auth: false,
+      }),
+    /** Rotate tokens (used internally by Http on 401; exposed for completeness). */
+    refresh: (refreshToken: string) =>
+      this.http.post<AuthTokens>(
+        "/auth/refresh",
+        { refreshToken },
+        { auth: false },
+      ),
   };
 
   /**
@@ -265,5 +295,80 @@ export class PgApiClient {
     /** Manager: record an expense (recorder taken from the JWT). */
     recordExpense: (input: RecordExpenseInput) =>
       this.http.post<{ id: string }>("/expenses", input),
+  };
+
+  /**
+   * Resident-facing surface (mobile app). Every method is RESIDENT-roled; the
+   * tenant + actor come from the JWT, so there is never a residentId argument.
+   * Uploads follow the presign pattern: get { uploadUrl, key } here, PUT the
+   * bytes to uploadUrl yourself (the app owns the binary PUT), then submit the key.
+   */
+  readonly resident = {
+    invoices: {
+      /** The caller's own rent invoices, newest period first. */
+      listMine: () => this.http.get<InvoiceSummary[]>("/invoices/mine"),
+    },
+    payments: {
+      /** Presigned URL to PUT a UPI-payment screenshot for an invoice. */
+      uploadUrl: (input: PaymentUploadUrlInput) =>
+        this.http.post<PresignedUploadResult>("/payments/upload-url", input),
+      /** Record a SUBMITTED payment against an invoice (manager reviews later). */
+      submit: (input: SubmitPaymentInput) =>
+        this.http.post<{ id: string }>("/payments", input),
+    },
+    deposits: {
+      /** Own deposit + ledger + any pending move-out request. */
+      mine: () =>
+        this.http.get<{
+          deposit: DepositSummary | null;
+          ledger: DepositTransactionSummary[];
+          exitRequest: ExitRequestSummary | null;
+        }>("/deposits/mine"),
+      /** Raise a resident-initiated move-out request (one pending at a time). */
+      requestExit: (input: ExitRequestInput) =>
+        this.http.post<{ requestedDate: string }>(
+          "/deposits/exit-request",
+          input,
+        ),
+    },
+    documents: {
+      /** Own KYC documents + review status, newest first. */
+      listMine: () => this.http.get<DocumentSummary[]>("/documents/mine"),
+      /** Presigned URL to PUT a KYC document of the given type. */
+      uploadUrl: (input: DocumentUploadUrlInput) =>
+        this.http.post<PresignedUploadResult>("/documents/upload-url", input),
+      /** Submit (or re-submit) a KYC document by its stored key. */
+      submit: (input: SubmitDocumentInput) =>
+        this.http.post<{ id: string }>("/documents", input),
+    },
+    complaints: {
+      /** Own complaints, newest first. */
+      listMine: () => this.http.get<ComplaintSummary[]>("/complaints/mine"),
+      /** Presigned URL to PUT an optional complaint photo before filing. */
+      photoUrl: () =>
+        this.http.post<PresignedUploadResult>("/complaints/photo-url"),
+      /** File a complaint (optional photoKey from photoUrl). */
+      file: (input: FileComplaintInput) =>
+        this.http.post<{ id: string }>("/complaints", input),
+      /** The complaint thread (oldest first); own complaints only. */
+      updates: (id: string) =>
+        this.http.get<ComplaintUpdateEntry[]>(`/complaints/${id}/updates`),
+      /** Post a note to the thread of an own complaint. */
+      addUpdate: (id: string, note: string) =>
+        this.http.post<{ id: string }>(`/complaints/${id}/updates`, { note }),
+      /** Presigned URL to view an own complaint's photo (404 if none). */
+      photo: (id: string) =>
+        this.http.get<{ downloadUrl: string }>(`/complaints/${id}/photo`),
+    },
+    notifications: {
+      /** Own in-app notification feed, newest first. */
+      list: () => this.http.get<NotificationSummary[]>("/notifications"),
+      /** Mark one notification read (idempotent). */
+      markRead: (id: string) =>
+        this.http.post<{ ok: true }>(`/notifications/${id}/read`),
+      /** Register/refresh the device's Expo push token (idempotent). */
+      registerToken: (input: RegisterPushTokenInput) =>
+        this.http.post<{ ok: true }>("/notifications/push-token", input),
+    },
   };
 }

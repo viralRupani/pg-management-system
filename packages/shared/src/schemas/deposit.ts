@@ -22,6 +22,21 @@ export const exitSettlementSchema = z.object({
 });
 export type ExitSettlementInput = z.infer<typeof exitSettlementSchema>;
 
+/** Resident requests their own move-out: a preferred date + optional note. */
+export const exitRequestSchema = z.object({
+  requestedDate: z.string().date(), // 'YYYY-MM-DD'
+  note: z.string().max(500).optional(),
+});
+export type ExitRequestInput = z.infer<typeof exitRequestSchema>;
+
+/** A resident's pending move-out request (null when none has been raised). */
+export const exitRequestSummarySchema = z.object({
+  requestedDate: z.string(),
+  note: z.string().nullable(),
+  requestedAt: z.string(),
+});
+export type ExitRequestSummary = z.infer<typeof exitRequestSummarySchema>;
+
 export const depositSummarySchema = z.object({
   id: z.string().uuid(),
   residentId: z.string().uuid(),

@@ -10,6 +10,8 @@ import {
   DepositStatus,
   type DepositTransactionSummary,
   DepositTxnType,
+  type ExitRequestInput,
+  type ExitRequestSummary,
   type ExitSettlementInput,
   type RecordDepositInput,
   ResidentStatus,
@@ -102,21 +104,43 @@ export class DepositsService {
   async getForResident(residentId: string): Promise<{
     deposit: DepositSummary | null;
     ledger: DepositTransactionSummary[];
+    exitRequest: ExitRequestSummary | null;
   }> {
     const db = this.ctx.db();
+
+    // The resident always exists (even before a deposit is recorded); read the
+    // user row first so a pending move-out request surfaces with no deposit.
+    const [resident] = await db
+      .select({
+        name: users.name,
+        exitRequestedDate: users.exitRequestedDate,
+        exitRequestNote: users.exitRequestNote,
+        exitRequestedAt: users.exitRequestedAt,
+      })
+      .from(users)
+      .where(
+        and(eq(users.id, residentId), eq(users.role, UserRole.RESIDENT)),
+      );
+
+    const exitRequest: ExitRequestSummary | null =
+      resident?.exitRequestedAt && resident.exitRequestedDate
+        ? {
+            requestedDate: resident.exitRequestedDate,
+            note: resident.exitRequestNote,
+            requestedAt: resident.exitRequestedAt.toISOString(),
+          }
+        : null;
+
     const [row] = await db
       .select({
         id: deposits.id,
-        residentId: deposits.residentId,
-        residentName: users.name,
         amountPaise: deposits.amountPaise,
         status: deposits.status,
       })
       .from(deposits)
-      .innerJoin(users, eq(users.id, deposits.residentId))
       .where(eq(deposits.residentId, residentId));
 
-    if (!row) return { deposit: null, ledger: [] };
+    if (!row) return { deposit: null, ledger: [], exitRequest };
 
     const txns = await db
       .select()
@@ -126,8 +150,8 @@ export class DepositsService {
     return {
       deposit: {
         id: row.id,
-        residentId: row.residentId,
-        residentName: row.residentName,
+        residentId,
+        residentName: resident?.name ?? "",
         amountPaise: row.amountPaise,
         status: row.status as DepositStatus,
       },
@@ -138,7 +162,51 @@ export class DepositsService {
         amountPaise: t.amountPaise,
         createdAt: t.createdAt.toISOString(),
       })),
+      exitRequest,
     };
+  }
+
+  /**
+   * Resident: raise a move-out request (preferred date + optional note). Guarded
+   * by a CONDITIONAL update on the always-present resident row: only an ACTIVE
+   * resident with no request pending flips, so a re-submit or an already-exited
+   * resident flips 0 rows and is rejected — no select-then-update race.
+   */
+  async requestExit(
+    residentId: string,
+    input: ExitRequestInput,
+  ): Promise<{ requestedDate: string }> {
+    const db = this.ctx.db();
+    const updated = await db
+      .update(users)
+      .set({
+        exitRequestedDate: input.requestedDate,
+        exitRequestNote: input.note ?? null,
+        exitRequestedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(users.id, residentId),
+          eq(users.role, UserRole.RESIDENT),
+          eq(users.status, ResidentStatus.ACTIVE),
+          isNull(users.exitRequestedAt),
+        ),
+      )
+      .returning({ id: users.id });
+
+    if (updated.length !== 1) {
+      const [exists] = await db
+        .select({ status: users.status, requestedAt: users.exitRequestedAt })
+        .from(users)
+        .where(
+          and(eq(users.id, residentId), eq(users.role, UserRole.RESIDENT)),
+        );
+      if (!exists) throw new NotFoundException("Resident not found");
+      if (exists.requestedAt)
+        throw new ConflictException("A move-out request is already pending");
+      throw new ConflictException("Resident is not active");
+    }
+    return { requestedDate: input.requestedDate };
   }
 
   /**

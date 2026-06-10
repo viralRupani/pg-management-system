@@ -22,9 +22,12 @@ Collected from milestone notes. Roughly ordered by priority / dependency.
 
 ### Resident lifecycle
 
-**Resident-initiated exit request** (M4 deferred)
-- Only manager-driven `POST /deposits/exit` exists.
-- Add: `POST /deposits/exit-request` (resident) that records intent and notifies managers, to be built in M8.
+**Resident-initiated exit request** (M4 deferred) — ✅ DONE (M8)
+- `POST /deposits/exit-request` (resident-roled) records the request via nullable
+  `exit_requested_*` columns on `users` (conditional-flip guard: ACTIVE + no
+  pending request, else 409). Surfaced on `GET /deposits/mine`/`resident/:id`.
+- Still open: **manager-side admin UI** to view/act on exit requests (the read is
+  exposed on the deposit endpoints; the admin screen is not built).
 
 **OVERDUE invoice transition** (M3 deferred)
 - Invoices stay PENDING past `due_date`.
@@ -51,17 +54,28 @@ Collected from milestone notes. Roughly ordered by priority / dependency.
 - `apps/admin/app/(app)/property/page.tsx` has create + edit-rent but no rename or decommission affordance.
 - Blocked on the backend endpoint above.
 
-### Mobile app (Expo) — M8, not started
+### Mobile app (Expo) — M8, built (pending on-device verification)
 
-All of the following are pending the Expo build:
+Built: resident auth (slug + phone + OTP, JWT in SecureStore), tab nav, and all
+feature screens (Home, Rent + invoice detail + submit-payment, Complaints + raise
++ thread, KYC documents + upload, Deposit + ledger + move-out request,
+Announcements, Mess menu, Notifications feed, Profile/More + logout). `api-client`
+resident methods added; NativeWind white-label theming via `GET /branding/:slug`.
+Resident complaint-photo read (`GET /complaints/:id/photo`) and exit-request added
+server-side. Verified by typecheck + a clean `expo export` bundle.
 
-- **Resident auth**: slug + phone + OTP login, JWT in `SecureStore`.
-- **Resident exit request**: `POST /deposits/exit-request` UI.
-- **Resident-facing complaint photo**: `GET /complaints/:id/photo` (manager endpoint exists; resident endpoint not yet added).
-- **Announcement push fan-out**: `NotificationsService.notify` is per-user; no `notifyAllResidents` broadcast helper. Wire `POST /announcements` → fan-out in M8 or add the helper first.
-- **`api-client` resident methods**: only manager-surface methods exist; add resident-facing counterparts.
-- **NativeWind theming**: accent-color theming via the `GET /branding/:slug` public endpoint (pre-auth, keyed by slug — unlike the manager app which uses `GET /tenants/branding` post-login).
-- **Expo/FCM push stub → real driver**: swap `NotificationChannel` stub for real Expo push at deploy time.
+Still deferred:
+- **On-device verification**: confirm `var(--brand)` paints + repaints on a real
+  Android device (Expo Go) — see `apps/mobile/CLAUDE.md`. Not autonomously testable.
+- **Real OS push**: needs an EAS dev build (Expo Go dropped Android push) +
+  `expo-notifications` + swapping the server `NotificationChannel` stub for an Expo
+  push driver. The in-app notifications feed works today; push-token registration
+  is not wired (no token source in Expo Go).
+- **Announcement push fan-out**: `NotificationsService.notify` is per-user; no
+  `notifyAllResidents` broadcast helper, so a new announcement does not push.
+- **Real S3 for uploads**: the storage stub URL doesn't accept the binary PUT, so
+  payment/KYC/complaint-photo uploads are best-effort in dev (the key still
+  persists). See Infrastructure below.
 
 ---
 

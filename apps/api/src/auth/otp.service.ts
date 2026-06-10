@@ -34,9 +34,12 @@ export class OtpService {
   }
 
   async issue(tenantId: string, phone: string): Promise<void> {
-    // CSPRNG, not Math.random (which is predictable). randomInt's upper bound is
-    // exclusive, so [100000, 1000000) is always 6 digits.
-    const code = String(randomInt(100000, 1000000));
+    // Dev override: a fixed code (env-gated, force-cleared in prod) lets the
+    // mobile app log in without reading Redis/logs. Otherwise a CSPRNG code —
+    // not Math.random (predictable). randomInt's upper bound is exclusive, so
+    // [100000, 1000000) is always 6 digits.
+    const code =
+      this.env.OTP_DEV_FIXED_CODE ?? String(randomInt(100000, 1000000));
     // New code resets the failed-attempt counter for this phone.
     await this.redis
       .multi()

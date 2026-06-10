@@ -66,7 +66,7 @@ infra/             docker-compose: Postgres 16 on :5433, Redis 7 on :6379
 
 ## 4. Status
 
-**All API milestones and the admin frontend are complete. M8 (resident mobile app, Expo) is now scaffolded** — the architecture is wired (expo-router, NativeWind v4, TanStack Query, SecureStore, shared types/client) with a Hello-World placeholder; resident feature screens are next. See `apps/mobile/CLAUDE.md` for the directory map, run commands, resident API surface, auth flow, and the backend bits still missing for M8.
+**All API milestones, the admin frontend, and the M8 resident mobile app are built.** The Expo app is feature-complete (OTP auth, bottom-tab nav, and every resident screen) and the resident backend gaps it needed — `POST /deposits/exit-request` and a resident-scoped complaint-photo read — are implemented and tested. It's verified by typecheck + a clean `expo export` bundle but **not yet run on a physical device** (the open item: confirm `var(--brand)` paints/repaints on native). See `apps/mobile/CLAUDE.md` for the directory map, run commands, resident API surface, and what's still deferred (real OS push, announcement fan-out, real S3).
 
 | Milestone | Status | Key additions |
 |---|---|---|
@@ -78,14 +78,14 @@ infra/             docker-compose: Postgres 16 on :5433, Redis 7 on :6379
 | M6 Metering + Branding | ✅ | `billing_snapshots`; MeteringService, BrandingModule |
 | M7 Admin frontend | ✅ | All 8 pages + `packages/api-client`; owner/manager UI |
 | PG Owner role | ✅ | `owners`, `owner_tenants`; token-switch, manager deactivation |
-| M8 Resident mobile | 🚧 | Expo **scaffolded** — expo-router + NativeWind v4 + TanStack Query + SecureStore wired, Hello-World placeholder; feature screens next. See `apps/mobile/CLAUDE.md` |
+| M8 Resident mobile | ✅* | Expo app **feature-complete**: OTP auth + tabs + all resident screens (rent/payments, complaints, KYC, deposit + move-out, announcements, mess, notifications, profile). `api-client` resident methods + NativeWind white-label. *Pending on-device verification (`var(--brand)` paint/repaint). See `apps/mobile/CLAUDE.md` |
 
-**Test suite:** `pnpm --filter @pg/api test` → **73 tests / 7 files, all green.**
+**Test suite:** `pnpm --filter @pg/api test` → **96 tests / 9 files, all green.**
 
 **Critical open items** (see `docs/backlog.md` for the full list):
 - **Reminder scoping** — `sendRentReminders(undefined)` re-notifies ALL pending invoices daily. Must scope to current/overdue period before production.
 - **Decommission bed** — needs a new API endpoint (conditional-flip pattern; occupied bed → 409).
-- **Resident exit request** — only manager-driven exit exists; add `POST /deposits/exit-request` in M8.
+- **Mobile on-device pass** — M8 is verified by typecheck + bundle only; confirm white-label theming (`var(--brand)`) paints/repaints on a physical Android device in Expo Go.
 
 ---
 

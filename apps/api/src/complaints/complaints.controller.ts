@@ -51,12 +51,6 @@ export class ComplaintsController {
     return this.complaints.list();
   }
 
-  @Get(":id/photo")
-  @Roles(UserRole.PG_MANAGER)
-  photo(@Param("id") id: string) {
-    return this.complaints.getPhotoUrl(id);
-  }
-
   @Post(":id/status")
   @Roles(UserRole.PG_MANAGER)
   updateStatus(
@@ -68,7 +62,13 @@ export class ComplaintsController {
     return this.complaints.updateStatus(id, user.sub, dto);
   }
 
-  // --- Shared thread (resident owns; manager sees all) ---
+  // --- Shared (resident owns; manager sees all) ---
+  @Get(":id/photo")
+  @Roles(UserRole.RESIDENT, UserRole.PG_MANAGER)
+  photo(@CurrentUser() user: JwtPayload, @Param("id") id: string) {
+    return this.complaints.getPhotoUrl(id, scope(user));
+  }
+
   @Get(":id/updates")
   @Roles(UserRole.RESIDENT, UserRole.PG_MANAGER)
   listUpdates(@CurrentUser() user: JwtPayload, @Param("id") id: string) {

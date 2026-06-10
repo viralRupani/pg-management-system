@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  date,
   integer,
   pgTable,
   text,
@@ -35,6 +36,13 @@ export const users = pgTable("users", {
   emergencyContactPhone: text("emergency_contact_phone"),
   status: text("status").notNull().default("ACTIVE"), // ResidentStatus
   joinDate: timestamp("join_date", { withTimezone: true }),
+
+  // Resident-initiated move-out request (manager-driven exit is separate; see
+  // DepositsService.settleExit). null = no request pending; all three are set
+  // together when the resident raises a request.
+  exitRequestedDate: date("exit_requested_date"), // preferred move-out 'YYYY-MM-DD'
+  exitRequestNote: text("exit_request_note"),
+  exitRequestedAt: timestamp("exit_requested_at", { withTimezone: true }),
 
   // Manager soft-deactivation (set by an owner). null = active; when set, the
   // login credential in auth_identities is removed but this row is KEPT so the

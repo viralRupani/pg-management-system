@@ -1,12 +1,26 @@
 # CLAUDE.md — apps/mobile (Expo resident app)
 
-> **Scaffolded (M8 in progress).** The Expo app is stood up with the full
-> architecture wired (expo-router, NativeWind v4, TanStack Query, SecureStore,
-> shared `@pg/shared`/`@pg/api-client`) and a Hello-World placeholder home
-> screen. **No resident feature screens or real auth yet** — those are the next
-> tasks. This doc captures the resident API surface, locked decisions, and what's
-> still missing. For business context see root `CLAUDE.md`; the API is the only
-> trust boundary (`apps/api/CLAUDE.md`).
+> **Built (M8) — pending on-device verification.** The resident app is feature-
+> complete: OTP auth (slug → phone → OTP), bottom-tab nav, and every feature
+> screen (Home, Rent + invoice detail + submit-payment sheet, Complaints + raise +
+> thread, KYC documents + upload, Deposit + ledger + move-out request,
+> Announcements, Mess menu, Notifications, Profile/More + logout). `@pg/api-client`
+> has resident methods; NativeWind white-label theming repaints from
+> `GET /branding/:slug`. Verified by `tsc --noEmit` + a clean `expo export`
+> bundle — **not yet run on a physical device** (the one thing those checks can't
+> cover: that `var(--brand)` actually paints/repaints on native). For business
+> context see root `CLAUDE.md`; the API is the only trust boundary
+> (`apps/api/CLAUDE.md`).
+>
+> **UI architecture:** shared NativeWind primitives in `components/ui/` (Button,
+> Input, Card, Badge + `status.ts` mappers, Row/Ricon, Appbar, EmptyState,
+> Skeleton, Chip, Fab, Sheet, Avatar, Screen). Theming: `tailwind.config.js`
+> `brand.*` → CSS vars; defaults in `global.css`; `ThemeProvider`
+> (`components/theme-provider.tsx`) repaints via `vars()`; `Sheet` re-applies the
+> palette because RN Modals portal out of the root tree. Auth state:
+> `lib/auth.tsx` over the SecureStore token store. Read hooks + query keys:
+> `lib/queries.ts`. Uploads: `lib/upload.ts` (`pickImage` + best-effort presigned
+> PUT — see the dev-stub caveat there).
 
 ## Who uses this
 **Residents** of a single PG — one tenant, one phone. The manager web app
@@ -139,17 +153,18 @@ the resource with the returned **key** (store the key, never a URL).
 **Dates to the API**: zero-padded **local** `YYYY-MM-DD`, never `toISOString()`
 (UTC is off-by-one in IST) — same landmine the web app hit.
 
-## Missing backend bits (build or stub before the matching screen)
-These resident endpoints/helpers do NOT exist yet (see `docs/backlog.md`):
-- **`POST /deposits/exit-request`** — resident-initiated exit (only manager-driven
-  `POST /deposits/exit` exists today). Needed for the move-out screen.
-- **Resident complaint-photo read** — only the manager `GET /complaints/:id/photo`
-  exists; a resident-scoped read isn't added.
-- **Announcement push fan-out** — `NotificationsService.notify` is per-user; no
-  broadcast helper, so new announcements don't push yet.
-- **`@pg/api-client` resident methods** — the client is manager-only; add the
-  resident counterparts (mirror the table above) as the first M8 task.
-- **Real Expo push driver** — swap the `NotificationChannel` stub at deploy time.
+## Backend bits — status
+- ✅ **`POST /deposits/exit-request`** — added (resident-roled; `exit_requested_*`
+  columns on `users`, conditional-flip guard; surfaced on `GET /deposits/mine`).
+- ✅ **Resident complaint-photo read** — `GET /complaints/:id/photo` is now shared
+  (`@Roles(RESIDENT, PG_MANAGER)`, ownership-scoped for residents).
+- ✅ **`@pg/api-client` resident methods** — added under `api.resident.*` (+ OTP/
+  refresh on `api.auth.*`).
+- ⏳ **Announcement push fan-out** — still per-user; `POST /announcements` does not
+  fan out to existing residents. Deferred (push is stubbed anyway).
+- ⏳ **Real Expo push driver** — `NotificationChannel` stub; needs an EAS dev build
+  + `expo-notifications`. The in-app feed works in Expo Go; push-token
+  registration is NOT wired (no token source under Expo Go). Deferred.
 
 ## Build / run
 The API must be reachable from the **physical phone** — use the Mac's LAN IP, not

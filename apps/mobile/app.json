@@ -24,7 +24,14 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to upload payment screenshots and KYC documents.",
+          "cameraPermission": "Allow $(PRODUCT_NAME) to use the camera to capture documents and complaint photos."
+        }
+      ]
     ]
   }
 }

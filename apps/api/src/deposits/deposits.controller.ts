@@ -1,9 +1,11 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import {
+  type ExitRequestInput,
   type ExitSettlementInput,
   type JwtPayload,
   type RecordDepositInput,
   UserRole,
+  exitRequestSchema,
   exitSettlementSchema,
   recordDepositSchema,
 } from "@pg/shared";
@@ -20,6 +22,15 @@ export class DepositsController {
   @Roles(UserRole.RESIDENT)
   mine(@CurrentUser() user: JwtPayload) {
     return this.deposits.getForResident(user.sub);
+  }
+
+  @Post("exit-request")
+  @Roles(UserRole.RESIDENT)
+  exitRequest(
+    @CurrentUser() user: JwtPayload,
+    @Body(new ZodBody(exitRequestSchema)) dto: ExitRequestInput,
+  ) {
+    return this.deposits.requestExit(user.sub, dto);
   }
 
   // --- Manager ---
