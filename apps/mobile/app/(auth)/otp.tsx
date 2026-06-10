@@ -39,7 +39,7 @@ export default function OtpScreen() {
     try {
       const tokens = await api.auth.verifyResidentOtp({ pgCode, phone, code });
       signIn(tokens);
-      router.replace('/(tabs)');
+      router.replace('/home');
     } catch (err) {
       setError(toMessage(err, 'Incorrect or expired code. Try again.'));
       setLoading(false);
