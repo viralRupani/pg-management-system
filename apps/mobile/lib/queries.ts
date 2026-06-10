@@ -31,11 +31,17 @@ export const useDocuments = () =>
 export const useComplaints = () =>
   useQuery({ queryKey: qk.complaints, queryFn: () => api.resident.complaints.listMine() });
 
+// Polls every 3s so a manager's reply appears without a manual refresh — feels
+// like live chat. The interval is owned by the query observer, so it only runs
+// while the thread screen is mounted (it stops the moment the resident taps
+// back) and pauses while the app is backgrounded (refetchIntervalInBackground
+// defaults false).
 export const useComplaintThread = (id: string) =>
   useQuery({
     queryKey: qk.complaintThread(id),
     queryFn: () => api.resident.complaints.updates(id),
     enabled: !!id,
+    refetchInterval: 3000,
   });
 
 export const useAnnouncements = (q?: string) =>

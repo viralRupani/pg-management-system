@@ -9,7 +9,7 @@ import {
 import { ArrowLeft, ImageIcon, Send, UserCheck } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -166,6 +166,7 @@ function ComplaintDetail({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
   const me = currentUser()?.sub;
+  const scrollRef = useRef<HTMLUListElement>(null);
 
   const load = useCallback(async () => {
     // No GET /complaints/:id — derive the row from the (small) tenant list.
@@ -201,6 +202,38 @@ function ComplaintDetail({ id }: { id: string }) {
       cancelled = true;
     };
   }, [id]);
+
+  // Poll the conversation every 3s so a resident's reply shows up without a
+  // refresh — feels like live chat. Only the thread is refetched (the cheap
+  // call); the interval is torn down when the detail view unmounts (i.e. the
+  // manager navigates back), so polling never runs in the background.
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const updates = await api.complaints.updates(id);
+        if (!cancelled) {
+          setData((prev) => (prev ? { ...prev, updates } : prev));
+        }
+      } catch {
+        // Stay quiet on transient poll failures — the next tick retries.
+      }
+    };
+    const timer = setInterval(tick, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [id]);
+
+  // Pin the conversation to the latest message: on first load and whenever a new
+  // reply arrives. Keyed on the message count, so an idle 3s poll (same count)
+  // won't yank the manager back down while they're reading older messages.
+  const messageCount = data?.updates.length ?? 0;
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messageCount]);
 
   const refresh = async () => {
     try {
@@ -259,22 +292,17 @@ function ComplaintDetail({ id }: { id: string }) {
   const assignedToMe = complaint.assignedToUserId === me;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <BackLink />
 
-      {/* Header */}
+      {/* Header + triage — one compact row so the chat gets the vertical space */}
       <Card>
         <CardContent className="space-y-3 pt-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-semibold tracking-tight">
-                  {complaint.residentName}
-                </h1>
-                <Badge tone={statusTone(complaint.status)}>
-                  {statusLabel(complaint.status)}
-                </Badge>
-              </div>
+              <h1 className="text-lg font-semibold tracking-tight">
+                {complaint.residentName}
+              </h1>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {complaint.category.toLowerCase()} · filed{" "}
                 {formatDate(complaint.createdAt)}
@@ -285,52 +313,51 @@ function ComplaintDetail({ id }: { id: string }) {
                   : ""}
               </p>
             </div>
-            {complaint.photoKey && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPhotoOpen(true)}
-              >
-                <ImageIcon className="h-4 w-4" />
-                Photo
-              </Button>
-            )}
+
+            {/* Status segmented control + actions, right-aligned */}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="inline-flex rounded-md border border-border p-0.5">
+                {STATUSES.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    disabled={busy || complaint.status === s}
+                    onClick={() => setStatus(s)}
+                    className={cn(
+                      "rounded px-2.5 py-1 text-xs font-medium capitalize transition-colors disabled:cursor-default",
+                      complaint.status === s
+                        ? "bg-brand text-brand-foreground"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {statusLabel(s)}
+                  </button>
+                ))}
+              </div>
+              {!assignedToMe && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => setStatus(complaint.status, true)}
+                >
+                  <UserCheck className="h-4 w-4" />
+                  Assign to me
+                </Button>
+              )}
+              {complaint.photoKey && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPhotoOpen(true)}
+                >
+                  <ImageIcon className="h-4 w-4" />
+                  Photo
+                </Button>
+              )}
+            </div>
           </div>
           <p className="text-sm">{complaint.description}</p>
-        </CardContent>
-      </Card>
-
-      {/* Triage */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Triage</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-muted-foreground">Status</span>
-            {STATUSES.map((s) => (
-              <Button
-                key={s}
-                size="sm"
-                variant={complaint.status === s ? "primary" : "outline"}
-                disabled={busy || complaint.status === s}
-                onClick={() => setStatus(s)}
-              >
-                {statusLabel(s)}
-              </Button>
-            ))}
-          </div>
-          {!assignedToMe && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={() => setStatus(complaint.status, true)}
-            >
-              <UserCheck className="h-4 w-4" />
-              Assign to me
-            </Button>
-          )}
         </CardContent>
       </Card>
 
@@ -343,31 +370,39 @@ function ComplaintDetail({ id }: { id: string }) {
           {updates.length === 0 ? (
             <EmptyRow text="No messages yet. Add the first reply below." />
           ) : (
-            <ul className="space-y-3">
+            <ul
+              ref={scrollRef}
+              className="chat-scroll flex max-h-[55vh] flex-col gap-3 overflow-y-auto pr-3"
+            >
               {updates.map((u) => {
-                const fromResident = u.authorUserId === complaint.residentId;
                 const fromMe = u.authorUserId === me;
+                const fromResident = u.authorUserId === complaint.residentId;
+                const author = fromMe
+                  ? "You"
+                  : fromResident
+                    ? complaint.residentName
+                    : "Staff";
                 return (
                   <li
                     key={u.id}
                     className={cn(
-                      "rounded-md border border-border p-3",
-                      fromResident ? "bg-card" : "bg-muted/40",
+                      "flex max-w-[80%] flex-col gap-1",
+                      fromMe ? "items-end self-end" : "items-start self-start",
                     )}
                   >
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-xs font-medium">
-                        {fromResident
-                          ? complaint.residentName
-                          : fromMe
-                            ? "You"
-                            : "Staff"}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDate(u.createdAt)}
-                      </span>
+                    <div
+                      className={cn(
+                        "rounded-2xl px-3.5 py-2 text-sm",
+                        fromMe
+                          ? "bg-brand text-brand-foreground"
+                          : "border border-border bg-muted/40 text-foreground",
+                      )}
+                    >
+                      <p className="whitespace-pre-wrap break-words">{u.note}</p>
                     </div>
-                    <p className="text-sm">{u.note}</p>
+                    <span className="px-1 text-xs text-muted-foreground">
+                      {author} · {formatDate(u.createdAt)}
+                    </span>
                   </li>
                 );
               })}
@@ -394,6 +429,17 @@ function AddNoteForm({
   onSubmit: (note: string) => Promise<void> | void;
 }) {
   const [note, setNote] = useState("");
+  const taRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-grow the box to fit the message (and any newlines) instead of a manual
+  // resize handle; cap the height and let it scroll past that. Re-runs whenever
+  // the text changes, including the reset to "" after a successful send.
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`;
+  }, [note]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -403,15 +449,26 @@ function AddNoteForm({
     setNote("");
   };
 
+  // Enter sends; Shift+Enter inserts a newline. Skip while busy or composing
+  // (IME), so multi-keystroke input methods aren't cut off mid-word.
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      if (!busy) void submit(e);
+    }
+  };
+
   return (
     <form onSubmit={submit} className="space-y-2 border-t border-border pt-4">
       <textarea
+        ref={taRef}
         value={note}
         onChange={(e) => setNote(e.target.value)}
+        onKeyDown={onKeyDown}
         rows={2}
         maxLength={2000}
         placeholder="Reply to the resident…"
-        className={inputClass}
+        className={cn(inputClass, "resize-none overflow-y-auto")}
       />
       <div className="flex justify-end">
         <Button type="submit" size="sm" disabled={busy || note.trim() === ""}>
