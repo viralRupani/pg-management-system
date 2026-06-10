@@ -1,14 +1,37 @@
 import '../global.css';
 
 import { QueryClientProvider } from '@tanstack/react-query';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ThemeProvider } from '@/components/theme-provider';
 import { hydrateTokens } from '@/lib/api';
-import { AuthProvider } from '@/lib/auth';
+import { AuthProvider, useAuth } from '@/lib/auth';
 import { queryClient } from '@/lib/query';
+
+/**
+ * Reactive auth guard. app/index.tsx only gates the `/` route, so flipping the
+ * session (logout, or a failed token refresh) while deep in the tab stack would
+ * otherwise leave the now-signed-out screens mounted. This watches auth state
+ * app-wide and bounces the user between the login flow and the app accordingly.
+ */
+function AuthGate() {
+  const { isAuthenticated } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    const inAuthGroup = segments[0] === '(auth)';
+    if (!isAuthenticated && !inAuthGroup) {
+      router.replace('/(auth)');
+    } else if (isAuthenticated && inAuthGroup) {
+      router.replace('/home');
+    }
+  }, [isAuthenticated, segments, router]);
+
+  return null;
+}
 
 /**
  * Root layout — the single place app-wide providers are stacked:
@@ -30,6 +53,7 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <ThemeProvider>
+            <AuthGate />
             <Stack screenOptions={{ headerShown: false }} />
           </ThemeProvider>
         </AuthProvider>
