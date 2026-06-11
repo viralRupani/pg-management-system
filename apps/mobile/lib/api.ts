@@ -44,6 +44,7 @@ export const API_BASE_URL = (
 
 const ACCESS_KEY = 'pg_resident_access';
 const REFRESH_KEY = 'pg_resident_refresh';
+const ACCENT_KEY = 'pg_resident_accent';
 
 // SecureStore is async, but @pg/api-client's TokenStore is synchronous (the admin
 // app backs it with localStorage). We mirror the tokens in memory so reads are
@@ -53,13 +54,31 @@ let cache: { access: string | null; refresh: string | null } = {
   refresh: null,
 };
 
-/** Load persisted tokens into the in-memory cache. Call once before gating. */
+// The white-label accent is themed pre-auth on the slug screen, but a cold start
+// with a persisted token bounces straight past it — so persist the accent too and
+// re-apply on startup, else the palette falls back to the DEFAULT_BRAND default.
+let accentCache: string | null = null;
+
+/** Load persisted tokens + accent into the in-memory cache. Call once before gating. */
 export async function hydrateTokens(): Promise<void> {
-  const [access, refresh] = await Promise.all([
+  const [access, refresh, accent] = await Promise.all([
     storageGet(ACCESS_KEY),
     storageGet(REFRESH_KEY),
+    storageGet(ACCENT_KEY),
   ]);
   cache = { access, refresh };
+  accentCache = accent;
+}
+
+/** The persisted brand accent hex, or null if none themed yet (sync read). */
+export function getPersistedAccent(): string | null {
+  return accentCache;
+}
+
+/** Persist the brand accent so it survives a cold start. */
+export function setPersistedAccent(hex: string): void {
+  accentCache = hex;
+  storageSet(ACCENT_KEY, hex);
 }
 
 const secureTokenStore: TokenStore = {
@@ -73,8 +92,10 @@ const secureTokenStore: TokenStore = {
   },
   clear: () => {
     cache = { access: null, refresh: null };
+    accentCache = null;
     storageDelete(ACCESS_KEY);
     storageDelete(REFRESH_KEY);
+    storageDelete(ACCENT_KEY);
   },
 };
 

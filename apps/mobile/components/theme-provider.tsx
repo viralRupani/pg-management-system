@@ -1,7 +1,8 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { vars } from 'nativewind';
 
+import { getPersistedAccent, setPersistedAccent } from '@/lib/api';
 import { DEFAULT_BRAND, brandPalette } from '@/lib/theme';
 
 interface ThemeContextValue {
@@ -25,9 +26,15 @@ export function useTheme(): ThemeContextValue {
  * repaints when a PG's accent is known. Defaults to teal until a slug resolves.
  */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [accent, setAccent] = useState(DEFAULT_BRAND);
+  // Seed from the persisted accent (hydrated before render) so a cold start with
+  // a saved session keeps the PG's brand instead of flashing the teal default.
+  const [accent, setAccentState] = useState(() => getPersistedAccent() ?? DEFAULT_BRAND);
+  const setAccent = useCallback((hex: string) => {
+    setAccentState(hex);
+    setPersistedAccent(hex);
+  }, []);
   const style = useMemo(() => vars(brandPalette(accent)), [accent]);
-  const value = useMemo(() => ({ accent, setAccent }), [accent]);
+  const value = useMemo(() => ({ accent, setAccent }), [accent, setAccent]);
 
   return (
     <ThemeContext.Provider value={value}>
