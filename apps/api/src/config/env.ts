@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_UPLOAD_BYTES } from "@pg/shared";
 
 /**
  * Validated environment. Fails fast at boot if anything required is missing.
@@ -46,12 +47,52 @@ const envSchema = z.object({
     .string()
     .regex(/^\d{6}$/, "Must be exactly 6 digits")
     .optional(),
+
+  // File storage (S3 presigned POST). `local` uses the in-process stub (dev/CI,
+  // no creds needed); `s3` requires the four S3_* creds below (enforced in the
+  // superRefine). Uploads round-trip directly between client and S3 — the API
+  // only ever mints presigned URLs and persists keys.
+  STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
+  S3_REGION: z.string().optional(),
+  S3_BUCKET: z.string().optional(),
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  // Presigned upload/download URL lifetime, in seconds.
+  S3_PRESIGN_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+  // Max upload size in bytes; the presigned-POST policy edge-rejects anything
+  // larger. Defaults to the shared MAX_UPLOAD_BYTES (5 MB).
+  UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(MAX_UPLOAD_BYTES),
+  // S3-compatible/MinIO only — leave unset for AWS.
+  S3_ENDPOINT: z.string().url().optional(),
+  S3_FORCE_PATH_STYLE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+});
+
+const envSchemaChecked = envSchema.superRefine((env, ctx) => {
+  if (env.STORAGE_DRIVER === "s3") {
+    for (const key of [
+      "S3_REGION",
+      "S3_BUCKET",
+      "S3_ACCESS_KEY_ID",
+      "S3_SECRET_ACCESS_KEY",
+    ] as const) {
+      if (!env[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} is required when STORAGE_DRIVER=s3`,
+        });
+      }
+    }
+  }
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
-  const parsed = envSchema.safeParse(source);
+  const parsed = envSchemaChecked.safeParse(source);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)

@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import {
   type JwtPayload,
+  type PaymentUploadUrlInput,
   PaymentStatus,
   type RejectPaymentInput,
   type SubmitPaymentInput,
@@ -22,9 +23,9 @@ export class PaymentsController {
   @Roles(UserRole.RESIDENT)
   uploadUrl(
     @CurrentUser() user: JwtPayload,
-    @Body(new ZodBody(paymentUploadUrlSchema)) dto: { invoiceId: string },
+    @Body(new ZodBody(paymentUploadUrlSchema)) dto: PaymentUploadUrlInput,
   ) {
-    return this.rent.requestUploadUrl(user.sub, dto.invoiceId);
+    return this.rent.requestUploadUrl(user.sub, dto.invoiceId, dto.contentType);
   }
 
   @Post()

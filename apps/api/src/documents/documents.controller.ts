@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import {
+  type DocumentUploadUrlInput,
   type JwtPayload,
   type RejectDocumentInput,
   type SubmitDocumentInput,
@@ -19,8 +20,10 @@ export class DocumentsController {
   // --- Resident ---
   @Post("upload-url")
   @Roles(UserRole.RESIDENT)
-  uploadUrl(@Body(new ZodBody(documentUploadUrlSchema)) _dto: unknown) {
-    return this.documents.requestUploadUrl();
+  uploadUrl(
+    @Body(new ZodBody(documentUploadUrlSchema)) dto: DocumentUploadUrlInput,
+  ) {
+    return this.documents.requestUploadUrl(dto.contentType);
   }
 
   @Post()

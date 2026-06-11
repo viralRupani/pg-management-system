@@ -14,7 +14,14 @@ import { invoiceStatus } from '@/components/ui/status';
 import { api } from '@/lib/api';
 import { qk, useInvoices } from '@/lib/queries';
 import { InvoiceStatus } from '@pg/shared';
-import { contentTypeFor, pickImage, uploadToPresignedUrl, type PickedImage } from '@/lib/upload';
+import {
+  MAX_UPLOAD_LABEL,
+  contentTypeOf,
+  exceedsMaxSize,
+  pickImage,
+  uploadToPresignedPost,
+  type PickedImage,
+} from '@/lib/upload';
 import { formatDate, formatPaise, toMessage } from '@/lib/utils';
 
 export default function InvoiceDetailScreen() {
@@ -43,20 +50,28 @@ export default function InvoiceDetailScreen() {
 
   async function choose(source: 'library' | 'camera') {
     const img = await pickImage(source);
-    if (img) setPicked(img);
+    if (!img) return;
+    if (exceedsMaxSize(img.size)) {
+      Alert.alert('Image too large', `Please choose an image under ${MAX_UPLOAD_LABEL}.`);
+      return;
+    }
+    setPicked(img);
   }
 
   async function submit() {
     if (!picked || !invoice) return;
     setSubmitting(true);
     try {
-      const { uploadUrl, key } = await api.resident.payments.uploadUrl({
+      const contentType = contentTypeOf(picked);
+      const post = await api.resident.payments.uploadUrl({
         invoiceId: invoice.id,
+        contentType,
       });
-      await uploadToPresignedUrl(uploadUrl, picked.uri, contentTypeFor(picked.uri));
+      const ok = await uploadToPresignedPost(post, picked.uri, contentType, picked.fileName);
+      if (!ok) throw new Error('Upload failed. Please try a smaller image.');
       await api.resident.payments.submit({
         invoiceId: invoice.id,
-        screenshotKey: key,
+        screenshotKey: post.key,
       });
       await queryClient.invalidateQueries({ queryKey: qk.invoices });
       setSheetOpen(false);
@@ -123,9 +138,14 @@ export default function InvoiceDetailScreen() {
             </Pressable>
           </View>
         ) : (
-          <View className="flex-row gap-3">
-            <PickButton icon="image-outline" label="Gallery" onPress={() => choose('library')} />
-            <PickButton icon="camera-outline" label="Camera" onPress={() => choose('camera')} />
+          <View className="gap-2">
+            <View className="flex-row gap-3">
+              <PickButton icon="image-outline" label="Gallery" onPress={() => choose('library')} />
+              <PickButton icon="camera-outline" label="Camera" onPress={() => choose('camera')} />
+            </View>
+            <Text className="text-center text-[12px] text-ink3">
+              JPG, PNG or WebP · max {MAX_UPLOAD_LABEL}
+            </Text>
           </View>
         )}
         <Button

@@ -12,7 +12,14 @@ import { Screen } from '@/components/ui/screen';
 import { api } from '@/lib/api';
 import { qk } from '@/lib/queries';
 import { ComplaintCategory } from '@pg/shared';
-import { contentTypeFor, pickImage, uploadToPresignedUrl, type PickedImage } from '@/lib/upload';
+import {
+  MAX_UPLOAD_LABEL,
+  contentTypeOf,
+  exceedsMaxSize,
+  pickImage,
+  uploadToPresignedPost,
+  type PickedImage,
+} from '@/lib/upload';
 import { cn, toMessage } from '@/lib/utils';
 
 const ENTRIES = Object.entries(COMPLAINT_CATEGORIES) as [
@@ -30,15 +37,27 @@ export default function NewComplaintScreen() {
 
   const valid = category && description.trim().length >= 3;
 
+  async function selectPhoto(source: 'library' | 'camera') {
+    const img = await pickImage(source);
+    if (!img) return;
+    if (exceedsMaxSize(img.size)) {
+      Alert.alert('Image too large', `Please choose an image under ${MAX_UPLOAD_LABEL}.`);
+      return;
+    }
+    setPhoto(img);
+  }
+
   async function submit() {
     if (!valid || !category) return;
     setSubmitting(true);
     try {
       let photoKey: string | undefined;
       if (photo) {
-        const { uploadUrl, key } = await api.resident.complaints.photoUrl();
-        await uploadToPresignedUrl(uploadUrl, photo.uri, contentTypeFor(photo.uri));
-        photoKey = key;
+        const contentType = contentTypeOf(photo);
+        const post = await api.resident.complaints.photoUrl({ contentType });
+        const ok = await uploadToPresignedPost(post, photo.uri, contentType, photo.fileName);
+        if (!ok) throw new Error('Photo upload failed. Please try a smaller image.');
+        photoKey = post.key;
       }
       await api.resident.complaints.file({
         category,
@@ -101,6 +120,7 @@ export default function NewComplaintScreen() {
 
       <View className="gap-2">
         <Text className="text-[13px] font-semibold text-ink2">Photo (optional)</Text>
+        <Text className="text-[12px] text-ink3">JPG, PNG or WebP · max {MAX_UPLOAD_LABEL}</Text>
         {photo ? (
           <View className="flex-row items-center gap-3 rounded-btn border border-line bg-surface2 p-3">
             <Image source={{ uri: photo.uri }} className="h-12 w-12 rounded-lg" />
@@ -114,20 +134,14 @@ export default function NewComplaintScreen() {
         ) : (
           <View className="flex-row gap-3">
             <Pressable
-              onPress={async () => {
-                const img = await pickImage('library');
-                if (img) setPhoto(img);
-              }}
+              onPress={() => selectPhoto('library')}
               className="flex-1 flex-row items-center justify-center gap-2 rounded-btn border border-dashed border-line py-4 active:opacity-60"
             >
               <Ionicons name="image-outline" size={20} color="#6b7280" />
               <Text className="text-[13px] font-semibold text-ink2">Gallery</Text>
             </Pressable>
             <Pressable
-              onPress={async () => {
-                const img = await pickImage('camera');
-                if (img) setPhoto(img);
-              }}
+              onPress={() => selectPhoto('camera')}
               className="flex-1 flex-row items-center justify-center gap-2 rounded-btn border border-dashed border-line py-4 active:opacity-60"
             >
               <Ionicons name="camera-outline" size={20} color="#6b7280" />

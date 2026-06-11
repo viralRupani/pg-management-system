@@ -101,7 +101,9 @@ describe("M5 operations (e2e)", () => {
       expect(noPhoto.status).toBe(404);
 
       // File a complaint WITH a photo (resident presigns an upload key first).
-      const presign = await h.req("post", "/complaints/photo-url", residentA);
+      const presign = await h.req("post", "/complaints/photo-url", residentA, {
+        contentType: "image/jpeg",
+      });
       expect(presign.status).toBe(201);
       const photoKey = presign.body.key as string;
 

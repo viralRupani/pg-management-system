@@ -26,6 +26,7 @@ import {
 import {
   STORAGE_PROVIDER,
   type StorageProvider,
+  assertAllowedType,
 } from "../storage/storage.module";
 
 /**
@@ -146,11 +147,14 @@ export class RentService {
   async requestUploadUrl(
     residentId: string,
     invoiceId: string,
+    contentType: string,
   ): Promise<PresignedUploadResult> {
+    assertAllowedType("payments", contentType);
     await this.ownedInvoice(residentId, invoiceId);
     return this.storage.presignUpload({
       tenantId: this.ctx.currentTenantId()!,
       kind: "payments",
+      contentType,
     });
   }
 

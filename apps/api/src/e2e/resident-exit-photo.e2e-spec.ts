@@ -107,7 +107,9 @@ describe("M8 resident exit-request & complaint photo (e2e)", () => {
     let complaintId: string;
 
     it("a resident reads the presigned URL for their OWN complaint photo", async () => {
-      const presign = await h.req("post", "/complaints/photo-url", r1);
+      const presign = await h.req("post", "/complaints/photo-url", r1, {
+        contentType: "image/jpeg",
+      });
       expect(presign.status).toBe(201);
       const key = presign.body.key as string;
       expect(key).toBeTruthy();

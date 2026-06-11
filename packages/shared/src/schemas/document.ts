@@ -1,9 +1,11 @@
 import { z } from "zod";
 import { DocumentStatus, DocumentType } from "../enums";
+import { contentTypeField } from "./upload";
 
 /** Resident asks for a presigned URL to upload a KYC document. */
 export const documentUploadUrlSchema = z.object({
   type: z.nativeEnum(DocumentType),
+  contentType: contentTypeField,
 });
 export type DocumentUploadUrlInput = z.infer<typeof documentUploadUrlSchema>;
 

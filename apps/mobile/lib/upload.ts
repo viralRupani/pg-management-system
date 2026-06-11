@@ -1,44 +1,65 @@
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from '@pg/shared';
+
+export interface PickedFile {
+  uri: string;
+  fileName: string;
+  /** Size in bytes when the picker reports it (used for the client-side guard). */
+  size?: number;
+  /** MIME type when the picker reports it (preferred over guessing from the name). */
+  mimeType?: string;
+}
+
+/** The content-type to declare for an upload: picker MIME if known, else by extension. */
+export function contentTypeOf(file: PickedFile): string {
+  return file.mimeType ?? contentTypeFor(file.fileName);
+}
+
+/** Backwards-compatible alias (screens import this name). */
+export type PickedImage = PickedFile;
+
+/** True if a known size exceeds the shared max. Unknown size → allowed (S3 backstops). */
+export function exceedsMaxSize(size?: number): boolean {
+  return typeof size === 'number' && size > MAX_UPLOAD_BYTES;
+}
+
+export { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL };
+
 /**
- * Binary upload to a presigned URL (the app owns this PUT; the API only mints
- * the URL + key and later persists the key). expo-image-picker gives a local
- * `file://` URI — we fetch it into a Blob and PUT the bytes.
+ * Upload to an S3 presigned POST. `post.fields` MUST be appended first and the
+ * binary `file` LAST — S3 ignores fields after the file. expo-image-picker gives
+ * a local `file://` URI; React Native FormData streams it from the URI (no Blob).
  *
- * DEV CAVEAT: the API's StorageProvider stub returns `https://stub-storage.local`
- * URLs that don't resolve from the phone, so the PUT will fail in dev. The KEY is
- * what the submit step persists, so we treat the PUT as best-effort: on failure
- * we log and return false, letting the flow proceed against the stub. A real S3
- * driver (deploy time) makes the PUT a hard requirement — callers can surface the
- * `false` return if/when that matters.
+ * Returns false on a failed upload (e.g. S3 rejects an oversize/wrong-type file
+ * via the POST policy → HTTP 4xx); the caller can surface that.
  */
-export async function uploadToPresignedUrl(
-  uploadUrl: string,
+export async function uploadToPresignedPost(
+  post: { url: string; fields: Record<string, string> },
   localUri: string,
-  contentType = 'image/jpeg',
+  contentType: string,
+  fileName: string,
 ): Promise<boolean> {
   try {
-    const fileRes = await fetch(localUri);
-    const blob = await fileRes.blob();
-    const res = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType },
-      body: blob,
-    });
+    const form = new FormData();
+    for (const [k, v] of Object.entries(post.fields)) form.append(k, v);
+    // RN's FormData accepts a { uri, name, type } file descriptor.
+    form.append('file', {
+      uri: localUri,
+      name: fileName,
+      type: contentType,
+    } as unknown as Blob);
+
+    const res = await fetch(post.url, { method: 'POST', body: form });
     if (!res.ok) {
-      console.warn(`[upload] PUT failed (${res.status}) to ${uploadUrl}`);
+      console.warn(`[upload] POST failed (${res.status}) to ${post.url}`);
       return false;
     }
     return true;
   } catch (err) {
-    console.warn('[upload] PUT errored (dev stub URL is expected to fail):', err);
+    console.warn('[upload] POST errored:', err);
     return false;
   }
-}
-
-import * as ImagePicker from 'expo-image-picker';
-
-export interface PickedImage {
-  uri: string;
-  fileName: string;
 }
 
 /**
@@ -47,7 +68,7 @@ export interface PickedImage {
  */
 export async function pickImage(
   source: 'library' | 'camera',
-): Promise<PickedImage | null> {
+): Promise<PickedFile | null> {
   if (source === 'camera') {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) return null;
@@ -69,6 +90,27 @@ export async function pickImage(
   return {
     uri: asset.uri,
     fileName: asset.fileName ?? asset.uri.split('/').pop() ?? 'upload.jpg',
+    size: asset.fileSize,
+    mimeType: asset.mimeType,
+  };
+}
+
+/**
+ * Pick a document for KYC — PDFs (Aadhaar, agreements) as well as images. The
+ * image picker is image-only, so KYC uses the document picker.
+ */
+export async function pickDocument(): Promise<PickedFile | null> {
+  const result = await DocumentPicker.getDocumentAsync({
+    type: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'],
+    copyToCacheDirectory: true,
+  });
+  if (result.canceled || !result.assets?.length) return null;
+  const asset = result.assets[0];
+  return {
+    uri: asset.uri,
+    fileName: asset.name ?? asset.uri.split('/').pop() ?? 'document',
+    size: asset.size ?? undefined,
+    mimeType: asset.mimeType,
   };
 }
 

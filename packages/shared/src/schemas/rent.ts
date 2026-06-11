@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { InvoiceStatus, PaymentStatus } from "../enums";
+import { contentTypeField } from "./upload";
 
 /** Billing period as 'YYYY-MM' (project-wide convention). */
 export const periodSchema = z
@@ -27,14 +28,9 @@ export type InvoiceSummary = z.infer<typeof invoiceSummarySchema>;
 /** Resident asks for a presigned URL to upload a payment screenshot. */
 export const paymentUploadUrlSchema = z.object({
   invoiceId: z.string().uuid(),
+  contentType: contentTypeField,
 });
 export type PaymentUploadUrlInput = z.infer<typeof paymentUploadUrlSchema>;
-
-export const presignedUploadSchema = z.object({
-  uploadUrl: z.string(),
-  key: z.string(),
-});
-export type PresignedUploadResult = z.infer<typeof presignedUploadSchema>;
 
 /** Resident submits a payment against an invoice with the uploaded screenshot. */
 export const submitPaymentSchema = z.object({

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { TenantStatus } from "../enums";
 import { indianPhone } from "./phone";
+import { contentTypeField } from "./upload";
 
 /**
  * Tenant onboarding — creates a PG org plus its first manager.
@@ -58,6 +59,12 @@ export const updateBrandingSchema = z
     message: "At least one branding field is required",
   });
 export type UpdateBrandingInput = z.infer<typeof updateBrandingSchema>;
+
+/** Manager asks for a presigned URL to upload a PG logo. */
+export const logoUploadUrlSchema = z.object({
+  contentType: contentTypeField,
+});
+export type LogoUploadUrlInput = z.infer<typeof logoUploadUrlSchema>;
 
 export const tenantSummarySchema = z.object({
   id: z.string().uuid(),

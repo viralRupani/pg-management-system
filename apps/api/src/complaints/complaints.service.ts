@@ -15,6 +15,7 @@ import { complaintUpdates, complaints, users } from "../db/schema";
 import {
   STORAGE_PROVIDER,
   type StorageProvider,
+  assertAllowedType,
 } from "../storage/storage.module";
 
 /**
@@ -31,10 +32,12 @@ export class ComplaintsService {
   ) {}
 
   /** Resident: presigned URL for a complaint photo. */
-  async requestPhotoUrl(): Promise<PresignedUploadResult> {
+  async requestPhotoUrl(contentType: string): Promise<PresignedUploadResult> {
+    assertAllowedType("complaints", contentType);
     return this.storage.presignUpload({
       tenantId: this.ctx.currentTenantId()!,
       kind: "complaints",
+      contentType,
     });
   }
 

@@ -17,6 +17,7 @@ import { documents, users } from "../db/schema";
 import {
   STORAGE_PROVIDER,
   type StorageProvider,
+  assertAllowedType,
 } from "../storage/storage.module";
 
 /**
@@ -32,10 +33,12 @@ export class DocumentsService {
   ) {}
 
   /** Resident: presigned URL to upload a KYC file. */
-  async requestUploadUrl(): Promise<PresignedUploadResult> {
+  async requestUploadUrl(contentType: string): Promise<PresignedUploadResult> {
+    assertAllowedType("kyc", contentType);
     return this.storage.presignUpload({
       tenantId: this.ctx.currentTenantId()!,
       kind: "kyc",
+      contentType,
     });
   }
 

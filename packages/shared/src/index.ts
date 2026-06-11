@@ -7,6 +7,7 @@ export * from "./schemas/owner";
 export * from "./schemas/resident";
 export * from "./schemas/property";
 export * from "./schemas/allocation";
+export * from "./schemas/upload";
 export * from "./schemas/rent";
 export * from "./schemas/notification";
 export * from "./schemas/document";

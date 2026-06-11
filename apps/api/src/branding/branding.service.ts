@@ -11,6 +11,7 @@ import { tenants } from "../db/schema";
 import {
   STORAGE_PROVIDER,
   type StorageProvider,
+  assertAllowedType,
 } from "../storage/storage.module";
 
 /**
@@ -88,10 +89,14 @@ export class BrandingService {
   }
 
   /** Manager: presigned URL to upload a new logo (tenant-namespaced key). */
-  async requestLogoUploadUrl(): Promise<PresignedUploadResult> {
+  async requestLogoUploadUrl(
+    contentType: string,
+  ): Promise<PresignedUploadResult> {
+    assertAllowedType("logos", contentType);
     return this.storage.presignUpload({
       tenantId: this.ctx.currentTenantId()!,
       kind: "logos",
+      contentType,
     });
   }
 }

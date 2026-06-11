@@ -19,6 +19,7 @@ import type {
   CreateOwnerPgInput,
   CreateRoomInput,
   DepositSummary,
+  ComplaintPhotoUrlInput,
   DepositTransactionSummary,
   DocumentSummary,
   DocumentUploadUrlInput,
@@ -30,6 +31,7 @@ import type {
   FloorSummary,
   GenerateInvoicesInput,
   InvoiceSummary,
+  LogoUploadUrlInput,
   ManagerLoginInput,
   ManagerSummary,
   MenuItemSummary,
@@ -130,8 +132,8 @@ export class PgApiClient {
     mine: () => this.http.get<TenantBranding>("/tenants/branding"),
     update: (input: UpdateBrandingInput) =>
       this.http.patch<TenantBranding>("/tenants/branding", input),
-    logoUploadUrl: () =>
-      this.http.post<PresignedUploadResult>("/tenants/logo-url"),
+    logoUploadUrl: (input: LogoUploadUrlInput) =>
+      this.http.post<PresignedUploadResult>("/tenants/logo-url", input),
   };
 
   readonly residents = {
@@ -300,8 +302,10 @@ export class PgApiClient {
   /**
    * Resident-facing surface (mobile app). Every method is RESIDENT-roled; the
    * tenant + actor come from the JWT, so there is never a residentId argument.
-   * Uploads follow the presign pattern: get { uploadUrl, key } here, PUT the
-   * bytes to uploadUrl yourself (the app owns the binary PUT), then submit the key.
+   * Uploads follow the presign pattern: get { url, fields, key } here, POST the
+   * bytes as a multipart form to `url` (fields first, file LAST — the app owns the
+   * upload), then submit the key. Declare a `contentType`; the server pins it and
+   * a max-size policy, so S3 edge-rejects oversize/wrong-type files.
    */
   readonly resident = {
     invoices: {
@@ -309,7 +313,7 @@ export class PgApiClient {
       listMine: () => this.http.get<InvoiceSummary[]>("/invoices/mine"),
     },
     payments: {
-      /** Presigned URL to PUT a UPI-payment screenshot for an invoice. */
+      /** Presigned POST to upload a UPI-payment screenshot for an invoice. */
       uploadUrl: (input: PaymentUploadUrlInput) =>
         this.http.post<PresignedUploadResult>("/payments/upload-url", input),
       /** Record a SUBMITTED payment against an invoice (manager reviews later). */
@@ -334,7 +338,7 @@ export class PgApiClient {
     documents: {
       /** Own KYC documents + review status, newest first. */
       listMine: () => this.http.get<DocumentSummary[]>("/documents/mine"),
-      /** Presigned URL to PUT a KYC document of the given type. */
+      /** Presigned POST to upload a KYC document of the given type. */
       uploadUrl: (input: DocumentUploadUrlInput) =>
         this.http.post<PresignedUploadResult>("/documents/upload-url", input),
       /** Submit (or re-submit) a KYC document by its stored key. */
@@ -344,9 +348,9 @@ export class PgApiClient {
     complaints: {
       /** Own complaints, newest first. */
       listMine: () => this.http.get<ComplaintSummary[]>("/complaints/mine"),
-      /** Presigned URL to PUT an optional complaint photo before filing. */
-      photoUrl: () =>
-        this.http.post<PresignedUploadResult>("/complaints/photo-url"),
+      /** Presigned POST to upload an optional complaint photo before filing. */
+      photoUrl: (input: ComplaintPhotoUrlInput) =>
+        this.http.post<PresignedUploadResult>("/complaints/photo-url", input),
       /** File a complaint (optional photoKey from photoUrl). */
       file: (input: FileComplaintInput) =>
         this.http.post<{ id: string }>("/complaints", input),

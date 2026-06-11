@@ -161,9 +161,12 @@ describe("M6 metering & branding (e2e)", () => {
     });
 
     it("closes the logo loop: upload-url → store key → public read presigns it", async () => {
-      const presign = await h.req("post", "/tenants/logo-url", pgA.managerToken);
+      const presign = await h.req("post", "/tenants/logo-url", pgA.managerToken, {
+        contentType: "image/png",
+      });
       expect(presign.status).toBe(201);
-      expect(presign.body.uploadUrl).toBeDefined();
+      expect(presign.body.url).toBeDefined();
+      expect(presign.body.fields).toBeDefined();
       const key = presign.body.key;
       expect(key).toContain(`${pgA.id}/logos/`);
 

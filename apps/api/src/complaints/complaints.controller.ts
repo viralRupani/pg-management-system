@@ -1,10 +1,12 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import {
+  type ComplaintPhotoUrlInput,
   type ComplaintUpdateInput,
   type FileComplaintInput,
   type JwtPayload,
   type UpdateComplaintStatusInput,
   UserRole,
+  complaintPhotoUrlSchema,
   complaintUpdateSchema,
   fileComplaintSchema,
   updateComplaintStatusSchema,
@@ -25,8 +27,10 @@ export class ComplaintsController {
   // --- Resident ---
   @Post("photo-url")
   @Roles(UserRole.RESIDENT)
-  photoUrl() {
-    return this.complaints.requestPhotoUrl();
+  photoUrl(
+    @Body(new ZodBody(complaintPhotoUrlSchema)) dto: ComplaintPhotoUrlInput,
+  ) {
+    return this.complaints.requestPhotoUrl(dto.contentType);
   }
 
   @Post()

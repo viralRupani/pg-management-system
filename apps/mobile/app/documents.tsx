@@ -15,7 +15,14 @@ import { documentStatus } from '@/components/ui/status';
 import { api } from '@/lib/api';
 import { qk, useDocuments } from '@/lib/queries';
 import { DocumentStatus, DocumentType } from '@pg/shared';
-import { contentTypeFor, pickImage, uploadToPresignedUrl } from '@/lib/upload';
+import {
+  MAX_UPLOAD_LABEL,
+  contentTypeOf,
+  exceedsMaxSize,
+  pickDocument,
+  pickImage,
+  uploadToPresignedPost,
+} from '@/lib/upload';
 import { cn, toMessage } from '@/lib/utils';
 
 const DOC_TYPES: { type: DocumentType; label: string }[] = [
@@ -41,15 +48,21 @@ export default function DocumentsScreen() {
 
   const verified = data?.filter((d) => d.status === DocumentStatus.VERIFIED).length ?? 0;
 
-  async function upload(source: 'library' | 'camera') {
+  async function upload(source: 'files' | 'camera') {
     if (!chosenType) return;
-    const img = await pickImage(source);
-    if (!img) return;
+    const file = source === 'camera' ? await pickImage('camera') : await pickDocument();
+    if (!file) return;
+    if (exceedsMaxSize(file.size)) {
+      Alert.alert('File too large', `Please choose a file under ${MAX_UPLOAD_LABEL}.`);
+      return;
+    }
     setBusy(true);
     try {
-      const { uploadUrl, key } = await api.resident.documents.uploadUrl({ type: chosenType });
-      await uploadToPresignedUrl(uploadUrl, img.uri, contentTypeFor(img.uri));
-      await api.resident.documents.submit({ type: chosenType, s3Key: key });
+      const contentType = contentTypeOf(file);
+      const post = await api.resident.documents.uploadUrl({ type: chosenType, contentType });
+      const ok = await uploadToPresignedPost(post, file.uri, contentType, file.fileName);
+      if (!ok) throw new Error('Upload failed. Please try a smaller file.');
+      await api.resident.documents.submit({ type: chosenType, s3Key: post.key });
       await queryClient.invalidateQueries({ queryKey: qk.documents });
       setSheetOpen(false);
       setChosenType(null);
@@ -142,9 +155,9 @@ export default function DocumentsScreen() {
         </View>
         <View className="flex-row gap-3">
           <Button
-            title="Gallery"
+            title="Files / PDF"
             variant="ghost"
-            onPress={() => upload('library')}
+            onPress={() => upload('files')}
             loading={busy}
             disabled={!chosenType}
             className="flex-1"
@@ -157,6 +170,9 @@ export default function DocumentsScreen() {
             className="flex-1"
           />
         </View>
+        <Text className="text-center text-[12px] text-ink3">
+          JPG, PNG, WebP or PDF · max {MAX_UPLOAD_LABEL}
+        </Text>
       </Sheet>
     </Screen>
   );

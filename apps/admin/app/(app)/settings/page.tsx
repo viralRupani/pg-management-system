@@ -2,6 +2,11 @@
 
 import { Building2, Check, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import {
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_LABEL,
+  UPLOAD_ALLOWED_TYPES,
+} from "@pg/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
@@ -200,7 +205,7 @@ function AccentPreview({ accent }: { accent: string }) {
   );
 }
 
-/** Logo: presign → PUT bytes → PATCH the returned key → refetch branding. */
+/** Logo: presign → POST bytes → PATCH the returned key → refetch branding. */
 function LogoCard({
   logoUrl,
   name,
@@ -229,8 +234,13 @@ function LogoCard({
 
   const pick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
-    if (f && f.size > 2 * 1024 * 1024) {
-      toast.error("Logo must be under 2 MB.");
+    if (f && f.size > MAX_UPLOAD_BYTES) {
+      toast.error(`Logo must be under ${MAX_UPLOAD_LABEL}.`);
+      setFile(null);
+      return;
+    }
+    if (f && !UPLOAD_ALLOWED_TYPES.logos.includes(f.type)) {
+      toast.error("Logo must be a JPG, PNG or WebP image.");
       setFile(null);
       return;
     }
@@ -241,12 +251,14 @@ function LogoCard({
     if (!file) return;
     setBusy(true);
     try {
-      const { uploadUrl, key } = await api.branding.logoUploadUrl();
-      const res = await fetch(uploadUrl, {
-        method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type || "application/octet-stream" },
+      // S3 presigned POST: append the policy fields first, the file LAST.
+      const { url, fields, key } = await api.branding.logoUploadUrl({
+        contentType: file.type,
       });
+      const form = new FormData();
+      for (const [k, v] of Object.entries(fields)) form.append(k, v);
+      form.append("file", file);
+      const res = await fetch(url, { method: "POST", body: form });
       if (!res.ok) throw new Error(`Upload failed (${res.status})`);
       await api.branding.update({ logoKey: key });
       await onSaved();
@@ -289,7 +301,7 @@ function LogoCard({
             <input
               ref={fileRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              accept="image/png,image/jpeg,image/webp"
               onChange={pick}
               className={cn(
                 "block w-full text-sm text-muted-foreground",
@@ -298,8 +310,8 @@ function LogoCard({
               )}
             />
             <p className="text-xs text-muted-foreground">
-              PNG, JPG, WebP, or SVG, up to 2 MB. Shown in the sidebar and on the
-              resident app.
+              PNG, JPG, or WebP, up to {MAX_UPLOAD_LABEL}. Shown in the sidebar
+              and on the resident app.
             </p>
           </div>
         </div>

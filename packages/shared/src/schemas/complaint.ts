@@ -1,5 +1,12 @@
 import { z } from "zod";
 import { ComplaintCategory, ComplaintStatus } from "../enums";
+import { contentTypeField } from "./upload";
+
+/** Resident asks for a presigned URL to upload a complaint photo. */
+export const complaintPhotoUrlSchema = z.object({
+  contentType: contentTypeField,
+});
+export type ComplaintPhotoUrlInput = z.infer<typeof complaintPhotoUrlSchema>;
 
 /** Resident files a complaint (photo optional, uploaded via presigned URL). */
 export const fileComplaintSchema = z.object({

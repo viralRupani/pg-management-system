@@ -1,7 +1,9 @@
 import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
 import {
+  type LogoUploadUrlInput,
   type UpdateBrandingInput,
   UserRole,
+  logoUploadUrlSchema,
   updateBrandingSchema,
 } from "@pg/shared";
 import { Public, Roles } from "../common/decorators";
@@ -43,7 +45,7 @@ export class BrandingController {
   /** Manager: presigned URL to upload a new logo. */
   @Post("tenants/logo-url")
   @Roles(UserRole.PG_MANAGER)
-  logoUrl() {
-    return this.branding.requestLogoUploadUrl();
+  logoUrl(@Body(new ZodBody(logoUploadUrlSchema)) dto: LogoUploadUrlInput) {
+    return this.branding.requestLogoUploadUrl(dto.contentType);
   }
 }
