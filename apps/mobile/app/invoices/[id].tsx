@@ -8,6 +8,7 @@ import { Appbar } from '@/components/ui/appbar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Screen } from '@/components/ui/screen';
 import { Sheet } from '@/components/ui/sheet';
 import { invoiceStatus } from '@/components/ui/status';
@@ -32,6 +33,7 @@ export default function InvoiceDetailScreen() {
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [picked, setPicked] = useState<PickedImage | null>(null);
+  const [reference, setReference] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   if (!invoice) {
@@ -58,24 +60,35 @@ export default function InvoiceDetailScreen() {
     setPicked(img);
   }
 
+  const refTrimmed = reference.trim();
+  // At least one proof: a screenshot OR a UPI reference number (some apps block
+  // screenshots of the success screen).
+  const canSubmit = Boolean(picked) || refTrimmed.length >= 6;
+
   async function submit() {
-    if (!picked || !invoice) return;
+    if (!invoice || !canSubmit) return;
     setSubmitting(true);
     try {
-      const contentType = contentTypeOf(picked);
-      const post = await api.resident.payments.uploadUrl({
-        invoiceId: invoice.id,
-        contentType,
-      });
-      const ok = await uploadToPresignedPost(post, picked.uri, contentType, picked.fileName);
-      if (!ok) throw new Error('Upload failed. Please try a smaller image.');
+      let screenshotKey: string | undefined;
+      if (picked) {
+        const contentType = contentTypeOf(picked);
+        const post = await api.resident.payments.uploadUrl({
+          invoiceId: invoice.id,
+          contentType,
+        });
+        const ok = await uploadToPresignedPost(post, picked.uri, contentType, picked.fileName);
+        if (!ok) throw new Error('Upload failed. Please try a smaller image.');
+        screenshotKey = post.key;
+      }
       await api.resident.payments.submit({
         invoiceId: invoice.id,
-        screenshotKey: post.key,
+        screenshotKey,
+        referenceId: refTrimmed || undefined,
       });
       await queryClient.invalidateQueries({ queryKey: qk.invoices });
       setSheetOpen(false);
       setPicked(null);
+      setReference('');
       Alert.alert('Submitted', 'Your payment is awaiting manager approval.');
     } catch (err) {
       Alert.alert('Could not submit', toMessage(err, 'Please try again.'));
@@ -112,8 +125,8 @@ export default function InvoiceDetailScreen() {
           How to pay
         </Text>
         <Text className="mt-1.5 text-[13px] leading-5 text-ink2">
-          Pay the amount to your PG via UPI, then upload the payment screenshot
-          here. Your manager reviews and approves it.
+          Pay the amount to your PG via UPI, then submit a screenshot or your UPI
+          reference number here. Your manager reviews and approves it.
         </Text>
       </Card>
 
@@ -125,7 +138,7 @@ export default function InvoiceDetailScreen() {
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         title="Submit payment"
-        subtitle={`Upload your UPI screenshot for ${formatPaise(invoice.amountPaise)}.`}
+        subtitle={`Screenshot or UPI reference for ${formatPaise(invoice.amountPaise)}.`}
       >
         {picked ? (
           <View className="flex-row items-center gap-3 rounded-btn border border-line bg-surface2 p-3">
@@ -148,11 +161,32 @@ export default function InvoiceDetailScreen() {
             </Text>
           </View>
         )}
+
+        <View className="flex-row items-center gap-3">
+          <View className="h-px flex-1 bg-line2" />
+          <Text className="text-[12px] font-medium text-ink3">OR</Text>
+          <View className="h-px flex-1 bg-line2" />
+        </View>
+
+        <Input
+          label="UPI reference number"
+          value={reference}
+          onChangeText={setReference}
+          placeholder="e.g. 4012 3456 7890"
+          autoCapitalize="characters"
+          autoCorrect={false}
+        />
+        <Text className="-mt-1 text-[12px] leading-4 text-ink3">
+          Can&apos;t screenshot? GPay/PhonePe block it on some screens. Open the
+          payment in your UPI app&apos;s history and copy the UPI transaction /
+          reference ID (UTR).
+        </Text>
+
         <Button
           title="Submit for review"
           onPress={submit}
           loading={submitting}
-          disabled={!picked}
+          disabled={!canSubmit}
         />
       </Sheet>
     </Screen>

@@ -11,12 +11,14 @@ import { users } from "./users";
 import { invoices } from "./invoices";
 
 /**
- * A resident's payment attempt against an invoice: a screenshot (S3 key) the
- * manager reviews. Lifecycle is SUBMITTED -> APPROVED | REJECTED (guarded in the
- * service). `residentId` is denormalized for ownership checks — RLS isolates
- * tenants, NOT residents within a tenant, so every resident query must filter by
- * resident_id = the caller's sub. Composite FKs keep invoice/resident/reviewer
- * in tenant; the nullable reviewer FK is unenforced until set (MATCH SIMPLE).
+ * A resident's payment attempt against an invoice. Proof is a screenshot (S3
+ * key) and/or a UPI reference number (UTR) — at least one, enforced in the DTO
+ * (some UPI apps block screenshots, so the UTR is the fallback). Lifecycle is
+ * SUBMITTED -> APPROVED | REJECTED (guarded in the service). `residentId` is
+ * denormalized for ownership checks — RLS isolates tenants, NOT residents within
+ * a tenant, so every resident query must filter by resident_id = the caller's
+ * sub. Composite FKs keep invoice/resident/reviewer in tenant; the nullable
+ * reviewer FK is unenforced until set (MATCH SIMPLE).
  */
 export const payments = pgTable(
   "payments",
@@ -28,7 +30,10 @@ export const payments = pgTable(
     invoiceId: uuid("invoice_id").notNull(),
     residentId: uuid("resident_id").notNull(),
     amountPaise: integer("amount_paise").notNull(),
-    screenshotKey: text("screenshot_key").notNull(),
+    // Nullable: a payment may be proven by a UTR reference instead (DTO enforces
+    // at least one of screenshot_key / reference_id).
+    screenshotKey: text("screenshot_key"),
+    referenceId: text("reference_id"), // UPI transaction / reference number (UTR)
     status: text("status").notNull().default("SUBMITTED"), // PaymentStatus
     reviewedByUserId: uuid("reviewed_by_user_id"),
     reviewNote: text("review_note"),

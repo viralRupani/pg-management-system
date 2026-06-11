@@ -32,12 +32,22 @@ export const paymentUploadUrlSchema = z.object({
 });
 export type PaymentUploadUrlInput = z.infer<typeof paymentUploadUrlSchema>;
 
-/** Resident submits a payment against an invoice with the uploaded screenshot. */
-export const submitPaymentSchema = z.object({
-  invoiceId: z.string().uuid(),
-  screenshotKey: z.string().min(1),
-  amountPaise: z.number().int().positive().optional(), // defaults to invoice amount
-});
+/**
+ * Resident submits a payment against an invoice. Proof is a screenshot (S3 key)
+ * and/or a UPI reference number (UTR) — at least one is required, because some
+ * UPI apps (GPay et al.) block screenshots of the success screen.
+ */
+export const submitPaymentSchema = z
+  .object({
+    invoiceId: z.string().uuid(),
+    screenshotKey: z.string().min(1).optional(),
+    referenceId: z.string().trim().min(6).max(40).optional(),
+    amountPaise: z.number().int().positive().optional(), // defaults to invoice amount
+  })
+  .refine((d) => Boolean(d.screenshotKey) || Boolean(d.referenceId), {
+    message: "Provide a payment screenshot or a UPI reference number",
+    path: ["referenceId"],
+  });
 export type SubmitPaymentInput = z.infer<typeof submitPaymentSchema>;
 
 /** Manager rejects a payment with a reason. */
@@ -55,6 +65,8 @@ export const paymentSummarySchema = z.object({
   amountPaise: z.number().int(),
   status: z.nativeEnum(PaymentStatus),
   reviewNote: z.string().nullable(),
+  referenceId: z.string().nullable(), // UPI reference (UTR), if the resident gave one
+  hasScreenshot: z.boolean(), // whether a screenshot is attached (drives the View button)
   createdAt: z.string(),
 });
 export type PaymentSummary = z.infer<typeof paymentSummarySchema>;

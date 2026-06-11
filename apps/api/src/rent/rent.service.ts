@@ -177,7 +177,8 @@ export class RentService {
         invoiceId: input.invoiceId,
         residentId, // from JWT sub, never the body
         amountPaise: input.amountPaise ?? invoice.amountPaise,
-        screenshotKey: input.screenshotKey,
+        screenshotKey: input.screenshotKey ?? null,
+        referenceId: input.referenceId ?? null,
         status: PaymentStatus.SUBMITTED,
       })
       .returning({ id: payments.id });
@@ -197,6 +198,8 @@ export class RentService {
         amountPaise: payments.amountPaise,
         status: payments.status,
         reviewNote: payments.reviewNote,
+        referenceId: payments.referenceId,
+        screenshotKey: payments.screenshotKey,
         createdAt: payments.createdAt,
       })
       .from(payments)
@@ -215,6 +218,8 @@ export class RentService {
       amountPaise: r.amountPaise,
       status: r.status as PaymentStatus,
       reviewNote: r.reviewNote,
+      referenceId: r.referenceId,
+      hasScreenshot: Boolean(r.screenshotKey),
       createdAt: r.createdAt.toISOString(),
     }));
   }
@@ -227,6 +232,8 @@ export class RentService {
       .from(payments)
       .where(eq(payments.id, paymentId));
     if (!p) throw new NotFoundException("Payment not found");
+    if (!p.key)
+      throw new NotFoundException("This payment has no screenshot");
     return this.storage.presignDownload(p.key);
   }
 

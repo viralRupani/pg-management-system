@@ -291,6 +291,7 @@ function PaymentsTab({
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {p.period} · submitted {formatDate(p.createdAt)}
+                        {p.referenceId ? ` · UPI ref: ${p.referenceId}` : ""}
                         {p.reviewNote ? ` · note: ${p.reviewNote}` : ""}
                       </p>
                     </div>
@@ -301,14 +302,16 @@ function PaymentsTab({
                       <Badge tone={paymentTone(p.status)}>
                         {p.status.toLowerCase()}
                       </Badge>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onView(p)}
-                      >
-                        <ImageIcon className="h-4 w-4" />
-                        View
-                      </Button>
+                      {p.hasScreenshot && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onView(p)}
+                        >
+                          <ImageIcon className="h-4 w-4" />
+                          View
+                        </Button>
+                      )}
                       {p.status === "SUBMITTED" && (
                         <>
                           <Button

@@ -127,6 +127,28 @@ describe("M3 rent loop (e2e)", () => {
     expect(again.status).toBe(409);
   });
 
+  it("a resident submits a payment with only a UPI reference (no screenshot)", async () => {
+    const submit = await h.req("post", "/payments", resident2, {
+      invoiceId: inv2,
+      referenceId: "401234567890",
+    });
+    expect(submit.status).toBe(201);
+
+    const submitted = await h.req("get", "/payments?status=SUBMITTED", pgA.managerToken);
+    const row = submitted.body.find((p: { id: string }) => p.id === submit.body.id);
+    expect(row.referenceId).toBe("401234567890");
+    expect(row.hasScreenshot).toBe(false);
+
+    // No screenshot to presign → 404 (not a 500).
+    const shot = await h.req("get", `/payments/${submit.body.id}/screenshot`, pgA.managerToken);
+    expect(shot.status).toBe(404);
+  });
+
+  it("a payment with neither screenshot nor reference is rejected (400)", async () => {
+    const submit = await h.req("post", "/payments", resident2, { invoiceId: inv2 });
+    expect(submit.status).toBe(400);
+  });
+
   it("manager rejects a payment with a note; invoice stays unpaid", async () => {
     const submit = await h.req("post", "/payments", resident2, {
       invoiceId: inv2,
