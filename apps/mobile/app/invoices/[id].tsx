@@ -184,9 +184,14 @@ export default function InvoiceDetailScreen() {
             </Text>
           </View>
         ) : (
-          <>
+          // Grouped panel so the screenshot pickers + reference read as proof
+          // belonging to the UPI choice above — not a peer set of boxes.
+          <View className="gap-3 rounded-btn border border-line bg-surface2 p-3.5">
+            <Text className="text-[11px] font-bold uppercase tracking-wider text-ink3">
+              Add payment proof
+            </Text>
             {picked ? (
-              <View className="flex-row items-center gap-3 rounded-btn border border-line bg-surface2 p-3">
+              <View className="flex-row items-center gap-3 rounded-btn border border-line bg-surface p-3">
                 <Image source={{ uri: picked.uri }} className="h-12 w-12 rounded-lg" />
                 <Text className="flex-1 text-[13px] text-ink" numberOfLines={1}>
                   {picked.fileName}
@@ -197,6 +202,9 @@ export default function InvoiceDetailScreen() {
               </View>
             ) : (
               <View className="gap-2">
+                <Text className="text-[13px] text-ink2">
+                  Upload a screenshot of your UPI payment.
+                </Text>
                 <View className="flex-row gap-3">
                   <PickButton icon="image-outline" label="Gallery" onPress={() => choose('library')} />
                   <PickButton icon="camera-outline" label="Camera" onPress={() => choose('camera')} />
@@ -208,9 +216,9 @@ export default function InvoiceDetailScreen() {
             )}
 
             <View className="flex-row items-center gap-3">
-              <View className="h-px flex-1 bg-line2" />
-              <Text className="text-[12px] font-medium text-ink3">OR</Text>
-              <View className="h-px flex-1 bg-line2" />
+              <View className="h-px flex-1 bg-line" />
+              <Text className="text-[12px] font-medium text-ink3">OR enter reference</Text>
+              <View className="h-px flex-1 bg-line" />
             </View>
 
             <Input
@@ -226,7 +234,7 @@ export default function InvoiceDetailScreen() {
               payment in your UPI app&apos;s history and copy the UPI transaction /
               reference ID (UTR).
             </Text>
-          </>
+          </View>
         )}
 
         <Button
@@ -252,9 +260,9 @@ function PickButton({
   return (
     <Pressable
       onPress={onPress}
-      className="flex-1 items-center gap-2 rounded-btn border border-line bg-surface py-5 active:opacity-60"
+      className="flex-1 flex-row items-center justify-center gap-2 rounded-btn border border-line bg-surface py-3.5 active:opacity-60"
     >
-      <Ionicons name={icon} size={24} color="#0b7d73" />
+      <Ionicons name={icon} size={20} color="#0b7d73" />
       <Text className="text-[13px] font-semibold text-ink2">{label}</Text>
     </Pressable>
   );
