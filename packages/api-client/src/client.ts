@@ -30,6 +30,8 @@ import type {
   FileComplaintInput,
   FloorSummary,
   GenerateInvoicesInput,
+  InvoiceListQuery,
+  InvoiceListResult,
   InvoiceSummary,
   LogoUploadUrlInput,
   ManagerLoginInput,
@@ -213,7 +215,8 @@ export class PgApiClient {
   };
 
   readonly invoices = {
-    list: () => this.http.get<InvoiceSummary[]>("/invoices"),
+    list: (query?: Partial<InvoiceListQuery>) =>
+      this.http.get<InvoiceListResult>("/invoices", { query }),
     /** Generate monthly invoices from active allocations (idempotent per period). */
     generate: (input: GenerateInvoicesInput) =>
       this.http.post<{ generated: number; period: string }>(

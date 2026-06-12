@@ -30,8 +30,10 @@ export const payments = pgTable(
     invoiceId: uuid("invoice_id").notNull(),
     residentId: uuid("resident_id").notNull(),
     amountPaise: integer("amount_paise").notNull(),
-    // Nullable: a payment may be proven by a UTR reference instead (DTO enforces
-    // at least one of screenshot_key / reference_id).
+    // UPI (proof via screenshot/UTR) or CASH (paid in person, manager-confirmed).
+    method: text("method").notNull().default("UPI"), // PaymentMethod
+    // Nullable: a UPI payment may be proven by a UTR reference instead of a
+    // screenshot (DTO enforces one for UPI); a CASH payment carries neither.
     screenshotKey: text("screenshot_key"),
     referenceId: text("reference_id"), // UPI transaction / reference number (UTR)
     status: text("status").notNull().default("SUBMITTED"), // PaymentStatus

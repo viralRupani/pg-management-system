@@ -4,11 +4,14 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import {
   type GenerateInvoicesInput,
+  type InvoiceListQuery,
+  type InvoiceListResult,
   type InvoiceSummary,
   InvoiceStatus,
+  PaymentMethod,
   type PaymentSummary,
   PaymentStatus,
   type PresignedUploadResult,
@@ -28,6 +31,8 @@ import {
   type StorageProvider,
   assertAllowedType,
 } from "../storage/storage.module";
+import { istPeriod } from "../common/ist-date";
+import { prorateRent } from "./rent.proration";
 
 /**
  * The rent loop. RLS isolates tenants; it does NOT isolate residents within a
@@ -44,54 +49,91 @@ export class RentService {
 
   /**
    * Generate one PENDING invoice per active (currently bed-allocated) resident
-   * for the period, priced from the resident's current room rent. Idempotent:
-   * ON CONFLICT (resident_id, period) DO NOTHING, so re-runs add only the
-   * missing ones. Used by both the manager endpoint and the monthly job.
+   * for the period, priced from the resident's current room rent and PRORATED
+   * for the join month (see `prorateRent`): a resident who joined mid-period is
+   * billed only join-day..month-end; one whose `startDate` is after the period
+   * is skipped entirely. Optionally scoped to `input.residentIds` (empty/omitted
+   * = everyone). Idempotent: ON CONFLICT (resident_id, period) DO NOTHING, so
+   * re-runs add only the missing ones. Used by both the manager endpoint and the
+   * monthly job.
    */
   async generateMonthly(
     input: GenerateInvoicesInput,
   ): Promise<{ generated: number; period: string }> {
     const tenantId = this.ctx.currentTenantId()!;
     const db = this.ctx.db();
-    const period = input.period ?? new Date().toISOString().slice(0, 7);
+    // Default to the CURRENT period in IST — the same clock the join-month
+    // comparison uses (see prorateRent). A UTC default would disagree with it at
+    // the month boundary (the monthly cron fires 02:00 IST on the 1st = the
+    // PREVIOUS day in UTC), billing the wrong month.
+    const period = input.period ?? istPeriod(new Date());
     const dueDate = input.dueDate
       ? new Date(input.dueDate)
       : new Date(`${period}-10T00:00:00Z`);
+    const onlyResidents = input.residentIds?.length
+      ? input.residentIds
+      : undefined;
 
     const actives = await db
       .select({
         residentId: allocations.residentId,
         rent: rooms.monthlyRentPaise,
+        startDate: allocations.startDate,
       })
       .from(allocations)
       .innerJoin(beds, eq(beds.id, allocations.bedId))
       .innerJoin(rooms, eq(rooms.id, beds.roomId))
-      .where(isNull(allocations.endDate));
+      .where(
+        onlyResidents
+          ? and(
+              isNull(allocations.endDate),
+              inArray(allocations.residentId, onlyResidents),
+            )
+          : isNull(allocations.endDate),
+      );
 
-    if (actives.length === 0) return { generated: 0, period };
+    // Price each row, dropping residents who joined after the period (null).
+    const rows = actives.flatMap((a) => {
+      const amountPaise = prorateRent(a.rent, a.startDate, period);
+      return amountPaise === null
+        ? []
+        : [
+            {
+              tenantId,
+              residentId: a.residentId,
+              period,
+              amountPaise,
+              dueDate,
+              status: InvoiceStatus.PENDING,
+            },
+          ];
+    });
+
+    if (rows.length === 0) return { generated: 0, period };
 
     const inserted = await db
       .insert(invoices)
-      .values(
-        actives.map((a) => ({
-          tenantId,
-          residentId: a.residentId,
-          period,
-          amountPaise: a.rent,
-          dueDate,
-          status: InvoiceStatus.PENDING,
-        })),
-      )
+      .values(rows)
       .onConflictDoNothing({ target: [invoices.residentId, invoices.period] })
       .returning({ id: invoices.id });
 
     return { generated: inserted.length, period };
   }
 
-  /** Manager: all invoices in the tenant, newest period first. */
-  async listInvoices(): Promise<InvoiceSummary[]> {
-    const rows = await this.ctx
-      .db()
+  /**
+   * Manager: tenant invoices, newest period first, with search (resident name or
+   * period, case-insensitive) + offset pagination. Both queries inner-join users
+   * (the residentId FK is non-null, so the join never changes the count) so the
+   * name filter is shared by the list and the count on one code path.
+   */
+  async listInvoices(query: InvoiceListQuery): Promise<InvoiceListResult> {
+    const { q, page, limit } = query;
+    const db = this.ctx.db();
+    const where = q
+      ? or(ilike(users.name, `%${q}%`), ilike(invoices.period, `%${q}%`))
+      : undefined;
+
+    const listBase = db
       .select({
         id: invoices.id,
         residentId: invoices.residentId,
@@ -102,17 +144,38 @@ export class RentService {
         status: invoices.status,
       })
       .from(invoices)
-      .innerJoin(users, eq(users.id, invoices.residentId))
-      .orderBy(desc(invoices.period));
-    return rows.map((r) => ({
-      id: r.id,
-      residentId: r.residentId,
-      residentName: r.residentName,
-      period: r.period,
-      amountPaise: r.amountPaise,
-      dueDate: r.dueDate.toISOString(),
-      status: r.status as InvoiceStatus,
-    }));
+      .innerJoin(users, eq(users.id, invoices.residentId));
+    const countBase = db
+      .select({ total: count() })
+      .from(invoices)
+      .innerJoin(users, eq(users.id, invoices.residentId));
+
+    // Default order: PENDING invoices first (what still needs collecting), then
+    // newest period / most-recently created. The CASE keys only PENDING to the
+    // top; everything settled (PAID/WAIVED/OVERDUE) follows, still date-sorted.
+    const pendingFirst = sql`case when ${invoices.status} = ${InvoiceStatus.PENDING} then 0 else 1 end`;
+    const [rows, [{ total }]] = await Promise.all([
+      (where ? listBase.where(where) : listBase)
+        .orderBy(pendingFirst, desc(invoices.period), desc(invoices.createdAt))
+        .limit(limit)
+        .offset((page - 1) * limit),
+      where ? countBase.where(where) : countBase,
+    ]);
+
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        residentId: r.residentId,
+        residentName: r.residentName,
+        period: r.period,
+        amountPaise: r.amountPaise,
+        dueDate: r.dueDate.toISOString(),
+        status: r.status as InvoiceStatus,
+      })),
+      total,
+      page,
+      limit,
+    };
   }
 
   /** Resident: only their own invoices. */
@@ -177,6 +240,7 @@ export class RentService {
         invoiceId: input.invoiceId,
         residentId, // from JWT sub, never the body
         amountPaise: input.amountPaise ?? invoice.amountPaise,
+        method: input.method,
         screenshotKey: input.screenshotKey ?? null,
         referenceId: input.referenceId ?? null,
         status: PaymentStatus.SUBMITTED,
@@ -197,6 +261,7 @@ export class RentService {
         period: invoices.period,
         amountPaise: payments.amountPaise,
         status: payments.status,
+        method: payments.method,
         reviewNote: payments.reviewNote,
         referenceId: payments.referenceId,
         screenshotKey: payments.screenshotKey,
@@ -217,6 +282,7 @@ export class RentService {
       period: r.period,
       amountPaise: r.amountPaise,
       status: r.status as PaymentStatus,
+      method: r.method as PaymentMethod,
       reviewNote: r.reviewNote,
       referenceId: r.referenceId,
       hasScreenshot: Boolean(r.screenshotKey),

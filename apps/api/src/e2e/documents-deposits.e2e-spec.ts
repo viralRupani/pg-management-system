@@ -224,7 +224,7 @@ describe("M4 documents, deposits & exit (e2e)", () => {
       expect(gen.body.generated).toBe(1);
 
       const all = await h.req("get", "/invoices", pgA.managerToken);
-      const july = all.body.filter((i: { period: string }) => i.period === "2026-07");
+      const july = all.body.items.filter((i: { period: string }) => i.period === "2026-07");
       expect(july).toHaveLength(1);
       expect(july[0].residentId).toBe(r3Id);
     });

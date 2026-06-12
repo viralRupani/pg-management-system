@@ -71,6 +71,14 @@ export const PaymentStatus = {
 } as const;
 export type PaymentStatus = (typeof PaymentStatus)[keyof typeof PaymentStatus];
 
+/** How the resident paid. UPI carries proof (screenshot/UTR); CASH is paid in
+ * person and the manager confirms it on review. */
+export const PaymentMethod = {
+  UPI: "UPI",
+  CASH: "CASH",
+} as const;
+export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod];
+
 export const ComplaintStatus = {
   OPEN: "OPEN",
   IN_PROGRESS: "IN_PROGRESS",
