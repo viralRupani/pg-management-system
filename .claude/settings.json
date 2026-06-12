@@ -7,16 +7,16 @@
       "Read(**/.env.development)",
       "Read(**/.env.production)",
       "Read(**/.env.test)",
-      "Bash(cat:*.env*)",
-      "Bash(less:*.env*)",
-      "Bash(more:*.env*)",
-      "Bash(head:*.env*)",
-      "Bash(tail:*.env*)",
-      "Bash(sed:*.env*)",
-      "Bash(awk:*.env*)",
-      "Bash(xxd:*.env*)",
-      "Bash(od:*.env*)",
-      "Bash(strings:*.env*)"
+      "Bash(cat *.env*)",
+      "Bash(less *.env*)",
+      "Bash(more *.env*)",
+      "Bash(head *.env*)",
+      "Bash(tail *.env*)",
+      "Bash(sed *.env*)",
+      "Bash(awk *.env*)",
+      "Bash(xxd *.env*)",
+      "Bash(od *.env*)",
+      "Bash(strings *.env*)"
     ]
   }
 }
