@@ -5,7 +5,7 @@ import { ImageIcon, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input, Label } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
@@ -38,14 +38,17 @@ function invoiceTone(s: InvoiceSummary["status"]) {
 
 const currentPeriod = () => new Date().toISOString().slice(0, 7);
 
+const INVOICES_PAGE_SIZE = 10;
+
 export default function RentPage() {
   const toast = useToast();
   const [tab, setTab] = useState<Tab>("payments");
-  const [invoices, setInvoices] = useState<InvoiceSummary[] | null>(null);
   const [payments, setPayments] = useState<PaymentSummary[] | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("SUBMITTED");
   const [paymentsFailed, setPaymentsFailed] = useState(false);
-  const [invoicesFailed, setInvoicesFailed] = useState(false);
+  // Bumped to make the (self-fetching) Invoices tab reload after a generate or
+  // an approval flips an invoice to PAID.
+  const [invoicesRefresh, setInvoicesRefresh] = useState(0);
 
   // Action dialogs
   const [rejecting, setRejecting] = useState<PaymentSummary | null>(null);
@@ -62,10 +65,6 @@ export default function RentPage() {
       filter === "ALL" ? undefined : filter,
     );
     setPayments(list);
-  }, []);
-
-  const loadInvoices = useCallback(async () => {
-    setInvoices(await api.invoices.list());
   }, []);
 
   // Payments react to the status filter.
@@ -91,31 +90,14 @@ export default function RentPage() {
     };
   }, [statusFilter, toast]);
 
-  // Invoices load once (and after a generate).
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const list = await api.invoices.list();
-        if (!cancelled) setInvoices(list);
-      } catch (err) {
-        if (!cancelled) {
-          setInvoicesFailed(true);
-          toast.error(toMessage(err, "Could not load invoices."));
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [toast]);
-
   const approve = async (p: PaymentSummary) => {
     setBusyId(p.id);
     try {
       await api.payments.approve(p.id);
-      // Approving flips the linked invoice to PAID, so refresh both.
-      await Promise.all([loadPayments(statusFilter), loadInvoices()]);
+      // Approving flips the linked invoice to PAID; refresh payments and signal
+      // the Invoices tab to reload (it refetches on next mount regardless).
+      await loadPayments(statusFilter);
+      setInvoicesRefresh((n) => n + 1);
     } catch (err) {
       toast.error(toMessage(err, "Could not approve the payment."));
     } finally {
@@ -202,7 +184,7 @@ export default function RentPage() {
           onView={viewScreenshot}
         />
       ) : (
-        <InvoicesTab invoices={invoices} loadFailed={invoicesFailed} />
+        <InvoicesTab refreshKey={invoicesRefresh} />
       )}
 
       <RejectDialog
@@ -214,9 +196,9 @@ export default function RentPage() {
       <GenerateDialog
         open={generating}
         onClose={() => setGenerating(false)}
-        onDone={async () => {
+        onDone={() => {
           setGenerating(false);
-          await loadInvoices();
+          setInvoicesRefresh((n) => n + 1);
         }}
       />
       <ScreenshotDialog
@@ -246,6 +228,7 @@ function PaymentsTab({
   onReject: (p: PaymentSummary) => void;
   onView: (p: PaymentSummary) => void;
 }) {
+  const hasRows = payments !== null && payments.length > 0;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
@@ -255,7 +238,7 @@ function PaymentsTab({
             type="button"
             onClick={() => onFilter(f.value)}
             className={cn(
-              "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+              "rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors",
               statusFilter === f.value
                 ? "bg-brand text-brand-foreground"
                 : "bg-muted text-muted-foreground hover:text-foreground",
@@ -266,8 +249,16 @@ function PaymentsTab({
         ))}
       </div>
 
-      <Card>
-        <CardContent className="pt-5">
+      <Card className="overflow-hidden">
+        {hasRows && (
+          <div className="hidden items-center gap-4 border-b border-border px-5 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:flex">
+            <span className="flex-1">Resident</span>
+            <span className="w-28 text-right">Amount</span>
+            <span className="w-24 text-center">Status</span>
+            <span className="w-[16rem] text-right">Actions</span>
+          </div>
+        )}
+        <div className="px-5">
           {payments === null ? (
             loadFailed ? (
               <EmptyRow text="Couldn't load payments — try refreshing." />
@@ -283,113 +274,246 @@ function PaymentsTab({
                 return (
                   <li
                     key={p.id}
-                    className="flex flex-wrap items-center justify-between gap-3 py-3"
+                    className="flex flex-wrap items-center gap-x-4 gap-y-3 py-4"
                   >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        {p.residentName}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
+                    <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium text-foreground">
+                          {p.residentName}
+                        </p>
+                        <span className="shrink-0 rounded-full border border-input px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {p.method === "CASH" ? "Cash" : "UPI"}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
                         {p.period} · submitted {formatDate(p.createdAt)}
-                        {p.referenceId ? ` · UPI ref: ${p.referenceId}` : ""}
-                        {p.reviewNote ? ` · note: ${p.reviewNote}` : ""}
                       </p>
+                      {p.method === "CASH" ? (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Paid in cash — confirm you received it before approving.
+                        </p>
+                      ) : p.referenceId ? (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          UPI ref{" "}
+                          <span className="font-mono text-foreground">
+                            {p.referenceId}
+                          </span>
+                        </p>
+                      ) : null}
+                      {p.reviewNote && (
+                        <p className="mt-0.5 text-xs text-danger/90">
+                          Note: {p.reviewNote}
+                        </p>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">
+                    <div className="ml-auto flex items-center gap-4">
+                      <span className="w-28 text-right text-sm font-semibold tabular-nums text-foreground">
                         {formatPaise(p.amountPaise)}
                       </span>
-                      <Badge tone={paymentTone(p.status)}>
-                        {p.status.toLowerCase()}
-                      </Badge>
-                      {p.hasScreenshot && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onView(p)}
-                        >
-                          <ImageIcon className="h-4 w-4" />
-                          View
-                        </Button>
-                      )}
-                      {p.status === "SUBMITTED" && (
-                        <>
+                      <div className="flex w-24 justify-center">
+                        <Badge tone={paymentTone(p.status)}>
+                          {p.status.toLowerCase()}
+                        </Badge>
+                      </div>
+                      <div className="flex w-[16rem] items-center justify-end gap-2">
+                        {p.hasScreenshot && (
                           <Button
+                            variant="outline"
                             size="sm"
-                            disabled={busy}
-                            onClick={() => onApprove(p)}
+                            onClick={() => onView(p)}
                           >
-                            Approve
+                            <ImageIcon className="h-4 w-4" />
+                            View
                           </Button>
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() => onReject(p)}
-                          >
-                            Reject
-                          </Button>
-                        </>
-                      )}
+                        )}
+                        {p.status === "SUBMITTED" && (
+                          <>
+                            <Button
+                              size="sm"
+                              disabled={busy}
+                              onClick={() => onApprove(p)}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              disabled={busy}
+                              onClick={() => onReject(p)}
+                            >
+                              Reject
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </li>
                 );
               })}
             </ul>
           )}
-        </CardContent>
+        </div>
       </Card>
     </div>
   );
 }
 
-function InvoicesTab({
-  invoices,
-  loadFailed,
-}: {
-  invoices: InvoiceSummary[] | null;
-  loadFailed: boolean;
-}) {
+function InvoicesTab({ refreshKey }: { refreshKey: number }) {
+  const toast = useToast();
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [items, setItems] = useState<InvoiceSummary[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  // Debounce the search so we hit the API once the user pauses typing.
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 500);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  // A new search invalidates the current page.
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  // Server-side search + pagination; also refetch when the parent signals a
+  // change (generate / approval) via refreshKey.
+  useEffect(() => {
+    let cancelled = false;
+    setLoadFailed(false);
+    (async () => {
+      try {
+        const res = await api.invoices.list({
+          q: search || undefined,
+          page,
+          limit: INVOICES_PAGE_SIZE,
+        });
+        if (cancelled) return;
+        setItems(res.items);
+        setTotal(res.total);
+      } catch (err) {
+        if (!cancelled) {
+          setLoadFailed(true);
+          toast.error(toMessage(err, "Could not load invoices."));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [search, page, refreshKey, toast]);
+
+  const totalPages = Math.max(1, Math.ceil(total / INVOICES_PAGE_SIZE));
+
+  // Clamp the page if the total shrinks under it (e.g. after a refresh).
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const rangeStart = total === 0 ? 0 : (page - 1) * INVOICES_PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * INVOICES_PAGE_SIZE, total);
+  const searching = search !== "";
+  // Show the search box once there's anything to search (or a search is active).
+  const showSearch = items !== null && (total > 0 || searching);
+
   return (
-    <Card>
-      <CardContent className="pt-5">
-        {invoices === null ? (
-          loadFailed ? (
-            <EmptyRow text="Couldn't load invoices — try refreshing." />
-          ) : (
-            <ListSkeleton />
-          )
-        ) : invoices.length === 0 ? (
-          <EmptyRow text="No invoices yet. Generate them for the current month." />
-        ) : (
-          <ul className="divide-y divide-border">
-            {invoices.map((inv) => (
-              <li
-                key={inv.id}
-                className="flex flex-wrap items-center justify-between gap-3 py-3"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {inv.residentName}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {inv.period} · due {formatDate(inv.dueDate)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium">
-                    {formatPaise(inv.amountPaise)}
-                  </span>
-                  <Badge tone={invoiceTone(inv.status)}>
-                    {inv.status.toLowerCase()}
-                  </Badge>
-                </div>
-              </li>
-            ))}
-          </ul>
+    <div className="space-y-4">
+      {showSearch && (
+        <Input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder="Search by resident or period…"
+          className="max-w-xs"
+          aria-label="Search invoices"
+        />
+      )}
+
+      <Card className="overflow-hidden">
+        {items && items.length > 0 && (
+          <div className="hidden items-center gap-4 border-b border-border px-5 py-2.5 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:flex">
+            <span className="flex-1">Resident</span>
+            <span className="w-28 text-right">Amount</span>
+            <span className="w-24 text-center">Status</span>
+          </div>
         )}
-      </CardContent>
-    </Card>
+        <div className="px-5">
+          {items === null ? (
+            loadFailed ? (
+              <EmptyRow text="Couldn't load invoices — try refreshing." />
+            ) : (
+              <ListSkeleton />
+            )
+          ) : items.length === 0 ? (
+            <EmptyRow
+              text={
+                searching
+                  ? "No invoices match your search."
+                  : "No invoices yet. Generate them for the current month."
+              }
+            />
+          ) : (
+            <ul className="divide-y divide-border">
+              {items.map((inv) => (
+                <li
+                  key={inv.id}
+                  className="flex flex-wrap items-center gap-x-4 gap-y-3 py-4"
+                >
+                  <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {inv.residentName}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {inv.period} · due {formatDate(inv.dueDate)}
+                    </p>
+                  </div>
+                  <div className="ml-auto flex items-center gap-4">
+                    <span className="w-28 text-right text-sm font-semibold tabular-nums text-foreground">
+                      {formatPaise(inv.amountPaise)}
+                    </span>
+                    <div className="flex w-24 justify-center">
+                      <Badge tone={invoiceTone(inv.status)}>
+                        {inv.status.toLowerCase()}
+                      </Badge>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Card>
+
+      {total > INVOICES_PAGE_SIZE && (
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+          <span>
+            Showing {rangeStart}–{rangeEnd} of {total}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Previous
+            </Button>
+            <span>
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -458,6 +582,8 @@ function RejectDialog({
   );
 }
 
+type GenTarget = { id: string; name: string; bedLabel: string };
+
 function GenerateDialog({
   open,
   onClose,
@@ -473,13 +599,73 @@ function GenerateDialog({
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
+  // Who to bill: "all" active residents (default), or an explicit subset —
+  // useful for a single mid-month joiner once the monthly run already happened.
+  const [mode, setMode] = useState<"all" | "selected">("all");
+  const [targets, setTargets] = useState<GenTarget[] | null>(null);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [pickerSearch, setPickerSearch] = useState("");
+  const [loadingTargets, setLoadingTargets] = useState(false);
+
+  // Reset dialog fields whenever it opens.
   useEffect(() => {
-    if (open) {
-      setPeriod(currentPeriod());
-      setDueDate("");
-      setResult(null);
-    }
+    if (!open) return;
+    setPeriod(currentPeriod());
+    setDueDate("");
+    setResult(null);
+    setMode("all");
+    setChecked(new Set());
+    setTargets(null);
+    setPickerQuery("");
+    setPickerSearch("");
   }, [open]);
+
+  // Debounce the picker search so we hit the API once the user pauses typing.
+  useEffect(() => {
+    const t = setTimeout(() => setPickerSearch(pickerQuery.trim()), 500);
+    return () => clearTimeout(t);
+  }, [pickerQuery]);
+
+  // Fetch the allocated-resident list from the backend — on open and on each
+  // debounced search. The default list is capped at 100, but searching the
+  // backend keeps every resident reachable past that cap (q = name/phone).
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoadingTargets(true);
+    (async () => {
+      try {
+        const res = await api.residents.list({
+          status: "ACTIVE",
+          q: pickerSearch || undefined,
+          limit: 100,
+        });
+        if (cancelled) return;
+        // Only bed-allocated residents can be invoiced; an un-allocated pick
+        // would silently generate nothing. bedLabel is null when unallocated.
+        setTargets(
+          res.items
+            .filter((r) => r.bedLabel)
+            .map((r) => ({ id: r.id, name: r.name, bedLabel: r.bedLabel! })),
+        );
+      } catch (err) {
+        if (!cancelled) toast.error(toMessage(err, "Could not load residents."));
+      } finally {
+        if (!cancelled) setLoadingTargets(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, pickerSearch, toast]);
+
+  const toggle = (id: string) =>
+    setChecked((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -489,6 +675,7 @@ function GenerateDialog({
       const res = await api.invoices.generate({
         period: period || undefined,
         dueDate: dueDate || undefined,
+        residentIds: mode === "selected" ? [...checked] : undefined,
       });
       setResult(
         `Generated ${res.generated} invoice${res.generated === 1 ? "" : "s"} for ${res.period}.`,
@@ -501,12 +688,14 @@ function GenerateDialog({
     }
   };
 
+  const nothingSelected = mode === "selected" && checked.size === 0;
+
   return (
     <Dialog
       open={open}
       onClose={onClose}
       title="Generate invoices"
-      description="Creates one invoice per active resident from their room rent. Safe to re-run — existing invoices are left untouched."
+      description="One invoice per resident from their room rent — a mid-month joiner is prorated for their first month. Safe to re-run; existing invoices are left untouched."
     >
       <form onSubmit={submit} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -530,12 +719,86 @@ function GenerateDialog({
             />
           </div>
         </div>
+
+        <div className="space-y-2">
+          <Label>Residents</Label>
+          <div className="flex gap-4 text-sm">
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="gen-mode"
+                checked={mode === "all"}
+                onChange={() => setMode("all")}
+                className="accent-brand"
+              />
+              All active residents
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="gen-mode"
+                checked={mode === "selected"}
+                onChange={() => setMode("selected")}
+                className="accent-brand"
+              />
+              Selected
+              {checked.size > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  ({checked.size})
+                </span>
+              )}
+            </label>
+          </div>
+
+          {mode === "selected" && (
+            <div className="space-y-2">
+              <Input
+                value={pickerQuery}
+                onChange={(e) => setPickerQuery(e.target.value)}
+                placeholder="Search by name or phone…"
+                aria-label="Search residents to bill"
+              />
+              <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border border-input p-2">
+                {loadingTargets ? (
+                  <p className="px-1 py-2 text-sm text-muted-foreground">
+                    {pickerSearch ? "Searching…" : "Loading…"}
+                  </p>
+                ) : !targets || targets.length === 0 ? (
+                  <p className="px-1 py-2 text-sm text-muted-foreground">
+                    {pickerSearch
+                      ? "No residents match your search."
+                      : "No allocated residents to bill."}
+                  </p>
+                ) : (
+                  targets.map((r) => (
+                    <label
+                      key={r.id}
+                      className="flex items-center gap-2 rounded px-1 py-1.5 text-sm hover:bg-muted"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked.has(r.id)}
+                        onChange={() => toggle(r.id)}
+                        className="accent-brand"
+                      />
+                      <span className="flex-1">{r.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        Bed {r.bedLabel}
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         {result && <p className="text-sm text-success">{result}</p>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>
             {result ? "Close" : "Cancel"}
           </Button>
-          <Button type="submit" disabled={busy}>
+          <Button type="submit" disabled={busy || nothingSelected}>
             {busy ? "Generating…" : "Generate"}
           </Button>
         </div>

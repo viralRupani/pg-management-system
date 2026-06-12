@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { InvoiceStatus, PaymentStatus } from "../enums";
+import { InvoiceStatus, PaymentMethod, PaymentStatus } from "../enums";
 import { contentTypeField } from "./upload";
 
 /** Billing period as 'YYYY-MM' (project-wide convention). */
@@ -11,6 +11,10 @@ export const periodSchema = z
 export const generateInvoicesSchema = z.object({
   period: periodSchema.optional(), // defaults to current month server-side
   dueDate: z.string().date().optional(), // defaults to the 10th of the period
+  // Optional subset to bill. Omitted OR empty = all active residents (the
+  // default monthly behavior); a non-empty list scopes generation to exactly
+  // those residents (e.g. billing a single mid-month joiner).
+  residentIds: z.array(z.string().uuid()).optional(),
 });
 export type GenerateInvoicesInput = z.infer<typeof generateInvoicesSchema>;
 
@@ -25,6 +29,22 @@ export const invoiceSummarySchema = z.object({
 });
 export type InvoiceSummary = z.infer<typeof invoiceSummarySchema>;
 
+/** Query params for the manager's invoice list — search + offset pagination. */
+export const invoiceListQuerySchema = z.object({
+  q: z.string().trim().min(1).max(120).optional(), // resident name or period
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+});
+export type InvoiceListQuery = z.infer<typeof invoiceListQuerySchema>;
+
+export const invoiceListResultSchema = z.object({
+  items: z.array(invoiceSummarySchema),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().min(1),
+  limit: z.number().int().min(1),
+});
+export type InvoiceListResult = z.infer<typeof invoiceListResultSchema>;
+
 /** Resident asks for a presigned URL to upload a payment screenshot. */
 export const paymentUploadUrlSchema = z.object({
   invoiceId: z.string().uuid(),
@@ -33,21 +53,30 @@ export const paymentUploadUrlSchema = z.object({
 export type PaymentUploadUrlInput = z.infer<typeof paymentUploadUrlSchema>;
 
 /**
- * Resident submits a payment against an invoice. Proof is a screenshot (S3 key)
- * and/or a UPI reference number (UTR) — at least one is required, because some
- * UPI apps (GPay et al.) block screenshots of the success screen.
+ * Resident submits a payment against an invoice. For UPI, proof is a screenshot
+ * (S3 key) and/or a UPI reference number (UTR) — at least one is required,
+ * because some UPI apps (GPay et al.) block screenshots of the success screen.
+ * For CASH (paid in person), no online proof is required; the manager confirms
+ * receipt on review.
  */
 export const submitPaymentSchema = z
   .object({
     invoiceId: z.string().uuid(),
+    method: z.nativeEnum(PaymentMethod).default(PaymentMethod.UPI),
     screenshotKey: z.string().min(1).optional(),
     referenceId: z.string().trim().min(6).max(40).optional(),
     amountPaise: z.number().int().positive().optional(), // defaults to invoice amount
   })
-  .refine((d) => Boolean(d.screenshotKey) || Boolean(d.referenceId), {
-    message: "Provide a payment screenshot or a UPI reference number",
-    path: ["referenceId"],
-  });
+  .refine(
+    (d) =>
+      d.method === PaymentMethod.CASH ||
+      Boolean(d.screenshotKey) ||
+      Boolean(d.referenceId),
+    {
+      message: "Provide a payment screenshot or a UPI reference number",
+      path: ["referenceId"],
+    },
+  );
 export type SubmitPaymentInput = z.infer<typeof submitPaymentSchema>;
 
 /** Manager rejects a payment with a reason. */
@@ -64,6 +93,7 @@ export const paymentSummarySchema = z.object({
   period: z.string(),
   amountPaise: z.number().int(),
   status: z.nativeEnum(PaymentStatus),
+  method: z.nativeEnum(PaymentMethod), // UPI (proof) or CASH (paid in person)
   reviewNote: z.string().nullable(),
   referenceId: z.string().nullable(), // UPI reference (UTR), if the resident gave one
   hasScreenshot: z.boolean(), // whether a screenshot is attached (drives the View button)
