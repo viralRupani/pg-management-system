@@ -2,6 +2,7 @@
 
 import type { InvoiceSummary, PaymentSummary } from "@pg/shared";
 import { ImageIcon, Plus } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -278,9 +279,12 @@ function PaymentsTab({
                   >
                     <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
                       <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-medium text-foreground">
+                        <Link
+                          href={`/residents?id=${p.residentId}`}
+                          className="block truncate text-sm font-medium text-foreground hover:text-brand hover:underline"
+                        >
                           {p.residentName}
-                        </p>
+                        </Link>
                         <span className="shrink-0 rounded-full border border-input px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                           {p.method === "CASH" ? "Cash" : "UPI"}
                         </span>
@@ -461,9 +465,12 @@ function InvoicesTab({ refreshKey }: { refreshKey: number }) {
                   className="flex flex-wrap items-center gap-x-4 gap-y-3 py-4"
                 >
                   <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
-                    <p className="truncate text-sm font-medium text-foreground">
+                    <Link
+                      href={`/residents?id=${inv.residentId}`}
+                      className="block truncate text-sm font-medium text-foreground hover:text-brand hover:underline"
+                    >
                       {inv.residentName}
-                    </p>
+                    </Link>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {inv.period} · due {formatDate(inv.dueDate)}
                     </p>

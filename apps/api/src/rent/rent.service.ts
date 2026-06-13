@@ -127,11 +127,15 @@ export class RentService {
    * name filter is shared by the list and the count on one code path.
    */
   async listInvoices(query: InvoiceListQuery): Promise<InvoiceListResult> {
-    const { q, page, limit } = query;
+    const { q, residentId, page, limit } = query;
     const db = this.ctx.db();
-    const where = q
-      ? or(ilike(users.name, `%${q}%`), ilike(invoices.period, `%${q}%`))
-      : undefined;
+    const filters = [
+      q
+        ? or(ilike(users.name, `%${q}%`), ilike(invoices.period, `%${q}%`))
+        : undefined,
+      residentId ? eq(invoices.residentId, residentId) : undefined,
+    ].filter(Boolean);
+    const where = filters.length > 0 ? and(...filters) : undefined;
 
     const listBase = db
       .select({

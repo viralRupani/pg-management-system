@@ -32,6 +32,7 @@ export type InvoiceSummary = z.infer<typeof invoiceSummarySchema>;
 /** Query params for the manager's invoice list — search + offset pagination. */
 export const invoiceListQuerySchema = z.object({
   q: z.string().trim().min(1).max(120).optional(), // resident name or period
+  residentId: z.string().uuid().optional(), // scope to one resident's invoices
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(10),
 });

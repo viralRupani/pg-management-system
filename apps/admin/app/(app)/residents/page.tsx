@@ -6,6 +6,7 @@ import {
   type DepositTransactionSummary,
   type DocumentSummary,
   EmergencyRelation,
+  type InvoiceSummary,
   KycStatus,
   OccupationType,
   type ResidentSummary,
@@ -39,6 +40,14 @@ const residentTone = (s: ResidentSummary["status"]) =>
   s === "ACTIVE" ? "success" : "neutral";
 const docTone = (s: DocumentSummary["status"]) =>
   s === "VERIFIED" ? "success" : s === "REJECTED" ? "danger" : "warning";
+const invoiceTone = (s: InvoiceSummary["status"]) =>
+  s === "PAID"
+    ? "success"
+    : s === "OVERDUE"
+      ? "danger"
+      : s === "WAIVED"
+        ? "neutral"
+        : "warning";
 
 const kycTone = (s: KycStatus) =>
   s === "VERIFIED"
@@ -485,6 +494,7 @@ interface DetailData {
   documents: DocumentSummary[];
   deposit: DepositSummary | null;
   ledger: DepositTransactionSummary[];
+  invoices: InvoiceSummary[];
 }
 
 function ResidentDetail({ id }: { id: string }) {
@@ -498,16 +508,18 @@ function ResidentDetail({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [resident, allDocs, dep] = await Promise.all([
+    const [resident, allDocs, dep, invoiceList] = await Promise.all([
       api.residents.get(id),
       api.documents.list(),
       api.deposits.byResident(id),
+      api.invoices.list({ residentId: id, limit: 100 }),
     ]);
     setData({
       resident,
       documents: allDocs.filter((d) => d.residentId === id),
       deposit: dep.deposit,
       ledger: dep.ledger,
+      invoices: invoiceList.items,
     });
   }, [id]);
 
@@ -515,10 +527,11 @@ function ResidentDetail({ id }: { id: string }) {
     let cancelled = false;
     (async () => {
       try {
-        const [resident, allDocs, dep] = await Promise.all([
+        const [resident, allDocs, dep, invoiceList] = await Promise.all([
           api.residents.get(id),
           api.documents.list(),
           api.deposits.byResident(id),
+          api.invoices.list({ residentId: id, limit: 100 }),
         ]);
         if (cancelled) return;
         setData({
@@ -526,6 +539,7 @@ function ResidentDetail({ id }: { id: string }) {
           documents: allDocs.filter((d) => d.residentId === id),
           deposit: dep.deposit,
           ledger: dep.ledger,
+          invoices: invoiceList.items,
         });
       } catch (err) {
         if (!cancelled) setLoadError(toMessage(err, "Could not load resident."));
@@ -598,7 +612,7 @@ function ResidentDetail({ id }: { id: string }) {
     );
   }
 
-  const { resident, documents, deposit, ledger } = data;
+  const { resident, documents, deposit, ledger, invoices } = data;
   const active = resident.status === "ACTIVE";
 
   return (
@@ -812,6 +826,54 @@ function ResidentDetail({ id }: { id: string }) {
             <p className="text-sm text-muted-foreground">
               No deposit on record.
             </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Rent invoices */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Rent invoices</CardTitle>
+          {invoices.length > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {formatPaise(
+                invoices
+                  .filter((i) => i.status === "PAID")
+                  .reduce((sum, i) => sum + i.amountPaise, 0),
+              )}{" "}
+              paid of{" "}
+              {formatPaise(
+                invoices.reduce((sum, i) => sum + i.amountPaise, 0),
+              )}{" "}
+              billed
+            </span>
+          )}
+        </CardHeader>
+        <CardContent>
+          {invoices.length === 0 ? (
+            <EmptyRow text="No invoices yet. Generate rent from the Rent page." />
+          ) : (
+            <ul className="divide-y divide-border">
+              {invoices.map((inv) => (
+                <li
+                  key={inv.id}
+                  className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{inv.period}</p>
+                    <p className="text-xs text-muted-foreground">
+                      due {formatDate(inv.dueDate)}
+                    </p>
+                  </div>
+                  <span className="text-sm font-semibold tabular-nums">
+                    {formatPaise(inv.amountPaise)}
+                  </span>
+                  <Badge tone={invoiceTone(inv.status)}>
+                    {inv.status.toLowerCase()}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
           )}
         </CardContent>
       </Card>
