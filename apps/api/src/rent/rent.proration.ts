@@ -29,3 +29,44 @@ export function prorateRent(
   const activeDays = daysInMonth - joinDay + 1;
   return Math.round((rentPaise * activeDays) / daysInMonth);
 }
+
+/**
+ * Prorate a single occupancy SEGMENT against one period, in integer paise: the
+ * rent owed for the days of `[segStart, segEndExclusive)` that fall inside
+ * `period`. `segEndExclusive` is the move-OUT instant (exclusive — the resident
+ * does not occupy that day); pass `null` for an open/active segment that runs to
+ * month-end.
+ *
+ * This generalises `prorateRent` (which is the `segEndExclusive = null` case) so
+ * a mid-month room transfer can price the old room (start..moveDay) and the new
+ * room (moveDay..end) separately. Day math is IST, same as `prorateRent`.
+ *
+ *   startDay = segStart before this month ? 1 : its IST day-of-month
+ *   endDay   = segEnd after this month (or null) ? daysInMonth : its IST day − 1
+ *   days     = max(0, endDay − startDay + 1)
+ */
+export function prorateSegment(
+  rentPaise: number,
+  segStart: Date,
+  segEndExclusive: Date | null,
+  period: string,
+): number {
+  const daysInMonth = daysInPeriod(period);
+
+  const startYM = istPeriod(segStart);
+  if (startYM > period) return 0; // segment starts after this month
+  const startDay = startYM < period ? 1 : istParts(segStart).day;
+
+  let endDay: number;
+  if (segEndExclusive === null) {
+    endDay = daysInMonth; // open segment → through month-end
+  } else {
+    const endYM = istPeriod(segEndExclusive);
+    if (endYM < period) return 0; // segment ended before this month
+    endDay = endYM > period ? daysInMonth : istParts(segEndExclusive).day - 1;
+  }
+
+  const days = endDay - startDay + 1;
+  if (days <= 0) return 0;
+  return Math.round((rentPaise * days) / daysInMonth);
+}

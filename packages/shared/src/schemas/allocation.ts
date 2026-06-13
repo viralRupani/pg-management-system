@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TransferRequestStatus } from "../enums";
 
 /**
  * Allocation DTOs. A manager allocates a resident to a bed; the system records
@@ -40,3 +41,42 @@ export const availableBedSchema = z.object({
   matchReasons: z.array(z.string()),
 });
 export type AvailableBed = z.infer<typeof availableBedSchema>;
+
+/**
+ * Room-transfer DTOs. A manager pre-books a move for a resident to a target bed
+ * by a planned date (soft hold — vacancy is re-checked at execution, the bed is
+ * not locked). On the move day the manager executes it: the old allocation ends
+ * and a new one starts atomically, and any mid-month rent delta is queued as a
+ * signed adjustment consumed by the resident's next invoice.
+ */
+export const createTransferRequestSchema = z.object({
+  residentId: z.string().uuid(),
+  toBedId: z.string().uuid(),
+  plannedDate: z.string().date(), // ISO date the move is planned for
+});
+export type CreateTransferRequestInput = z.infer<
+  typeof createTransferRequestSchema
+>;
+
+/** Execute a pending transfer. `moveDate` defaults to today (the actual move day). */
+export const executeTransferSchema = z.object({
+  moveDate: z.string().date().optional(),
+});
+export type ExecuteTransferInput = z.infer<typeof executeTransferSchema>;
+
+export const transferRequestSummarySchema = z.object({
+  id: z.string().uuid(),
+  residentId: z.string().uuid(),
+  residentName: z.string(),
+  fromBedId: z.string().uuid(),
+  fromBedLabel: z.string(),
+  toBedId: z.string().uuid(),
+  toBedLabel: z.string(),
+  plannedDate: z.string(),
+  status: z.nativeEnum(TransferRequestStatus),
+  createdAt: z.string(),
+  completedAt: z.string().nullable(),
+});
+export type TransferRequestSummary = z.infer<
+  typeof transferRequestSummarySchema
+>;

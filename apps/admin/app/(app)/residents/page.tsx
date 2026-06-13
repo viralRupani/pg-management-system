@@ -11,10 +11,12 @@ import {
   OccupationType,
   type ResidentSummary,
   ResidentStatus,
+  type TransferRequestSummary,
   sharingLabel,
 } from "@pg/shared";
 import {
   ArrowLeft,
+  ArrowRightLeft,
   BedDouble,
   ChevronDown,
   Download,
@@ -495,6 +497,7 @@ interface DetailData {
   deposit: DepositSummary | null;
   ledger: DepositTransactionSummary[];
   invoices: InvoiceSummary[];
+  transfers: TransferRequestSummary[];
 }
 
 function ResidentDetail({ id }: { id: string }) {
@@ -502,24 +505,28 @@ function ResidentDetail({ id }: { id: string }) {
   const [data, setData] = useState<DetailData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [allocating, setAllocating] = useState(false);
+  const [transferring, setTransferring] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
   const [rejectingDoc, setRejectingDoc] = useState<DocumentSummary | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [resident, allDocs, dep, invoiceList] = await Promise.all([
-      api.residents.get(id),
-      api.documents.list(),
-      api.deposits.byResident(id),
-      api.invoices.list({ residentId: id, limit: 100 }),
-    ]);
+    const [resident, allDocs, dep, invoiceList, allTransfers] =
+      await Promise.all([
+        api.residents.get(id),
+        api.documents.list(),
+        api.deposits.byResident(id),
+        api.invoices.list({ residentId: id, limit: 100 }),
+        api.allocations.transfers.list(),
+      ]);
     setData({
       resident,
       documents: allDocs.filter((d) => d.residentId === id),
       deposit: dep.deposit,
       ledger: dep.ledger,
       invoices: invoiceList.items,
+      transfers: allTransfers.filter((t) => t.residentId === id),
     });
   }, [id]);
 
@@ -527,12 +534,14 @@ function ResidentDetail({ id }: { id: string }) {
     let cancelled = false;
     (async () => {
       try {
-        const [resident, allDocs, dep, invoiceList] = await Promise.all([
-          api.residents.get(id),
-          api.documents.list(),
-          api.deposits.byResident(id),
-          api.invoices.list({ residentId: id, limit: 100 }),
-        ]);
+        const [resident, allDocs, dep, invoiceList, allTransfers] =
+          await Promise.all([
+            api.residents.get(id),
+            api.documents.list(),
+            api.deposits.byResident(id),
+            api.invoices.list({ residentId: id, limit: 100 }),
+            api.allocations.transfers.list(),
+          ]);
         if (cancelled) return;
         setData({
           resident,
@@ -540,6 +549,7 @@ function ResidentDetail({ id }: { id: string }) {
           deposit: dep.deposit,
           ledger: dep.ledger,
           invoices: invoiceList.items,
+          transfers: allTransfers.filter((t) => t.residentId === id),
         });
       } catch (err) {
         if (!cancelled) setLoadError(toMessage(err, "Could not load resident."));
@@ -565,6 +575,30 @@ function ResidentDetail({ id }: { id: string }) {
       await load();
     } catch (err) {
       toast.error(toMessage(err, "Could not move the resident out."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const executeTransfer = async (transferId: string) => {
+    setBusy(true);
+    try {
+      await api.allocations.transfers.execute(transferId);
+      await load();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not execute the transfer."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancelTransfer = async (transferId: string) => {
+    setBusy(true);
+    try {
+      await api.allocations.transfers.cancel(transferId);
+      await load();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not cancel the transfer."));
     } finally {
       setBusy(false);
     }
@@ -612,8 +646,9 @@ function ResidentDetail({ id }: { id: string }) {
     );
   }
 
-  const { resident, documents, deposit, ledger, invoices } = data;
+  const { resident, documents, deposit, ledger, invoices, transfers } = data;
   const active = resident.status === "ACTIVE";
+  const pendingTransfer = transfers.find((t) => t.status === "PENDING") ?? null;
 
   return (
     <div className="space-y-6">
@@ -669,14 +704,26 @@ function ResidentDetail({ id }: { id: string }) {
           <CardTitle>Bed allocation</CardTitle>
           {active &&
             (resident.bedLabel ? (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                onClick={moveOut}
-              >
-                Move out
-              </Button>
+              <div className="flex gap-2">
+                {!pendingTransfer && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setTransferring(true)}
+                  >
+                    <ArrowRightLeft className="h-4 w-4" />
+                    Transfer room
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={moveOut}
+                >
+                  Move out
+                </Button>
+              </div>
             ) : (
               <Button size="sm" onClick={() => setAllocating(true)}>
                 <BedDouble className="h-4 w-4" />
@@ -699,6 +746,38 @@ function ResidentDetail({ id }: { id: string }) {
               </span>
             )}
           </p>
+
+          {pendingTransfer && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/40 p-3">
+              <div className="min-w-0 text-sm">
+                <p className="font-medium">
+                  Pending move → bed {pendingTransfer.toBedLabel}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  planned {formatDate(pendingTransfer.plannedDate)} · executing
+                  splits this month&apos;s rent and credits/charges the
+                  difference on the next invoice
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => executeTransfer(pendingTransfer.id)}
+                >
+                  Execute move
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => cancelTransfer(pendingTransfer.id)}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -887,6 +966,16 @@ function ResidentDetail({ id }: { id: string }) {
           await refresh();
         }}
       />
+      <TransferDialog
+        open={transferring}
+        residentId={id}
+        currentBedLabel={resident.bedLabel}
+        onClose={() => setTransferring(false)}
+        onDone={async () => {
+          setTransferring(false);
+          await refresh();
+        }}
+      />
       <RecordDepositDialog
         open={depositOpen}
         residentId={id}
@@ -1002,6 +1091,138 @@ function AllocateDialog({
           ))}
         </ul>
       )}
+    </Dialog>
+  );
+}
+
+/** Local zero-padded YYYY-MM-DD (never toISOString — UTC is off-by-one in IST). */
+function ymdToday(): string {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function TransferDialog({
+  open,
+  residentId,
+  currentBedLabel,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  residentId: string;
+  currentBedLabel: string | null;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+}) {
+  const toast = useToast();
+  const [beds, setBeds] = useState<AvailableBed[] | null>(null);
+  const [selectedBedId, setSelectedBedId] = useState<string | null>(null);
+  const [plannedDate, setPlannedDate] = useState(ymdToday());
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setBeds(null);
+    setSelectedBedId(null);
+    setPlannedDate(ymdToday());
+    (async () => {
+      try {
+        const list = await api.allocations.suggestions(residentId);
+        if (!cancelled) setBeds(list);
+      } catch (err) {
+        if (!cancelled)
+          toast.error(toMessage(err, "Could not load vacant beds."));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, residentId, toast]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBedId) return;
+    setBusy(true);
+    try {
+      await api.allocations.transfers.create({
+        residentId,
+        toBedId: selectedBedId,
+        plannedDate,
+      });
+      await onDone();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not book the transfer."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Transfer to another room"
+      description={
+        currentBedLabel
+          ? `Currently in ${currentBedLabel}. Pre-book a move — the bed stays available until you execute it on the move day.`
+          : undefined
+      }
+    >
+      <form onSubmit={submit} className="space-y-4">
+        {beds === null ? (
+          <ListSkeleton />
+        ) : beds.length === 0 ? (
+          <EmptyRow text="No vacant beds available to move into." />
+        ) : (
+          <ul className="max-h-[45vh] divide-y divide-border overflow-y-auto">
+            {beds.map((b) => (
+              <li key={b.bedId}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedBedId(b.bedId)}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-3 px-2 py-3 text-left transition-colors hover:bg-muted",
+                    selectedBedId === b.bedId && "bg-brand/10",
+                  )}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {b.roomLabel} · {b.bedLabel}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatPaise(b.monthlyRentPaise)}/mo ·{" "}
+                      {sharingLabel(b.capacity)}
+                    </p>
+                  </div>
+                  {selectedBedId === b.bedId && (
+                    <Badge tone="brand">Selected</Badge>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Field label="Planned move date" htmlFor="xfer-date">
+          <Input
+            id="xfer-date"
+            type="date"
+            value={plannedDate}
+            onChange={(e) => setPlannedDate(e.target.value)}
+            required
+          />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={busy || !selectedBedId}>
+            {busy ? "Booking…" : "Book transfer"}
+          </Button>
+        </div>
+      </form>
     </Dialog>
   );
 }
