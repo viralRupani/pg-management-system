@@ -32,7 +32,7 @@ import {
   type StorageProvider,
   assertAllowedType,
 } from "../storage/storage.module";
-import { istPeriod } from "../common/ist-date";
+import { istPeriod, istStartOfDayUtc } from "../common/ist-date";
 import { prorateRent } from "./rent.proration";
 
 /**
@@ -186,6 +186,33 @@ export class RentService {
   }
 
   /**
+   * Flip every still-PENDING invoice whose due date has fully passed to OVERDUE.
+   * "Past due" is day-granular in IST: an invoice due on the 10th becomes overdue
+   * once the 11th begins in IST (see `istStartOfDayUtc`) — comparing the stored
+   * UTC `due_date` to raw `now()` would flip it ~5.5h early. A side-effect-free
+   * bulk relabel (no money moves), so it's a plain conditional UPDATE, not the
+   * single-entity 409 conditional-flip pattern. Idempotent and re-runnable; only
+   * PENDING rows are touched, so PAID/WAIVED/already-OVERDUE are left alone.
+   * Optionally scoped to one `period`. Driven by the daily job.
+   */
+  async markOverdue(period?: string): Promise<{ flipped: number }> {
+    const db = this.ctx.db();
+    const cutoff = istStartOfDayUtc(new Date());
+    const conds = [
+      eq(invoices.status, InvoiceStatus.PENDING),
+      sql`${invoices.dueDate} < ${cutoff}`,
+    ];
+    if (period) conds.push(eq(invoices.period, period));
+
+    const flipped = await db
+      .update(invoices)
+      .set({ status: InvoiceStatus.OVERDUE })
+      .where(and(...conds))
+      .returning({ id: invoices.id });
+    return { flipped: flipped.length };
+  }
+
+  /**
    * Manager: tenant invoices, newest period first, with search (resident name or
    * period, case-insensitive) + offset pagination. Both queries inner-join users
    * (the residentId FK is non-null, so the join never changes the count) so the
@@ -219,13 +246,17 @@ export class RentService {
       .from(invoices)
       .innerJoin(users, eq(users.id, invoices.residentId));
 
-    // Default order: PENDING invoices first (what still needs collecting), then
-    // newest period / most-recently created. The CASE keys only PENDING to the
-    // top; everything settled (PAID/WAIVED/OVERDUE) follows, still date-sorted.
-    const pendingFirst = sql`case when ${invoices.status} = ${InvoiceStatus.PENDING} then 0 else 1 end`;
+    // Default order: most-urgent-to-collect first — OVERDUE (past due, unpaid)
+    // above PENDING, then everything settled (PAID/WAIVED) — and within each
+    // bucket newest period / most-recently created. OVERDUE outranks PENDING
+    // because it's the rent a manager most needs to chase.
+    const collectFirst = sql`case
+      when ${invoices.status} = ${InvoiceStatus.OVERDUE} then 0
+      when ${invoices.status} = ${InvoiceStatus.PENDING} then 1
+      else 2 end`;
     const [rows, [{ total }]] = await Promise.all([
       (where ? listBase.where(where) : listBase)
-        .orderBy(pendingFirst, desc(invoices.period), desc(invoices.createdAt))
+        .orderBy(collectFirst, desc(invoices.period), desc(invoices.createdAt))
         .limit(limit)
         .offset((page - 1) * limit),
       where ? countBase.where(where) : countBase,

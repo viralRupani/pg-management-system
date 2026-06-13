@@ -27,6 +27,21 @@ export function istPeriod(d: Date): string {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
+/**
+ * The UTC instant of IST-midnight on the given instant's IST calendar date —
+ * i.e. "start of today in IST" as a real timestamp. Use this as the cutoff for
+ * day-granular calendar comparisons against stored UTC timestamps: an invoice
+ * whose `due_date` is before this instant has had its due IST-day fully pass.
+ * Comparing a stored timestamp to raw `now()` instead is off by 5.5h and flips
+ * a day early/late around the IST midnight boundary (see file header).
+ */
+export function istStartOfDayUtc(d: Date): Date {
+  const { year, month, day } = istParts(d);
+  // IST = UTC + 05:30, so the UTC instant of IST-midnight is that date at 00:00
+  // minus the offset.
+  return new Date(Date.UTC(year, month - 1, day) - IST_OFFSET_MINUTES * 60_000);
+}
+
 /** Number of days in a 'YYYY-MM' period (handles leap Februaries). */
 export function daysInPeriod(period: string): number {
   const [year, month] = period.split("-").map(Number);
