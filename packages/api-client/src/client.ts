@@ -6,6 +6,8 @@ import type {
   AuthTokens,
   AvailableBed,
   BedSummary,
+  CreateTransferRequestInput,
+  TransferRequestSummary,
   BudgetSummaryRow,
   BuildingSummary,
   ComplaintStatus,
@@ -158,6 +160,21 @@ export class PgApiClient {
       this.http.post<AllocationSummary>("/allocations", input),
     moveOut: (residentId: string) =>
       this.http.post("/allocations/move-out", { residentId }),
+    /** Pre-booked room moves (soft hold — bed re-checked at execution). */
+    transfers: {
+      list: () =>
+        this.http.get<TransferRequestSummary[]>("/allocations/transfers"),
+      create: (input: CreateTransferRequestInput) =>
+        this.http.post<{ id: string }>("/allocations/transfers", input),
+      /** Execute on the move day; `moveDate` defaults to today. */
+      execute: (id: string, moveDate?: string) =>
+        this.http.post<{ id: string }>(
+          `/allocations/transfers/${id}/execute`,
+          { moveDate },
+        ),
+      cancel: (id: string) =>
+        this.http.post(`/allocations/transfers/${id}/cancel`),
+    },
   };
 
   readonly documents = {

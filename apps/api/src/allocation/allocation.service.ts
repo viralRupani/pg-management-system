@@ -3,16 +3,35 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
   type AllocateBedInput,
   type AllocationSummary,
   type AvailableBed,
   BedStatus,
+  type CreateTransferRequestInput,
+  type TransferRequestSummary,
+  TransferRequestStatus,
   UserRole,
 } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
-import { allocations, beds, rooms, users } from "../db/schema";
+import {
+  allocations,
+  beds,
+  invoices,
+  rentAdjustments,
+  rooms,
+  transferRequests,
+  users,
+} from "../db/schema";
+import { istPeriod } from "../common/ist-date";
+import { prorateSegment } from "../rent/rent.proration";
+
+/** Drizzle transaction handle (the arg to `db.transaction(async (tx) => …)`). */
+type Tx = Parameters<
+  Parameters<ReturnType<TenantContextService["db"]>["transaction"]>[0]
+>[0];
 
 /** Postgres unique_violation — raised by the active-allocation partial indexes. */
 const PG_UNIQUE_VIOLATION = "23505";
@@ -219,6 +238,322 @@ export class AllocationService {
     );
     return scored;
   }
+
+  // ---- Room transfers (pre-booked move with mid-month prorated billing) ----
+
+  /**
+   * Manager pre-books a move: record a PENDING request to move a resident to a
+   * target bed by a planned date. Soft hold — the bed is NOT locked; vacancy is
+   * re-checked when the move executes. The resident must currently be allocated
+   * (that's the "from" bed). At most one PENDING request per resident.
+   */
+  async createTransferRequest(
+    input: CreateTransferRequestInput,
+  ): Promise<{ id: string }> {
+    const tenantId = this.ctx.currentTenantId()!;
+    const db = this.ctx.db();
+
+    const [active] = await db
+      .select({ bedId: allocations.bedId })
+      .from(allocations)
+      .where(
+        and(
+          eq(allocations.residentId, input.residentId),
+          isNull(allocations.endDate),
+        ),
+      );
+    if (!active)
+      throw new NotFoundException(
+        "Resident has no active allocation to transfer from",
+      );
+    if (active.bedId === input.toBedId)
+      throw new ConflictException("Resident is already in that bed");
+
+    // Early feedback for the same invariant enforced at execution.
+    await assertNoUnsettledAdjustment(db, input.residentId);
+
+    const [toBed] = await db
+      .select({ id: beds.id })
+      .from(beds)
+      .where(eq(beds.id, input.toBedId));
+    if (!toBed) throw new NotFoundException("Target bed not found");
+
+    try {
+      const [row] = await db
+        .insert(transferRequests)
+        .values({
+          tenantId,
+          residentId: input.residentId,
+          fromBedId: active.bedId,
+          toBedId: input.toBedId,
+          plannedDate: new Date(input.plannedDate),
+          status: TransferRequestStatus.PENDING,
+        })
+        .returning({ id: transferRequests.id });
+      return { id: row.id };
+    } catch (err) {
+      if (isUniqueViolation(err))
+        throw new ConflictException(
+          "Resident already has a pending transfer request",
+        );
+      throw err;
+    }
+  }
+
+  /** Manager: transfer requests (newest first) with resident + bed labels. */
+  async listTransferRequests(): Promise<TransferRequestSummary[]> {
+    const fromBed = alias(beds, "from_bed");
+    const toBed = alias(beds, "to_bed");
+    const rows = await this.ctx
+      .db()
+      .select({
+        id: transferRequests.id,
+        residentId: transferRequests.residentId,
+        residentName: users.name,
+        fromBedId: transferRequests.fromBedId,
+        fromBedLabel: fromBed.label,
+        toBedId: transferRequests.toBedId,
+        toBedLabel: toBed.label,
+        plannedDate: transferRequests.plannedDate,
+        status: transferRequests.status,
+        createdAt: transferRequests.createdAt,
+        completedAt: transferRequests.completedAt,
+      })
+      .from(transferRequests)
+      .innerJoin(users, eq(users.id, transferRequests.residentId))
+      .innerJoin(fromBed, eq(fromBed.id, transferRequests.fromBedId))
+      .innerJoin(toBed, eq(toBed.id, transferRequests.toBedId))
+      .orderBy(desc(transferRequests.createdAt));
+
+    return rows.map((r) => ({
+      id: r.id,
+      residentId: r.residentId,
+      residentName: r.residentName,
+      fromBedId: r.fromBedId,
+      fromBedLabel: r.fromBedLabel,
+      toBedId: r.toBedId,
+      toBedLabel: r.toBedLabel,
+      plannedDate: r.plannedDate.toISOString(),
+      status: r.status as TransferRequestStatus,
+      createdAt: r.createdAt.toISOString(),
+      completedAt: r.completedAt ? r.completedAt.toISOString() : null,
+    }));
+  }
+
+  /** Manager: drop a PENDING request (conditional flip — concurrency-safe). */
+  async cancelTransferRequest(id: string): Promise<{ cancelled: boolean }> {
+    const cancelled = await this.ctx
+      .db()
+      .update(transferRequests)
+      .set({ status: TransferRequestStatus.CANCELLED })
+      .where(
+        and(
+          eq(transferRequests.id, id),
+          eq(transferRequests.status, TransferRequestStatus.PENDING),
+        ),
+      )
+      .returning({ id: transferRequests.id });
+    if (cancelled.length !== 1) {
+      const [exists] = await this.ctx
+        .db()
+        .select({ status: transferRequests.status })
+        .from(transferRequests)
+        .where(eq(transferRequests.id, id));
+      if (!exists) throw new NotFoundException("Transfer request not found");
+      throw new ConflictException(
+        `Transfer request already ${exists.status.toLowerCase()}`,
+      );
+    }
+    return { cancelled: true };
+  }
+
+  /**
+   * Manager: execute a PENDING request on the actual move day. Flips the request
+   * to COMPLETED (conditional, concurrency-safe) and performs the move in the
+   * same transaction, so a failed move (e.g. target bed taken) rolls the
+   * completion back too. `moveDate` defaults to now.
+   */
+  async executeTransferRequest(
+    id: string,
+    moveDateInput?: string,
+  ): Promise<{ id: string }> {
+    const db = this.ctx.db();
+    const moveDate = moveDateInput ? new Date(moveDateInput) : new Date();
+    try {
+      return await db.transaction(async (tx) => {
+        const [req] = await tx
+          .update(transferRequests)
+          .set({
+            status: TransferRequestStatus.COMPLETED,
+            completedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(transferRequests.id, id),
+              eq(transferRequests.status, TransferRequestStatus.PENDING),
+            ),
+          )
+          .returning({
+            residentId: transferRequests.residentId,
+            toBedId: transferRequests.toBedId,
+          });
+        if (!req) {
+          const [exists] = await tx
+            .select({ status: transferRequests.status })
+            .from(transferRequests)
+            .where(eq(transferRequests.id, id));
+          if (!exists)
+            throw new NotFoundException("Transfer request not found");
+          throw new ConflictException(
+            `Transfer request already ${exists.status.toLowerCase()}`,
+          );
+        }
+        return this.doTransfer(tx, {
+          residentId: req.residentId,
+          toBedId: req.toBedId,
+          moveDate,
+        });
+      });
+    } catch (err) {
+      if (isUniqueViolation(err))
+        throw new ConflictException("Target bed already has an allocation");
+      throw err;
+    }
+  }
+
+  /**
+   * The move, inside a caller-supplied transaction. End the resident's active
+   * allocation at `moveDate`, open a new one on `toBedId` from `moveDate`, flip
+   * bed statuses, then settle the transfer month: leave its invoice untouched
+   * and queue `delta = (old-room days + new-room days) − what that month was/will
+   * be billed` as a signed `rent_adjustments` row (credit if negative). The
+   * partial-unique indexes on `allocations` are the real double-booking guard —
+   * a raced target allocation surfaces as a unique violation the callers map to
+   * 409.
+   */
+  private async doTransfer(
+    tx: Tx,
+    input: { residentId: string; toBedId: string; moveDate: Date },
+  ): Promise<{ id: string }> {
+    const tenantId = this.ctx.currentTenantId()!;
+    const { residentId, toBedId, moveDate } = input;
+
+    const [active] = await tx
+      .select({
+        id: allocations.id,
+        bedId: allocations.bedId,
+        startDate: allocations.startDate,
+      })
+      .from(allocations)
+      .where(
+        and(eq(allocations.residentId, residentId), isNull(allocations.endDate)),
+      );
+    if (!active)
+      throw new NotFoundException("No active allocation for this resident");
+    if (active.bedId === toBedId)
+      throw new ConflictException("Resident is already in that bed");
+
+    // One unsettled transfer at a time: the delta math nets against the
+    // transfer-month invoice, so a second move before that delta is consumed by
+    // the next invoice would compound incorrectly. Block until it settles.
+    await assertNoUnsettledAdjustment(tx, residentId);
+
+    const [oldRoom] = await tx
+      .select({ rent: rooms.monthlyRentPaise })
+      .from(beds)
+      .innerJoin(rooms, eq(rooms.id, beds.roomId))
+      .where(eq(beds.id, active.bedId));
+
+    const [toBed] = await tx
+      .select({ status: beds.status, rent: rooms.monthlyRentPaise })
+      .from(beds)
+      .innerJoin(rooms, eq(rooms.id, beds.roomId))
+      .where(eq(beds.id, toBedId));
+    if (!toBed) throw new NotFoundException("Target bed not found");
+    if (toBed.status !== BedStatus.VACANT)
+      throw new ConflictException("Target bed is not vacant");
+
+    // End old, start new, flip both beds.
+    await tx
+      .update(allocations)
+      .set({ endDate: moveDate })
+      .where(eq(allocations.id, active.id));
+    const [newAlloc] = await tx
+      .insert(allocations)
+      .values({ tenantId, bedId: toBedId, residentId, startDate: moveDate })
+      .returning({ id: allocations.id });
+    await tx
+      .update(beds)
+      .set({ status: BedStatus.VACANT })
+      .where(eq(beds.id, active.bedId));
+    await tx
+      .update(beds)
+      .set({ status: BedStatus.OCCUPIED })
+      .where(eq(beds.id, toBedId));
+
+    // Settle the transfer month as a signed adjustment on the next invoice.
+    const period = istPeriod(moveDate);
+    const oldPortion = prorateSegment(
+      oldRoom.rent,
+      active.startDate,
+      moveDate, // exclusive — resident vacates the old room on the move day
+      period,
+    );
+    const newPortion = prorateSegment(toBed.rent, moveDate, null, period);
+    const correctTotal = oldPortion + newPortion;
+
+    const [existingInvoice] = await tx
+      .select({ amountPaise: invoices.amountPaise })
+      .from(invoices)
+      .where(
+        and(eq(invoices.residentId, residentId), eq(invoices.period, period)),
+      );
+    // What the transfer month was (or will be) billed: the existing full-old-room
+    // invoice if already generated, else the new-room remainder the generator
+    // will emit for the now-active new allocation.
+    const billed = existingInvoice
+      ? existingInvoice.amountPaise
+      : newPortion;
+    const delta = correctTotal - billed;
+
+    if (delta !== 0) {
+      await tx.insert(rentAdjustments).values({
+        tenantId,
+        residentId,
+        amountPaise: delta,
+        description: `Room transfer mid-${period} (prorated split)`,
+        source: "TRANSFER",
+      });
+    }
+
+    return { id: newAlloc.id };
+  }
+}
+
+/**
+ * Guard: a resident may have at most one in-flight (unapplied) rent adjustment.
+ * Each room transfer queues a signed delta that the next invoice consumes; a
+ * second transfer before that happens would net against a stale baseline and
+ * mis-bill, so refuse it until the pending one settles.
+ */
+async function assertNoUnsettledAdjustment(
+  db: Tx | ReturnType<TenantContextService["db"]>,
+  residentId: string,
+): Promise<void> {
+  const [pending] = await db
+    .select({ id: rentAdjustments.id })
+    .from(rentAdjustments)
+    .where(
+      and(
+        eq(rentAdjustments.residentId, residentId),
+        isNull(rentAdjustments.appliedToInvoiceId),
+      ),
+    )
+    .limit(1);
+  if (pending)
+    throw new ConflictException(
+      "This resident has an unsettled room-transfer adjustment; generate their next invoice before transferring again",
+    );
 }
 
 function isUniqueViolation(err: unknown): boolean {

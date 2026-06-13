@@ -23,6 +23,7 @@ import {
   beds,
   invoices,
   payments,
+  rentAdjustments,
   rooms,
   users,
 } from "../db/schema";
@@ -55,7 +56,9 @@ export class RentService {
    * is skipped entirely. Optionally scoped to `input.residentIds` (empty/omitted
    * = everyone). Idempotent: ON CONFLICT (resident_id, period) DO NOTHING, so
    * re-runs add only the missing ones. Used by both the manager endpoint and the
-   * monthly job.
+   * monthly job. Any queued, unapplied `rent_adjustments` for a resident (e.g. a
+   * mid-month room-transfer delta) are folded into their new invoice here and
+   * marked applied exactly once.
    */
   async generateMonthly(
     input: GenerateInvoicesInput,
@@ -111,13 +114,75 @@ export class RentService {
 
     if (rows.length === 0) return { generated: 0, period };
 
-    const inserted = await db
-      .insert(invoices)
-      .values(rows)
-      .onConflictDoNothing({ target: [invoices.residentId, invoices.period] })
-      .returning({ id: invoices.id });
+    return db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(invoices)
+        .values(rows)
+        .onConflictDoNothing({ target: [invoices.residentId, invoices.period] })
+        .returning({
+          id: invoices.id,
+          residentId: invoices.residentId,
+          amountPaise: invoices.amountPaise,
+        });
 
-    return { generated: inserted.length, period };
+      // Fold each resident's queued, unapplied rent adjustments (e.g. a mid-month
+      // room-transfer delta — signed, may be a credit) into their brand-new
+      // invoice, consuming each adjustment exactly once. Only invoices we just
+      // inserted are touched (ON CONFLICT skips residents already billed this
+      // period), so a re-run never double-applies. If a credit drives the total
+      // below zero, the invoice settles at 0 (nothing to collect) and the
+      // remainder carries forward as a fresh adjustment.
+      for (const inv of inserted) {
+        const pending = await tx
+          .select({
+            id: rentAdjustments.id,
+            amountPaise: rentAdjustments.amountPaise,
+          })
+          .from(rentAdjustments)
+          .where(
+            and(
+              eq(rentAdjustments.residentId, inv.residentId),
+              isNull(rentAdjustments.appliedToInvoiceId),
+            ),
+          );
+        if (pending.length === 0) continue;
+
+        const sum = pending.reduce((s, a) => s + a.amountPaise, 0);
+        const newTotal = inv.amountPaise + sum;
+
+        await tx
+          .update(rentAdjustments)
+          .set({ appliedToInvoiceId: inv.id, appliedAt: new Date() })
+          .where(
+            inArray(
+              rentAdjustments.id,
+              pending.map((p) => p.id),
+            ),
+          );
+
+        if (newTotal >= 0) {
+          await tx
+            .update(invoices)
+            .set({ amountPaise: newTotal })
+            .where(eq(invoices.id, inv.id));
+        } else {
+          // Fully credited: settle at 0 and carry the leftover credit forward.
+          await tx
+            .update(invoices)
+            .set({ amountPaise: 0, status: InvoiceStatus.PAID })
+            .where(eq(invoices.id, inv.id));
+          await tx.insert(rentAdjustments).values({
+            tenantId,
+            residentId: inv.residentId,
+            amountPaise: newTotal,
+            description: `Credit carried forward from ${period}`,
+            source: "CARRY_FORWARD",
+          });
+        }
+      }
+
+      return { generated: inserted.length, period };
+    });
   }
 
   /**
@@ -127,11 +192,15 @@ export class RentService {
    * name filter is shared by the list and the count on one code path.
    */
   async listInvoices(query: InvoiceListQuery): Promise<InvoiceListResult> {
-    const { q, page, limit } = query;
+    const { q, residentId, page, limit } = query;
     const db = this.ctx.db();
-    const where = q
-      ? or(ilike(users.name, `%${q}%`), ilike(invoices.period, `%${q}%`))
-      : undefined;
+    const filters = [
+      q
+        ? or(ilike(users.name, `%${q}%`), ilike(invoices.period, `%${q}%`))
+        : undefined,
+      residentId ? eq(invoices.residentId, residentId) : undefined,
+    ].filter(Boolean);
+    const where = filters.length > 0 ? and(...filters) : undefined;
 
     const listBase = db
       .select({

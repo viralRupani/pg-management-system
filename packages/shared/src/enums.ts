@@ -79,6 +79,20 @@ export const PaymentMethod = {
 } as const;
 export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod];
 
+/**
+ * A room-transfer request: a manager records the intent to move a resident to a
+ * target bed by a planned date (advisory — the bed is NOT hard-locked). PENDING
+ * until the manager executes the move on the actual day (-> COMPLETED) or drops
+ * it (-> CANCELLED).
+ */
+export const TransferRequestStatus = {
+  PENDING: "PENDING",
+  COMPLETED: "COMPLETED",
+  CANCELLED: "CANCELLED",
+} as const;
+export type TransferRequestStatus =
+  (typeof TransferRequestStatus)[keyof typeof TransferRequestStatus];
+
 export const ComplaintStatus = {
   OPEN: "OPEN",
   IN_PROGRESS: "IN_PROGRESS",

@@ -1,4 +1,4 @@
-import { prorateRent } from "./rent.proration";
+import { prorateRent, prorateSegment } from "./rent.proration";
 
 /**
  * Unit coverage for the pure join-month proration rule. Amounts are integer
@@ -62,5 +62,62 @@ describe("prorateRent", () => {
     expect(
       prorateRent(RENT, new Date("2026-06-30T19:00:00Z"), "2026-06"),
     ).toBeNull();
+  });
+});
+
+/**
+ * Unit coverage for the segment proration used by mid-month room transfers.
+ * `segEndExclusive` is the move-out instant (the resident does NOT occupy that
+ * day). ₹9000 == 900000 paise is divisible by 30 so June math is exact.
+ */
+describe("prorateSegment", () => {
+  const RENT = 900000; // ₹9000
+  const at = (iso: string) => new Date(iso);
+  const PERIOD = "2026-06"; // 30 days
+
+  it("open segment starting before/on the 1st → full rent", () => {
+    expect(prorateSegment(RENT, at("2026-05-01"), null, PERIOD)).toBe(RENT);
+    expect(prorateSegment(RENT, at("2026-06-01"), null, PERIOD)).toBe(RENT);
+  });
+
+  it("open segment starting mid-month → from start day through month-end", () => {
+    // days 15..30 inclusive = 16 days.
+    expect(prorateSegment(RENT, at("2026-06-15"), null, PERIOD)).toBe(
+      Math.round((RENT * 16) / 30),
+    );
+  });
+
+  it("closed segment → start day through the day BEFORE move-out", () => {
+    // Jun 1 → Jun 15 (exclusive): days 1..14 = 14 days (the old-room side).
+    expect(prorateSegment(RENT, at("2026-06-01"), at("2026-06-15"), PERIOD)).toBe(
+      Math.round((RENT * 14) / 30),
+    );
+    // Start before the period clamps to day 1.
+    expect(prorateSegment(RENT, at("2026-05-01"), at("2026-06-15"), PERIOD)).toBe(
+      Math.round((RENT * 14) / 30),
+    );
+  });
+
+  it("segment ending in a later month clamps to month-end", () => {
+    // Jun 10 → Jul 5: days 10..30 = 21 days.
+    expect(prorateSegment(RENT, at("2026-06-10"), at("2026-07-05"), PERIOD)).toBe(
+      Math.round((RENT * 21) / 30),
+    );
+  });
+
+  it("segment outside the period → zero", () => {
+    expect(prorateSegment(RENT, at("2026-04-01"), at("2026-05-01"), PERIOD)).toBe(0);
+    expect(prorateSegment(RENT, at("2026-07-01"), null, PERIOD)).toBe(0);
+    // Same-day move in and out → zero occupied days.
+    expect(prorateSegment(RENT, at("2026-06-10"), at("2026-06-10"), PERIOD)).toBe(0);
+  });
+
+  it("old-room + new-room portions of a transfer sum to a full month", () => {
+    // The core invariant: splitting a month at the move day never over- or
+    // under-bills when both rooms cost the same.
+    const move = at("2026-06-15");
+    const oldSide = prorateSegment(RENT, at("2026-06-01"), move, PERIOD);
+    const newSide = prorateSegment(RENT, move, null, PERIOD);
+    expect(oldSide + newSide).toBe(RENT);
   });
 });
