@@ -80,10 +80,9 @@ infra/             docker-compose: Postgres 16 on :5433, Redis 7 on :6379
 | PG Owner role | ✅ | `owners`, `owner_tenants`; token-switch, manager deactivation |
 | M8 Resident mobile | ✅* | Expo app **feature-complete**: OTP auth + tabs + all resident screens (rent/payments, complaints, KYC, deposit + move-out, announcements, mess, notifications, profile). `api-client` resident methods + NativeWind white-label. *Pending on-device verification (`var(--brand)` paint/repaint). See `apps/mobile/CLAUDE.md` |
 
-**Test suite:** `pnpm --filter @pg/api test` → **96 tests / 9 files, all green.**
+**Test suite:** `pnpm --filter @pg/api test` → **130 tests / 12 files, all green.**
 
 **Critical open items** (see `docs/backlog.md` for the full list):
-- **Reminder scoping** — `sendRentReminders(undefined)` re-notifies ALL pending invoices daily. Must scope to current/overdue period before production.
 - **Decommission bed** — needs a new API endpoint (conditional-flip pattern; occupied bed → 409).
 - **Mobile on-device pass** — M8 is verified by typecheck + bundle only; confirm white-label theming (`var(--brand)`) paints/repaints on a physical Android device in Expo Go.
 

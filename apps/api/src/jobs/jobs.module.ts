@@ -64,6 +64,8 @@ export class JobsModule implements OnModuleInit, OnModuleDestroy {
         switch (job.name) {
           case "monthly-invoices":
             return this.jobs.generateInvoicesAllTenants(job.data?.period);
+          case "mark-overdue":
+            return this.jobs.markOverdueAllTenants(job.data?.period);
           case "rent-reminders":
             return this.jobs.sendRentReminders(job.data?.period);
           case "monthly-billing-snapshot":
@@ -76,12 +78,18 @@ export class JobsModule implements OnModuleInit, OnModuleDestroy {
     );
 
     // Repeatable schedules; BullMQ dedupes by repeat key, so re-adding on every
-    // boot is idempotent. Monthly generation on the 1st @ 02:00, reminders daily
-    // @ 09:00 (server tz).
+    // boot is idempotent. Monthly generation on the 1st @ 02:00; daily the
+    // overdue sweep @ 08:00 then reminders @ 09:00 (server tz) — overdue runs
+    // first so reminders see the fresh OVERDUE status.
     await this.queue.add(
       "monthly-invoices",
       {},
       { repeat: { pattern: "0 2 1 * *" }, removeOnComplete: true },
+    );
+    await this.queue.add(
+      "mark-overdue",
+      {},
+      { repeat: { pattern: "0 8 * * *" }, removeOnComplete: true },
     );
     await this.queue.add(
       "rent-reminders",

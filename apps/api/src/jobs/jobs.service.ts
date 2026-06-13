@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { InvoiceStatus } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
 import { PlatformService } from "../platform/platform.service";
@@ -39,33 +39,53 @@ export class JobsService {
     });
   }
 
-  /** Send a rent reminder to every resident with a PENDING invoice. */
+  /** Flip past-due PENDING invoices to OVERDUE in every active tenant. */
+  async markOverdueAllTenants(period?: string): Promise<BatchResult> {
+    return this.forEachTenant("mark overdue", async () => {
+      const res = await this.rent.markOverdue(period);
+      return res.flipped;
+    });
+  }
+
+  /**
+   * Remind every resident who owes rent. Scoped to UNPAID & DUE invoices only:
+   * status in (PENDING, OVERDUE) and the due date has been reached — so a
+   * not-yet-due invoice isn't nagged, and a settled (PAID/WAIVED) one is never
+   * reminded. The old unscoped query notified on *every* PENDING invoice
+   * regardless of due date. Policy: a daily nudge while rent is due/overdue is
+   * intended for offline-UPI collection; the daily cron is the cadence, so no
+   * extra per-day dedup is needed. Optionally narrowed to one `period`.
+   */
   async sendRentReminders(period?: string): Promise<BatchResult> {
     return this.forEachTenant("rent reminders", async () => {
       const db = this.ctx.db();
-      const conds = period
-        ? and(
-            eq(invoices.status, InvoiceStatus.PENDING),
-            eq(invoices.period, period),
-          )
-        : eq(invoices.status, InvoiceStatus.PENDING);
-      const pending = await db
+      const conds = [
+        inArray(invoices.status, [
+          InvoiceStatus.PENDING,
+          InvoiceStatus.OVERDUE,
+        ]),
+        sql`${invoices.dueDate} <= now()`,
+      ];
+      if (period) conds.push(eq(invoices.period, period));
+      const due = await db
         .select({
           residentId: invoices.residentId,
           period: invoices.period,
           amountPaise: invoices.amountPaise,
+          status: invoices.status,
         })
         .from(invoices)
-        .where(conds);
+        .where(and(...conds));
 
-      for (const inv of pending) {
+      for (const inv of due) {
+        const overdue = inv.status === InvoiceStatus.OVERDUE;
         await this.notifications.notify(inv.residentId, {
           type: "RENT_REMINDER",
-          title: "Rent due",
-          body: `Your rent of ₹${(inv.amountPaise / 100).toFixed(2)} for ${inv.period} is pending.`,
+          title: overdue ? "Rent overdue" : "Rent due",
+          body: `Your rent of ₹${(inv.amountPaise / 100).toFixed(2)} for ${inv.period} is ${overdue ? "overdue" : "pending"}.`,
         });
       }
-      return pending.length;
+      return due.length;
     });
   }
 

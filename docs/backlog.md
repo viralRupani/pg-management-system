@@ -8,9 +8,12 @@ Collected from milestone notes. Roughly ordered by priority / dependency.
 
 ### Critical before production
 
-**Reminder scoping** (M3 deferred)
-- `sendRentReminders(undefined)` notifies on *every* PENDING invoice regardless of month. The daily repeatable job passes no period, so an old unpaid invoice re-notifies every day.
-- Fix: scope reminders to the current/overdue period, or dedup per `(residentId, period)` per day.
+**Reminder scoping** (M3 deferred) — ✅ DONE
+- `sendRentReminders` now scopes to UNPAID & DUE invoices only: `status IN
+  (PENDING, OVERDUE) AND due_date <= now()` (was: every PENDING invoice
+  regardless of due date). Not-yet-due invoices aren't nagged; settled ones never
+  are. Policy: a daily nudge while rent is due/overdue is intended for offline-UPI
+  collection, so the daily cron is the cadence — no extra per-day dedup.
 - Location: `JobsService.sendRentReminders`, `apps/api/src/jobs/jobs.service.ts`.
 
 ### Property / bed management
@@ -29,9 +32,13 @@ Collected from milestone notes. Roughly ordered by priority / dependency.
 - Still open: **manager-side admin UI** to view/act on exit requests (the read is
   exposed on the deposit endpoints; the admin screen is not built).
 
-**OVERDUE invoice transition** (M3 deferred)
-- Invoices stay PENDING past `due_date`.
-- Add a scheduled job or flag to flip PENDING → OVERDUE when `due_date` has passed.
+**OVERDUE invoice transition** (M3 deferred) — ✅ DONE
+- `RentService.markOverdue(period?)` bulk-flips PENDING → OVERDUE once the due
+  date's IST day has fully passed (`istStartOfDayUtc` cutoff — a raw `now()`
+  compare is off by 5.5h at the IST midnight boundary). Side-effect-free relabel,
+  so a plain conditional UPDATE (not the 409 conditional-flip pattern).
+- Driven daily @ 08:00 (before the 09:00 reminders) via the `mark-overdue`
+  repeatable job; manual trigger at `POST /platform/jobs/mark-overdue`.
 
 ### Owner/manager management
 

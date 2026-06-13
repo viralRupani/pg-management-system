@@ -25,6 +25,11 @@ export class JobsController {
     return this.jobs.generateInvoicesAllTenants(dto.period);
   }
 
+  @Post("mark-overdue")
+  markOverdue(@Body(new ZodBody(runJobSchema)) dto: RunJobInput) {
+    return this.jobs.markOverdueAllTenants(dto.period);
+  }
+
   @Post("rent-reminders")
   reminders(@Body(new ZodBody(runJobSchema)) dto: RunJobInput) {
     return this.jobs.sendRentReminders(dto.period);
