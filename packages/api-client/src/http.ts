@@ -70,11 +70,33 @@ export class Http {
       const token = this.cfg.tokens.getAccess();
       if (token) headers["Authorization"] = `Bearer ${token}`;
     }
-    return fetch(url, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+
+    // RN's fetch never times out: an unreachable host hangs forever and the UI
+    // spins. Abort after timeoutMs and surface a typed error the UI can show.
+    const timeoutMs = this.cfg.timeoutMs ?? 15000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (controller.signal.aborted) {
+        throw new ApiError(
+          0,
+          "The request timed out. Check your connection and try again.",
+        );
+      }
+      throw new ApiError(
+        0,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** Single-flight: many 401s collapse into one refresh round-trip. */

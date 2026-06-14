@@ -17,6 +17,12 @@ export interface ClientConfig {
   baseUrl: string;
   tokens: TokenStore;
   /**
+   * Per-request timeout in ms. RN's fetch has NO timeout, so an unreachable host
+   * (wrong LAN IP, API down) hangs forever and the UI spins indefinitely. Aborts
+   * the request and throws a 0-status ApiError instead. Default 15000.
+   */
+  timeoutMs?: number;
+  /**
    * Invoked when auth is unrecoverable (no refresh token, or refresh failed).
    * The UI should redirect to login. Called once per failed auth attempt.
    */
