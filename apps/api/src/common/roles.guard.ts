@@ -35,7 +35,14 @@ export class RolesGuard implements CanActivate {
       ctx.getHandler(),
       ctx.getClass(),
     ]);
-    if (!required || required.length === 0) return true;
+    // Fail closed: a non-@Public route with no @Roles policy is a developer
+    // oversight, not "any authenticated user may enter". Without this, a handler
+    // that forgot @Roles would be reachable by ANY authenticated principal —
+    // e.g. a RESIDENT token hitting a manager surface. Every route must declare
+    // @Roles or @Public; an absent policy is denied, not waved through.
+    if (!required || required.length === 0) {
+      throw new ForbiddenException("Route has no access policy");
+    }
 
     const req = ctx.switchToHttp().getRequest();
     const auth = req.auth as JwtPayload | undefined;
