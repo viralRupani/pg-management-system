@@ -59,7 +59,8 @@ src/
 Guards run before interceptors, so per request:
 1. `JwtAuthGuard` — verifies access JWT, sets `req.auth` = `{ sub, tenantId, role }`.
    Skips `@Public()` routes.
-2. `RolesGuard` — enforces `@Roles(...)`.
+2. `RolesGuard` — enforces `@Roles(...)`. **Fails closed:** a non-`@Public` route
+   with no `@Roles` is denied (not "any authenticated user"). Always declare a role.
 3. `TenantContextInterceptor` — if `req.auth` is a tenant user (role ≠
    PLATFORM_ADMIN, tenantId present), wraps the handler in
    `TenantContextService.run(tenantId, ...)` → opens a txn, `SET LOCAL
@@ -148,6 +149,9 @@ ops/tests; the worker provides the schedule.
 - Resident: `POST /auth/resident/otp/request` then `/verify` — both take
   `pgCode` (tenant slug) + `phone`, because phone is unique only per-tenant. OTP
   in Redis (`otp:{tenantId}:{phone}`), dev code logged when `OTP_DEV_LOG=true`.
+- **Rate limiting** (`@nestjs/throttler` on `AuthController`): login 5/min,
+  otp/request 3/min, otp/verify 5/min (per IP+route); refresh unthrottled; skipped
+  under `NODE_ENV=test`. Defense-in-depth on top of the OTP 5-wrong-tries burn.
 - Tokens: access signed with `JWT_ACCESS_SECRET` (default TTL), refresh signed
   explicitly with `JWT_REFRESH_SECRET`. `POST /auth/refresh` re-mints.
 - Real SMS later: implement `SmsProvider` (see `auth/otp.service.ts`).
@@ -173,9 +177,11 @@ Two committed layers, both need **infra up + migrated** (`pnpm infra:up &&
 pnpm db:migrate`):
 - `src/rls/rls-isolation.spec.ts` — the DB-level isolation gate (raw pools as
   `app_user`, max=1). Add new RLS tables here for explicit per-table coverage.
-- `src/e2e/*.e2e-spec.ts` — black-box HTTP e2e over the real `AppModule`, one
-  file per milestone (property-allocation/rent/documents-deposits/operations).
-  `harness.ts` (`createHarness()`) boots the app with `@nestjs/testing` +
+- `src/e2e/*.e2e-spec.ts` — black-box HTTP e2e over the real `AppModule`, one file
+  per milestone/feature (property-allocation, rent, documents-deposits, operations,
+  metering-branding, owner, transfers, overdue-reminders, otp-lockout,
+  resident-exit-photo). `harness.ts` (`createHarness()`) boots the app with
+  `@nestjs/testing` +
   supertest, **reusing the app's own `JwtService`** (to mint the PLATFORM_ADMIN
   token — super-admin has no login endpoint) and **`REDIS`** (to read the dev
   OTP for resident login). It onboards unique-slug tenants and **deletes them in

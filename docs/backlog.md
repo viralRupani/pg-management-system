@@ -6,6 +6,20 @@ Collected from milestone notes. Roughly ordered by priority / dependency.
 
 ## Backend
 
+### Backend audit (2026-06-14) — `reports/backend-audit-2026-06-14.md`
+
+Fixed since the audit: HIGH OVERDUE-can't-settle (`e53195f`), auth rate-limiting
+(`37ccf17`), payment submission on any settled invoice (`d460dff`), N+1 in
+`generateMonthly` (`5f82ff0`), `RolesGuard` fails closed when no `@Roles` (`91a48ff`).
+
+**Still open (audit Low): orphaned transfer adjustments at exit**
+- A mid-month room transfer queues a signed `rent_adjustments` delta consumed only
+  by the next `generateMonthly`. `settleExit` never folds pending adjustments, so a
+  resident who transfers then exits in the same period loses the proration delta.
+- Fix: at `settleExit`, fold any unapplied `rent_adjustments` into the deposit
+  settlement (or block exit while one is pending, mirroring
+  `assertNoUnsettledAdjustment`). Needs a product call on exit-billing policy.
+
 ### Critical before production
 
 **Reminder scoping** (M3 deferred) — ✅ DONE
@@ -61,19 +75,19 @@ Collected from milestone notes. Roughly ordered by priority / dependency.
 - `apps/admin/app/(app)/property/page.tsx` has create + edit-rent but no rename or decommission affordance.
 - Blocked on the backend endpoint above.
 
-### Mobile app (Expo) — M8, built (pending on-device verification)
+### Mobile app (Expo) — M8, built + device-verified
 
-Built: resident auth (slug + phone + OTP, JWT in SecureStore), tab nav, and all
-feature screens (Home, Rent + invoice detail + submit-payment, Complaints + raise
-+ thread, KYC documents + upload, Deposit + ledger + move-out request,
-Announcements, Mess menu, Notifications feed, Profile/More + logout). `api-client`
-resident methods added; NativeWind white-label theming via `GET /branding/:slug`.
+Done: resident auth (slug + phone + OTP, JWT in SecureStore), swipeable tab nav,
+and all feature screens (Home with floating rent card, Rent + invoice detail +
+submit-payment, Complaints + raise + thread, KYC documents + upload, Deposit +
+ledger + move-out request, Announcements, Mess menu, Notifications feed,
+Profile/More + logout). `api-client` resident methods added; NativeWind white-label
+theming via `GET /branding/:slug` (paints/repaints, persists cold start).
 Resident complaint-photo read (`GET /complaints/:id/photo`) and exit-request added
-server-side. Verified by typecheck + a clean `expo export` bundle.
+server-side. Verified by typecheck, a clean `expo export` bundle, **and a run in
+Expo Go on a physical Android phone** (`var(--brand)` confirmed on native).
 
 Still deferred:
-- **On-device verification**: confirm `var(--brand)` paints + repaints on a real
-  Android device (Expo Go) — see `apps/mobile/CLAUDE.md`. Not autonomously testable.
 - **Real OS push**: needs an EAS dev build (Expo Go dropped Android push) +
   `expo-notifications` + swapping the server `NotificationChannel` stub for an Expo
   push driver. The in-app notifications feed works today; push-token registration

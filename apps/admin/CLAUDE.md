@@ -6,8 +6,9 @@ see the root `CLAUDE.md` and `apps/api/CLAUDE.md`. This is a **pure client SPA**
 no server here; the NestJS API is the only trust boundary.
 
 **Status: COMPLETE.** All eight nav pages built + verified (build / typecheck /
-live-API / live-browser). No `soon` stubs remain. Next surface is the mobile app
-(`apps/mobile/CLAUDE.md`). Outstanding: no committed frontend test — admin is
+live-API / live-browser). No `soon` stubs remain. (The resident mobile app —
+`apps/mobile/CLAUDE.md` — is also built + device-verified.) Outstanding: no
+committed frontend test — admin is
 build- + manual-verified; a Playwright e2e is the deferred safety net (the ad-hoc
 `npx playwright` scripts with cached chromium are a ready template).
 

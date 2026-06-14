@@ -1,15 +1,14 @@
 # CLAUDE.md — apps/mobile (Expo resident app)
 
-> **Built (M8) — pending on-device verification.** The resident app is feature-
-> complete: OTP auth (slug → phone → OTP), bottom-tab nav, and every feature
-> screen (Home, Rent + invoice detail + submit-payment sheet, Complaints + raise +
-> thread, KYC documents + upload, Deposit + ledger + move-out request,
-> Announcements, Mess menu, Notifications, Profile/More + logout). `@pg/api-client`
-> has resident methods; NativeWind white-label theming repaints from
-> `GET /branding/:slug`. Verified by `tsc --noEmit` + a clean `expo export`
-> bundle — **not yet run on a physical device** (the one thing those checks can't
-> cover: that `var(--brand)` actually paints/repaints on native). For business
-> context see root `CLAUDE.md`; the API is the only trust boundary
+> **Built (M8) — device-verified.** The resident app is feature-complete: OTP auth
+> (slug → phone → OTP), swipeable bottom-tab nav, and every feature screen (Home
+> with floating rent card + at-a-glance strip, Rent + invoice detail + submit-payment
+> sheet, Complaints + raise + thread, KYC documents + upload, Deposit + ledger +
+> move-out request, Announcements, Mess menu, Notifications, Profile/More + logout).
+> `@pg/api-client` has resident methods; NativeWind white-label theming repaints from
+> `GET /branding/:slug` and **persists across cold start**. Run in Expo Go on a
+> physical Android phone: `var(--brand)` paints + repaints confirmed on native. For
+> business context see root `CLAUDE.md`; the API is the only trust boundary
 > (`apps/api/CLAUDE.md`).
 >
 > **UI architecture:** shared NativeWind primitives in `components/ui/` (Button,
@@ -38,7 +37,7 @@ From root §2 + backlog:
 | Token storage | JWT in **expo-secure-store** (not AsyncStorage) |
 | Pre-auth theming | public `GET /branding/:slug` (resident types the slug) — NOT the post-login `/tenants/branding` the admin uses |
 | Types / validation | `@pg/shared` Zod schemas — same single source of truth as web |
-| HTTP | `@pg/api-client` (ships TS source, no build step) — **resident methods not added yet** |
+| HTTP | `@pg/api-client` (ships TS source, no build step) — resident methods under `api.resident.*` |
 | File uploads | S3 presigned URLs (request upload-url → PUT bytes → POST the key); pick images with **expo-image-picker** |
 | Push | **expo-notifications** (Expo/FCM); `NotificationChannel` is a **stub** server-side today |
 | Currency | integer paise everywhere; format to ₹ at the edge |
@@ -67,23 +66,35 @@ and adds an `@/*` path alias.
 > react-native-worklets`. If typecheck then errors on `process`, ensure the
 > generated `expo-env.d.ts` (`/// <reference types="expo/types" />`) exists.
 
-## Directory map (as scaffolded)
+## Directory map
 ```
 app/                       expo-router file-based routes
   _layout.tsx              ROOT: imports global.css; providers stack —
-                           SafeAreaProvider → QueryClientProvider → Stack;
-                           hydrates SecureStore tokens before rendering routes
-  index.tsx                Hello-World placeholder home screen
-components/ui/             shared NativeWind primitives (Button seeded)
+                           SafeAreaProvider → QueryClientProvider → ThemeProvider
+                           → AuthProvider → Stack; hydrates SecureStore tokens
+                           before rendering routes
+  (auth)/                  login flow: slug → phone → OTP
+  (tabs)/                  swipeable bottom-tab nav + every feature screen
+                           (home, rent, complaints, kyc, deposit, announcements,
+                           mess, notifications, more)
+components/
+  ui/                      shared NativeWind primitives (Button, Input, Card,
+                           Badge + status.ts, Row/Ricon, Appbar, EmptyState,
+                           Skeleton, Chip, Fab, Sheet, Avatar, Screen)
+  theme-provider.tsx       repaints brand palette via vars() (Sheet re-applies it —
+                           RN Modals portal out of root)
 lib/
   api.ts                   PgApiClient singleton + SecureStore-backed TokenStore
                            (in-memory cache for SYNC reads + async persist +
                            hydrateTokens()) + decodeToken/currentUser; mirrors
                            apps/admin/lib/api.ts (localStorage → expo-secure-store)
+  auth.tsx                 AuthProvider over the SecureStore token store
+  queries.ts               read hooks + query keys (TanStack Query)
   query.ts                 TanStack QueryClient (retry 1, staleTime 30s)
   theme.ts                 pre-auth branding seam (DEFAULT_BRAND + readableForeground)
+  upload.ts                pickImage + best-effort presigned PUT (dev-stub caveat)
   utils.ts                 cn(), formatPaise (₹ from paise), ymd() local-date helper
-global.css                 @tailwind directives (imported once in _layout)
+global.css                 @tailwind directives + brand CSS-var defaults (imported in _layout)
 tailwind.config.js         NativeWind preset + `brand` color token (teal #0d9488)
 babel.config.js            babel-preset-expo (jsxImportSource: nativewind) + nativewind/babel
 metro.config.js            pnpm-monorepo aware (watchFolders=root, nodeModulesPaths)
@@ -185,7 +196,8 @@ pnpm --filter @pg/mobile typecheck        # tsc --noEmit
 Verify a clean Metro bundle without a device (catches resolution breaks in CI):
 `cd apps/mobile && CI=1 npx expo export --platform android --output-dir /tmp/x`.
 
-For the (future) resident login: seed a resident via
-`node apps/api/scripts/seed-demo.mjs` (Sunrise PG) and read the dev OTP from the
-API logs (`OTP_DEV_LOG=true`). Push notifications need an **EAS dev build** (Expo
-Go dropped Android push) — stay in Expo Go until that screen is built.
+Resident login: seed a resident via `node apps/api/scripts/seed-demo.mjs`
+(Sunrise PG) and read the dev OTP from the API logs (`OTP_DEV_LOG=true`), or use
+`seed-viral.mjs` (fixed dev OTP `009009`). Real OS push needs an **EAS dev build**
+(Expo Go dropped Android push) — deferred; the in-app notifications feed works in
+Expo Go today.

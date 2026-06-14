@@ -1,7 +1,7 @@
 # CLAUDE.md — PG Management System
 
 > High-level guide for any Claude session. Read first.
-> Companion docs: `apps/api/CLAUDE.md` (API layer), `apps/admin/CLAUDE.md` (admin conventions), `apps/mobile/CLAUDE.md` (resident app — M8, planning stub + resident API surface), `docs/backlog.md` (open deferred items).
+> Companion docs: `apps/api/CLAUDE.md` (API layer), `apps/admin/CLAUDE.md` (admin conventions), `apps/mobile/CLAUDE.md` (resident app + resident API surface), `docs/backlog.md` (open deferred items).
 
 ---
 
@@ -38,7 +38,7 @@
 ```
 apps/api/          NestJS backend — the ONLY server (auth, RLS, business logic)
 apps/admin/        Next.js manager dashboard (static export — all pages done)
-apps/mobile/       Expo resident app (scaffolded — architecture wired, Hello-World placeholder; no feature screens yet)
+apps/mobile/       Expo resident app (feature-complete, device-verified)
 packages/shared/   Zod schemas + enums — single source of truth for all surfaces
 packages/api-client/ Typed fetch client (ships TS source; no build step)
 infra/             docker-compose: Postgres 16 on :5433, Redis 7 on :6379
@@ -66,7 +66,7 @@ infra/             docker-compose: Postgres 16 on :5433, Redis 7 on :6379
 
 ## 4. Status
 
-**All API milestones, the admin frontend, and the M8 resident mobile app are built.** The Expo app is feature-complete (OTP auth, bottom-tab nav, and every resident screen) and the resident backend gaps it needed — `POST /deposits/exit-request` and a resident-scoped complaint-photo read — are implemented and tested. It's verified by typecheck + a clean `expo export` bundle but **not yet run on a physical device** (the open item: confirm `var(--brand)` paints/repaints on native). See `apps/mobile/CLAUDE.md` for the directory map, run commands, resident API surface, and what's still deferred (real OS push, announcement fan-out, real S3).
+**All API milestones, the admin frontend, and the M8 resident mobile app are built and verified.** The Expo app is feature-complete (OTP auth, bottom-tab nav with swipe, every resident screen) and **device-verified in Expo Go** on a physical Android phone — `var(--brand)` white-label theming paints + repaints, and the accent persists across cold start. Its resident backend gaps (`POST /deposits/exit-request`, resident-scoped complaint-photo read) are implemented and tested. See `apps/mobile/CLAUDE.md` for the directory map, run commands, resident API surface, and what's still deferred (real OS push, announcement fan-out, real S3).
 
 | Milestone | Status | Key additions |
 |---|---|---|
@@ -78,13 +78,15 @@ infra/             docker-compose: Postgres 16 on :5433, Redis 7 on :6379
 | M6 Metering + Branding | ✅ | `billing_snapshots`; MeteringService, BrandingModule |
 | M7 Admin frontend | ✅ | All 8 pages + `packages/api-client`; owner/manager UI |
 | PG Owner role | ✅ | `owners`, `owner_tenants`; token-switch, manager deactivation |
-| M8 Resident mobile | ✅* | Expo app **feature-complete**: OTP auth + tabs + all resident screens (rent/payments, complaints, KYC, deposit + move-out, announcements, mess, notifications, profile). `api-client` resident methods + NativeWind white-label. *Pending on-device verification (`var(--brand)` paint/repaint). See `apps/mobile/CLAUDE.md` |
+| M8 Resident mobile | ✅ | Expo app, **device-verified**: OTP auth + swipe tabs + all resident screens (rent/payments, complaints, KYC, deposit + move-out, announcements, mess, notifications, profile). `api-client` resident methods + NativeWind white-label (`var(--brand)` paints/repaints, persists cold start). See `apps/mobile/CLAUDE.md` |
 
-**Test suite:** `pnpm --filter @pg/api test` → **130 tests / 12 files, all green.**
+**Test suite:** `pnpm --filter @pg/api test` → **142 tests / 14 files, all green** (as of 2026-06-14).
+
+**Post-M8 hardening** (from the 2026-06-14 backend audit, `reports/backend-audit-2026-06-14.md`): auth rate-limiting (throttler on login/OTP), OVERDUE invoices now settle on approval, `RolesGuard` fails closed when a route declares no policy, N+1 killed in `generateMonthly`, payment submission rejected on any settled invoice, `api-client` request timeout. One audit Low remains open (orphaned transfer adjustments at exit).
 
 **Critical open items** (see `docs/backlog.md` for the full list):
 - **Decommission bed** — needs a new API endpoint (conditional-flip pattern; occupied bed → 409).
-- **Mobile on-device pass** — M8 is verified by typecheck + bundle only; confirm white-label theming (`var(--brand)`) paints/repaints on a physical Android device in Expo Go.
+- **Orphaned transfer adjustments at exit** — a mid-month transfer's pending `rent_adjustments` delta is dropped if the resident exits before the next monthly run.
 
 ---
 

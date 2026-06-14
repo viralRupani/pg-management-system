@@ -25,10 +25,15 @@ infra/      docker-compose for local Postgres + Redis
 
 ```bash
 pnpm install
-pnpm infra:up          # start Postgres + Redis
-pnpm db:migrate        # apply migrations + RLS policies
-pnpm --filter @pg/api dev
+pnpm infra:up                       # start Postgres (:5433) + Redis (:6379)
+pnpm --filter @pg/shared build      # build shared types (required before migrate/dev)
+pnpm db:migrate                     # apply migrations + RLS policies + grants
+pnpm --filter @pg/api dev           # API on :4000
 ```
+
+The admin dashboard (`pnpm --filter @pg/admin dev`) and resident Expo app
+(`cd apps/mobile && npx expo start`) each have their own `CLAUDE.md`. See the root
+`CLAUDE.md` for the full run guide and `docs/backlog.md` for open items.
 
 ## Multi-tenancy (read this before touching the DB)
 
@@ -40,4 +45,5 @@ pinned to the same pooled connection as the query. Tenant id comes **only** from
 the authenticated JWT — never from request input. The platform/super-admin path
 uses a separate `BYPASSRLS` role for cross-tenant reads.
 
-See `plans` and `apps/api/src/rls/` for the implementation.
+See `apps/api/src/rls/` for the implementation and `CLAUDE.md` (root) for the full
+five-layer isolation model.
