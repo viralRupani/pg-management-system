@@ -26,4 +26,19 @@ config.resolver.nodeModulesPaths = [
   path.resolve(monorepoRoot, 'node_modules'),
 ];
 
+// watchFolders is the whole monorepo root (above), so Metro reacts to file
+// changes ANYWHERE in the repo — including sibling apps' build output. Running
+// the API in watch mode (`pnpm --filter @pg/api dev`) rewrites apps/api/dist on
+// every recompile, which otherwise makes Metro re-bundle in a loop (the
+// "Refreshing…" banner flashes on the phone every 1-2s). The mobile app imports
+// nothing from apps/* — only packages/* (e.g. @pg/shared's dist, @pg/api-client's
+// src) — so excluding the sibling app trees + turbo cache is safe. Append to the
+// default blockList (don't replace it).
+config.resolver.blockList = [
+  ...config.resolver.blockList,
+  /[/\\]apps[/\\]api[/\\].*/,
+  /[/\\]apps[/\\]admin[/\\].*/,
+  /[/\\]\.turbo[/\\].*/,
+];
+
 module.exports = withNativeWind(config, { input: './global.css' });
