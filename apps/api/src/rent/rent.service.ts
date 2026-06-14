@@ -328,10 +328,17 @@ export class RentService {
   ): Promise<{ id: string }> {
     const tenantId = this.ctx.currentTenantId()!;
     const invoice = await this.ownedInvoice(residentId, input.invoiceId);
-    // A settled invoice takes no further payments — blocks piling SUBMITTED rows
-    // onto an already-PAID invoice.
-    if (invoice.status === InvoiceStatus.PAID)
-      throw new ConflictException("Invoice is already paid");
+    // Only a payable invoice (PENDING or its past-due OVERDUE form) takes a
+    // payment — blocks piling dead SUBMITTED rows onto an already-settled one
+    // (PAID, or WAIVED where the manager forgave the rent so there's nothing to
+    // collect). The manager approve path settles the same two states.
+    if (
+      invoice.status !== InvoiceStatus.PENDING &&
+      invoice.status !== InvoiceStatus.OVERDUE
+    )
+      throw new ConflictException(
+        `Invoice is already ${invoice.status.toLowerCase()}`,
+      );
     const [row] = await this.ctx
       .db()
       .insert(payments)
