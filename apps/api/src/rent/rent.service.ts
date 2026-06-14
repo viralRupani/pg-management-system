@@ -132,20 +132,44 @@ export class RentService {
       // period), so a re-run never double-applies. If a credit drives the total
       // below zero, the invoice settles at 0 (nothing to collect) and the
       // remainder carries forward as a fresh adjustment.
-      for (const inv of inserted) {
-        const pending = await tx
-          .select({
-            id: rentAdjustments.id,
-            amountPaise: rentAdjustments.amountPaise,
-          })
-          .from(rentAdjustments)
-          .where(
-            and(
-              eq(rentAdjustments.residentId, inv.residentId),
-              isNull(rentAdjustments.appliedToInvoiceId),
+      //
+      // Read every inserted resident's pending adjustments in ONE query (not one
+      // per invoice), then group in memory and key by resident — each inserted
+      // invoice has a unique residentId (ON CONFLICT on resident_id+period, one
+      // period), so the map is unambiguous. The remaining writes run only for
+      // residents who actually have adjustments.
+      const pendingByResident = new Map<
+        string,
+        { id: string; amountPaise: number }[]
+      >();
+      const allPending = await tx
+        .select({
+          id: rentAdjustments.id,
+          residentId: rentAdjustments.residentId,
+          amountPaise: rentAdjustments.amountPaise,
+        })
+        .from(rentAdjustments)
+        .where(
+          and(
+            inArray(
+              rentAdjustments.residentId,
+              inserted.map((i) => i.residentId),
             ),
-          );
-        if (pending.length === 0) continue;
+            isNull(rentAdjustments.appliedToInvoiceId),
+          ),
+        );
+      for (const a of allPending) {
+        const list = pendingByResident.get(a.residentId);
+        if (list) list.push({ id: a.id, amountPaise: a.amountPaise });
+        else
+          pendingByResident.set(a.residentId, [
+            { id: a.id, amountPaise: a.amountPaise },
+          ]);
+      }
+
+      for (const inv of inserted) {
+        const pending = pendingByResident.get(inv.residentId);
+        if (!pending || pending.length === 0) continue;
 
         const sum = pending.reduce((s, a) => s + a.amountPaise, 0);
         const newTotal = inv.amountPaise + sum;
