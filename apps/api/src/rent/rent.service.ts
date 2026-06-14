@@ -463,10 +463,13 @@ export class RentService {
         );
       }
 
-      // (2) The invoice PENDING -> PAID flip is the authoritative single-settle
-      // guard: a second approval (even for a different SUBMITTED payment on the
-      // same invoice) matches 0 rows here and rolls the whole txn back, so an
-      // invoice can never carry two APPROVED payments.
+      // (2) The invoice {PENDING,OVERDUE} -> PAID flip is the authoritative
+      // single-settle guard: a second approval (even for a different SUBMITTED
+      // payment on the same invoice) matches 0 rows here and rolls the whole txn
+      // back, so an invoice can never carry two APPROVED payments. OVERDUE is an
+      // unpaid state too (a past-due PENDING invoice), so it must settle the same
+      // way — otherwise late payers could never be marked paid. PAID/WAIVED stay
+      // excluded, preserving the single-settle invariant.
       if (decision === PaymentStatus.APPROVED) {
         const paid = await tx
           .update(invoices)
@@ -474,7 +477,10 @@ export class RentService {
           .where(
             and(
               eq(invoices.id, decided[0].invoiceId),
-              eq(invoices.status, InvoiceStatus.PENDING),
+              inArray(invoices.status, [
+                InvoiceStatus.PENDING,
+                InvoiceStatus.OVERDUE,
+              ]),
             ),
           )
           .returning({ id: invoices.id });

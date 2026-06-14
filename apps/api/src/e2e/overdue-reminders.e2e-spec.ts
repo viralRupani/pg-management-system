@@ -137,4 +137,34 @@ describe("overdue transition + reminder scoping (e2e)", () => {
     );
     expect(futureReminders).toHaveLength(0);
   });
+
+  it("a manager can still approve a payment on an OVERDUE invoice → PAID", async () => {
+    // Regression: the approve path used to settle only PENDING invoices, so once
+    // an invoice flipped to OVERDUE the resident's late payment could never be
+    // marked paid (409 + rollback). Approving must settle OVERDUE the same as
+    // PENDING. dueResidentId's invoice is OVERDUE from the earlier test (runs
+    // after the reminders test, which still needs it OVERDUE).
+    const mine = await h.req("get", "/invoices/mine", dueResident);
+    const overdue = mine.body.find(
+      (i: { status: string }) => i.status === "OVERDUE",
+    );
+    expect(overdue?.id).toBeDefined();
+
+    const submit = await h.req("post", "/payments", dueResident, {
+      invoiceId: overdue.id,
+      screenshotKey: "shot-overdue",
+    });
+    expect(submit.status).toBe(201);
+
+    const approve = await h.req(
+      "post",
+      `/payments/${submit.body.id}/approve`,
+      pg.managerToken,
+    );
+    expect(approve.status).toBe(201);
+    expect(approve.body.status).toBe("APPROVED");
+
+    const all = await h.req("get", "/invoices", pg.managerToken);
+    expect(statusOf(all.body.items, dueResidentId)).toBe("PAID");
+  });
 });
