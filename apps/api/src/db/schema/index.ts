@@ -9,6 +9,7 @@ export * from "./rooms";
 export * from "./beds";
 export * from "./allocations";
 export * from "./transfer-requests";
+export * from "./bookings";
 export * from "./invoices";
 export * from "./payments";
 export * from "./rent-adjustments";
@@ -37,6 +38,7 @@ import { rooms } from "./rooms";
 import { beds } from "./beds";
 import { allocations } from "./allocations";
 import { transferRequests } from "./transfer-requests";
+import { bookings } from "./bookings";
 import { invoices } from "./invoices";
 import { payments } from "./payments";
 import { rentAdjustments } from "./rent-adjustments";
@@ -67,6 +69,7 @@ export const schema = {
   beds,
   allocations,
   transferRequests,
+  bookings,
   invoices,
   payments,
   rentAdjustments,
@@ -100,6 +103,7 @@ export const RLS_TABLES = [
   "beds",
   "allocations",
   "transfer_requests",
+  "bookings",
   "invoices",
   "payments",
   "rent_adjustments",

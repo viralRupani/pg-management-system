@@ -5,6 +5,7 @@ import { TenantContextService } from "../db/tenant-context";
 import { PlatformService } from "../platform/platform.service";
 import { RentService } from "../rent/rent.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { BookingsService } from "../bookings/bookings.service";
 import { invoices } from "../db/schema";
 
 export interface BatchResult {
@@ -29,7 +30,15 @@ export class JobsService {
     private readonly platform: PlatformService,
     private readonly rent: RentService,
     private readonly notifications: NotificationsService,
+    private readonly bookings: BookingsService,
   ) {}
+
+  /** Activate every due future-dated booking in every active tenant. */
+  async activateBookingsAllTenants(): Promise<BatchResult> {
+    return this.forEachTenant("activate bookings", () =>
+      this.bookings.activateDue(),
+    );
+  }
 
   /** Generate monthly invoices for every active tenant. */
   async generateInvoicesAllTenants(period?: string): Promise<BatchResult> {

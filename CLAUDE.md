@@ -80,7 +80,9 @@ infra/             docker-compose: Postgres 16 on :5433, Redis 7 on :6379
 | PG Owner role | ✅ | `owners`, `owner_tenants`; token-switch, manager deactivation |
 | M8 Resident mobile | ✅ | Expo app, **device-verified**: OTP auth + swipe tabs + all resident screens (rent/payments, complaints, KYC, deposit + move-out, announcements, mess, notifications, profile). `api-client` resident methods + NativeWind white-label (`var(--brand)` paints/repaints, persists cold start). See `apps/mobile/CLAUDE.md` |
 
-**Test suite:** `pnpm --filter @pg/api test` → **142 tests / 14 files, all green** (as of 2026-06-14).
+**Test suite:** `pnpm --filter @pg/api test` → **153 tests / 15 files, all green** (as of 2026-06-14).
+
+**Future-dated bed booking** (2026-06-14): a manager can hold a bed for an incoming resident before move-in (`BookingsModule`, `bookings` table; admin `/bookings` page). The bed shows as held (`BedStatus.RESERVED`, displayed as occupied) — not a live allocation — and the resident is `ResidentStatus.UPCOMING` with the deposit `HELD` now; no rent/metering until a daily `activate-bookings` job (also `POST /platform/jobs/activate-bookings`) creates the allocation on/after the move-in date. A bed booked while still occupied is handed to the booking when the sitting resident leaves: all three vacate paths (`settleExit`, `moveOut`, transfer old-bed release) go through `freeBed()` (`apps/api/src/db/free-bed.ts`) → RESERVED if a booking waits, else VACANT. Cancel is a true undo (frees the bed, deletes the pristine deposit).
 
 **Post-M8 hardening** (from the 2026-06-14 backend audit, `reports/backend-audit-2026-06-14.md`): auth rate-limiting (throttler on login/OTP), OVERDUE invoices now settle on approval, `RolesGuard` fails closed when a route declares no policy, N+1 killed in `generateMonthly`, payment submission rejected on any settled invoice, `api-client` request timeout. One audit Low remains open (orphaned transfer adjustments at exit).
 

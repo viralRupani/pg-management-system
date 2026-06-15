@@ -34,4 +34,9 @@ export class JobsController {
   reminders(@Body(new ZodBody(runJobSchema)) dto: RunJobInput) {
     return this.jobs.sendRentReminders(dto.period);
   }
+
+  @Post("activate-bookings")
+  activateBookings() {
+    return this.jobs.activateBookingsAllTenants();
+  }
 }

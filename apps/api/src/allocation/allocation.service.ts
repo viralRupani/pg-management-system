@@ -26,6 +26,7 @@ import {
   users,
 } from "../db/schema";
 import { istPeriod } from "../common/ist-date";
+import { freeBed } from "../db/free-bed";
 import { prorateSegment } from "../rent/rent.proration";
 
 /** Drizzle transaction handle (the arg to `db.transaction(async (tx) => …)`). */
@@ -112,10 +113,8 @@ export class AllocationService {
         .update(allocations)
         .set({ endDate: new Date() })
         .where(eq(allocations.id, active.id));
-      await tx
-        .update(beds)
-        .set({ status: BedStatus.VACANT })
-        .where(eq(beds.id, active.bedId));
+      // Hand the bed to a waiting booking (→ RESERVED) or free it (→ VACANT).
+      await freeBed(tx, active.bedId);
 
       return { ended: true };
     });
@@ -482,10 +481,8 @@ export class AllocationService {
       .insert(allocations)
       .values({ tenantId, bedId: toBedId, residentId, startDate: moveDate })
       .returning({ id: allocations.id });
-    await tx
-      .update(beds)
-      .set({ status: BedStatus.VACANT })
-      .where(eq(beds.id, active.bedId));
+    // Release the old bed (→ RESERVED if a booking waits on it, else VACANT).
+    await freeBed(tx, active.bedId);
     await tx
       .update(beds)
       .set({ status: BedStatus.OCCUPIED })

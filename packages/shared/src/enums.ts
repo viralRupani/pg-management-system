@@ -21,6 +21,9 @@ export const TenantStatus = {
 export type TenantStatus = (typeof TenantStatus)[keyof typeof TenantStatus];
 
 export const ResidentStatus = {
+  // Bed booked for a future move-in date but not yet moved in (no active
+  // allocation, not billed/metered). Flips to ACTIVE when the booking activates.
+  UPCOMING: "UPCOMING",
   ACTIVE: "ACTIVE",
   EXITED: "EXITED",
 } as const;
@@ -92,6 +95,19 @@ export const TransferRequestStatus = {
 } as const;
 export type TransferRequestStatus =
   (typeof TransferRequestStatus)[keyof typeof TransferRequestStatus];
+
+/**
+ * A future-dated bed booking: a manager holds a bed (and takes the deposit) for
+ * an incoming resident before their move-in date. PENDING until a daily job
+ * activates it on the move-in date (-> ACTIVATED, a real allocation is created)
+ * or the manager drops it (-> CANCELLED).
+ */
+export const BookingStatus = {
+  PENDING: "PENDING",
+  ACTIVATED: "ACTIVATED",
+  CANCELLED: "CANCELLED",
+} as const;
+export type BookingStatus = (typeof BookingStatus)[keyof typeof BookingStatus];
 
 export const ComplaintStatus = {
   OPEN: "OPEN",

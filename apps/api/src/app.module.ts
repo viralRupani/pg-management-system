@@ -9,6 +9,7 @@ import { OwnerModule } from "./owner/owner.module";
 import { ResidentsModule } from "./residents/residents.module";
 import { PropertyModule } from "./property/property.module";
 import { AllocationModule } from "./allocation/allocation.module";
+import { BookingsModule } from "./bookings/bookings.module";
 import { StorageModule } from "./storage/storage.module";
 import { RentModule } from "./rent/rent.module";
 import { NotificationsModule } from "./notifications/notifications.module";
@@ -41,6 +42,7 @@ class HealthController {
     ResidentsModule,
     PropertyModule,
     AllocationModule,
+    BookingsModule,
     StorageModule,
     RentModule,
     NotificationsModule,

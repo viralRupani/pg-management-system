@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { desc, eq, isNull, sql } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import {
   BILLING_RATE_PAISE,
   type BillingSnapshot,
@@ -30,7 +30,13 @@ export class MeteringService {
     return new Date().toISOString().slice(0, 7); // 'YYYY-MM'
   }
 
-  /** Active (currently bed-allocated) resident count per tenant id. */
+  /**
+   * Active (currently bed-allocated) resident count per tenant id. "Active" =
+   * an open allocation (`end_date IS NULL`) whose `start_date` has already
+   * arrived — a booking activated a day or two before its move-in date creates
+   * an open allocation with a future start, and that resident isn't billed yet
+   * (`prorateRent` skips them), so it must not be metered yet either.
+   */
   private async activeCountsByTenant(): Promise<Map<string, number>> {
     const rows = await this.db
       .select({
@@ -38,7 +44,9 @@ export class MeteringService {
         count: sql<number>`count(*)::int`,
       })
       .from(allocations)
-      .where(isNull(allocations.endDate))
+      .where(
+        sql`${allocations.endDate} is null and ${allocations.startDate} <= now()`,
+      )
       .groupBy(allocations.tenantId);
     return new Map(rows.map((r) => [r.tenantId, r.count]));
   }

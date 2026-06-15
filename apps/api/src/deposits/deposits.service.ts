@@ -5,7 +5,6 @@ import {
 } from "@nestjs/common";
 import { and, eq, isNull } from "drizzle-orm";
 import {
-  BedStatus,
   type DepositSummary,
   DepositStatus,
   type DepositTransactionSummary,
@@ -21,11 +20,11 @@ import {
 import { TenantContextService } from "../db/tenant-context";
 import {
   allocations,
-  beds,
   depositTransactions,
   deposits,
   users,
 } from "../db/schema";
+import { freeBed } from "../db/free-bed";
 
 const PG_UNIQUE_VIOLATION = "23505";
 
@@ -325,10 +324,8 @@ export class DepositsService {
           .update(allocations)
           .set({ endDate: new Date() })
           .where(eq(allocations.id, active.id));
-        await tx
-          .update(beds)
-          .set({ status: BedStatus.VACANT })
-          .where(eq(beds.id, active.bedId));
+        // Hand the bed to a waiting booking (→ RESERVED) or free it (→ VACANT).
+        await freeBed(tx, active.bedId);
         bedFreed = true;
       }
 

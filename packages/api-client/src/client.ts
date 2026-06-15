@@ -6,6 +6,8 @@ import type {
   AuthTokens,
   AvailableBed,
   BedSummary,
+  BookingSummary,
+  CreateBookingInput,
   CreateTransferRequestInput,
   TransferRequestSummary,
   BudgetSummaryRow,
@@ -175,6 +177,18 @@ export class PgApiClient {
       cancel: (id: string) =>
         this.http.post(`/allocations/transfers/${id}/cancel`),
     },
+  };
+
+  /**
+   * Future-dated bed bookings: hold a bed (+ deposit) for an incoming resident
+   * before move-in. The bed shows as held (not a live allocation) and billing
+   * starts only when a daily job activates the booking on/after the move-in date.
+   */
+  readonly bookings = {
+    list: () => this.http.get<BookingSummary[]>("/bookings"),
+    create: (input: CreateBookingInput) =>
+      this.http.post<{ id: string }>("/bookings", input),
+    cancel: (id: string) => this.http.post(`/bookings/${id}/cancel`),
   };
 
   readonly documents = {

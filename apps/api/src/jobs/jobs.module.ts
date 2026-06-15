@@ -9,6 +9,7 @@ import { ENV, type AppEnv } from "../config/env";
 import { MeteringService } from "../platform/metering.service";
 import { PlatformModule } from "../platform/platform.module";
 import { RentModule } from "../rent/rent.module";
+import { BookingsModule } from "../bookings/bookings.module";
 import { JobsController } from "./jobs.controller";
 import { JobsService } from "./jobs.service";
 
@@ -34,7 +35,7 @@ function redisConnection(url: string): RedisOptions {
  * JobsService owns the cross-tenant-under-RLS logic.
  */
 @Module({
-  imports: [PlatformModule, RentModule],
+  imports: [PlatformModule, RentModule, BookingsModule],
   controllers: [JobsController],
   providers: [
     JobsService,
@@ -66,6 +67,8 @@ export class JobsModule implements OnModuleInit, OnModuleDestroy {
             return this.jobs.generateInvoicesAllTenants(job.data?.period);
           case "mark-overdue":
             return this.jobs.markOverdueAllTenants(job.data?.period);
+          case "activate-bookings":
+            return this.jobs.activateBookingsAllTenants();
           case "rent-reminders":
             return this.jobs.sendRentReminders(job.data?.period);
           case "monthly-billing-snapshot":
@@ -90,6 +93,14 @@ export class JobsModule implements OnModuleInit, OnModuleDestroy {
       "mark-overdue",
       {},
       { repeat: { pattern: "0 8 * * *" }, removeOnComplete: true },
+    );
+    // Activate due future-dated bookings daily @ 01:00 — before monthly invoice
+    // generation (02:00 on the 1st), so a resident moving in on the 1st gets
+    // their allocation in time to be billed that month.
+    await this.queue.add(
+      "activate-bookings",
+      {},
+      { repeat: { pattern: "0 1 * * *" }, removeOnComplete: true },
     );
     await this.queue.add(
       "rent-reminders",

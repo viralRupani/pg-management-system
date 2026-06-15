@@ -3,6 +3,7 @@
 import {
   Bell,
   Building2,
+  CalendarClock,
   ClipboardList,
   CreditCard,
   DoorOpen,
@@ -40,6 +41,7 @@ const NAV: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, ready: true },
   { label: "Residents", href: "/residents", icon: UsersRound, ready: true },
   { label: "Rooms & Beds", href: "/property", icon: DoorOpen, ready: true },
+  { label: "Bookings", href: "/bookings", icon: CalendarClock, ready: true },
   { label: "Rent", href: "/rent", icon: CreditCard, ready: true },
   { label: "Complaints", href: "/complaints", icon: ClipboardList, ready: true },
   { label: "Menu", href: "/menu", icon: UtensilsCrossed, ready: true },

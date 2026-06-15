@@ -127,6 +127,13 @@
       "when": 1781313903098,
       "tag": "0017_light_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1781445173923,
+      "tag": "0018_smart_green_goblin",
+      "breakpoints": true
     }
   ]
 }
