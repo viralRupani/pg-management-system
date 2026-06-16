@@ -1,4 +1,5 @@
 import type {
+  DashboardStats,
   AllocateBedInput,
   AllocationSummary,
   AnnouncementListQuery,
@@ -127,6 +128,11 @@ export class PgApiClient {
         input,
         { auth: false },
       ),
+  };
+
+  readonly dashboard = {
+    /** Manager: aggregated stats for the dashboard (single round-trip). */
+    stats: () => this.http.get<DashboardStats>("/dashboard/stats"),
   };
 
   /**

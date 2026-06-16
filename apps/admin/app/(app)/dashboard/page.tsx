@@ -2,17 +2,21 @@
 
 import {
   type ComplaintSummary,
+  type DashboardStats,
   type PaymentSummary,
-  ResidentStatus,
 } from "@pg/shared";
 import {
+  AlertTriangle,
   BedDouble,
-  ClipboardList,
+  CalendarCheck,
   CreditCard,
+  TrendingUp,
   UsersRound,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { InvoiceDonutChart } from "@/components/charts/invoice-donut";
+import { RevenueBarChart } from "@/components/charts/revenue-bar";
 import { StatCard } from "@/components/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,9 +26,7 @@ import { useAuth } from "@/lib/auth";
 import { formatDate, formatPaise, toMessage } from "@/lib/utils";
 
 interface DashboardData {
-  activeResidents: number;
-  totalResidents: number;
-  occupiedBeds: number;
+  stats: DashboardStats;
   pendingPayments: PaymentSummary[];
   complaints: ComplaintSummary[];
 }
@@ -39,23 +41,13 @@ export default function DashboardPage() {
     let cancelled = false;
     (async () => {
       try {
-        // limit: 1 — only the `total` count is needed here, not the rows.
-        const [active, all, allocations, pendingPayments, complaints] =
-          await Promise.all([
-            api.residents.list({ status: ResidentStatus.ACTIVE, limit: 1 }),
-            api.residents.list({ status: "ALL", limit: 1 }),
-            api.allocations.list(),
-            api.payments.list("SUBMITTED"),
-            api.complaints.list(),
-          ]);
+        const [stats, pendingPayments, complaints] = await Promise.all([
+          api.dashboard.stats(),
+          api.payments.list("SUBMITTED"),
+          api.complaints.list(),
+        ]);
         if (cancelled) return;
-        setData({
-          activeResidents: active.total,
-          totalResidents: all.total,
-          occupiedBeds: allocations.length,
-          pendingPayments,
-          complaints,
-        });
+        setData({ stats, pendingPayments, complaints });
       } catch (err) {
         if (cancelled) return;
         setLoadFailed(true);
@@ -68,19 +60,23 @@ export default function DashboardPage() {
   }, [toast]);
 
   const loading = !data && !loadFailed;
+
+  const occupancyPct =
+    data && data.stats.totalBeds > 0
+      ? Math.round(
+          ((data.stats.occupiedBeds + data.stats.reservedBeds) / data.stats.totalBeds) * 100,
+        )
+      : 0;
+
   const openComplaints =
     data?.complaints.filter((c) => c.status !== "RESOLVED").length ?? 0;
-  const pendingTotal =
-    data?.pendingPayments.reduce((sum, p) => sum + p.amountPaise, 0) ?? 0;
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground">
-          {branding?.name
-            ? `Overview for ${branding.name}`
-            : "Overview of your PG"}
+          {branding?.name ? `Overview for ${branding.name}` : "Overview of your PG"}
         </p>
       </div>
 
@@ -90,43 +86,98 @@ export default function DashboardPage() {
         </p>
       )}
 
+      {/* Row 1 — 4 stat cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Active residents"
-          value={data?.activeResidents ?? 0}
-          hint={`${data?.totalResidents ?? 0} total on record`}
+          value={data?.stats.occupiedBeds ?? 0}
+          hint={`${data?.stats.vacantBeds ?? 0} beds vacant`}
           icon={UsersRound}
           loading={loading}
           accent
           href="/residents"
         />
         <StatCard
-          label="Beds occupied"
-          value={data?.occupiedBeds ?? 0}
-          hint="Current allocations"
+          label="Occupancy rate"
+          value={`${occupancyPct}%`}
+          hint={
+            data
+              ? `${data.stats.occupiedBeds + data.stats.reservedBeds} of ${data.stats.totalBeds} beds`
+              : "—"
+          }
           icon={BedDouble}
           loading={loading}
           href="/property"
         />
         <StatCard
-          label="Payments to review"
-          value={data?.pendingPayments.length ?? 0}
-          hint={pendingTotal ? `${formatPaise(pendingTotal)} awaiting` : "All clear"}
-          icon={CreditCard}
+          label="Overdue rent"
+          value={data ? formatPaise(data.stats.overdueTotalPaise) : "—"}
+          hint={
+            data?.stats.currentMonth.overdueCount
+              ? `${data.stats.currentMonth.overdueCount} invoice${data.stats.currentMonth.overdueCount > 1 ? "s" : ""} overdue`
+              : "All clear"
+          }
+          icon={AlertTriangle}
           loading={loading}
           href="/rent"
         />
         <StatCard
-          label="Open complaints"
-          value={openComplaints}
-          hint={`${data?.complaints.length ?? 0} total`}
-          icon={ClipboardList}
+          label="Payments to review"
+          value={data?.pendingPayments.length ?? 0}
+          hint={
+            data?.pendingPayments.length
+              ? `${formatPaise(data.pendingPayments.reduce((s, p) => s + p.amountPaise, 0))} awaiting`
+              : "All clear"
+          }
+          icon={CreditCard}
           loading={loading}
-          href="/complaints"
+          href="/rent"
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* Row 2 — Charts */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Revenue trend — last 6 months
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <ChartSkeleton />
+            ) : (
+              <RevenueBarChart data={data?.stats.revenueByMonth ?? []} />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>This month&apos;s invoices</CardTitle>
+            {data?.stats.currentMonth.period && (
+              <p className="text-xs text-muted-foreground">
+                {data.stats.currentMonth.period}
+              </p>
+            )}
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <ChartSkeleton rows={3} />
+            ) : data?.stats.currentMonth ? (
+              <InvoiceDonutChart data={data.stats.currentMonth} />
+            ) : null}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Row 3 — 3 panels */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <UpcomingMoveInsPanel
+          loading={loading}
+          bookings={data?.stats.upcomingBookings ?? []}
+        />
         <PendingPaymentsPanel
           loading={loading}
           payments={data?.pendingPayments ?? []}
@@ -134,9 +185,69 @@ export default function DashboardPage() {
         <ComplaintsPanel
           loading={loading}
           complaints={data?.complaints ?? []}
+          openCount={openComplaints}
         />
       </div>
     </div>
+  );
+}
+
+function UpcomingMoveInsPanel({
+  loading,
+  bookings,
+}: {
+  loading: boolean;
+  bookings: DashboardStats["upcomingBookings"];
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <CalendarCheck className="h-4 w-4" />
+          Upcoming move-ins
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <PanelSkeleton />
+        ) : bookings.length === 0 ? (
+          <EmptyRow text="No move-ins in the next 30 days." />
+        ) : (
+          <ul className="divide-y divide-border">
+            {bookings.slice(0, 5).map((b) => {
+              const daysUntil = Math.ceil(
+                (new Date(b.moveInDate).getTime() - Date.now()) / 86400000,
+              );
+              return (
+                <li
+                  key={b.id}
+                  className="flex items-center justify-between gap-3 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{b.residentName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {b.roomLabel} · {b.bedLabel}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-medium text-foreground">
+                      {formatDate(b.moveInDate)}
+                    </p>
+                    <Badge tone={daysUntil <= 2 ? "warning" : "neutral"}>
+                      {daysUntil === 0
+                        ? "Today"
+                        : daysUntil === 1
+                          ? "Tomorrow"
+                          : `${daysUntil}d`}
+                    </Badge>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -159,18 +270,16 @@ function PendingPaymentsPanel({
           <EmptyRow text="No payments waiting for approval." />
         ) : (
           <ul className="divide-y divide-border">
-            {payments.slice(0, 6).map((p) => (
+            {payments.slice(0, 5).map((p) => (
               <li key={p.id}>
                 <Link
                   href="/rent"
                   className="-mx-2 flex items-center justify-between gap-3 rounded-md px-2 py-3 transition-colors hover:bg-muted"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">
-                      {p.residentName}
-                    </p>
+                    <p className="truncate text-sm font-medium">{p.residentName}</p>
                     <p className="text-xs text-muted-foreground">
-                      {p.period} · submitted {formatDate(p.createdAt)}
+                      {p.period} · {formatDate(p.createdAt)}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -192,17 +301,27 @@ function PendingPaymentsPanel({
 function ComplaintsPanel({
   loading,
   complaints,
+  openCount,
 }: {
   loading: boolean;
   complaints: ComplaintSummary[];
+  openCount: number;
 }) {
-  const open = complaints.filter((c) => c.status !== "RESOLVED").slice(0, 6);
+  const open = complaints.filter((c) => c.status !== "RESOLVED").slice(0, 5);
   const toneFor = (s: ComplaintSummary["status"]) =>
     s === "OPEN" ? "danger" : s === "IN_PROGRESS" ? "warning" : "success";
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Open complaints</CardTitle>
+        <CardTitle>
+          Open complaints
+          {openCount > 0 && (
+            <span className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-danger text-[10px] font-semibold text-white">
+              {openCount}
+            </span>
+          )}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {loading ? (
@@ -218,9 +337,7 @@ function ComplaintsPanel({
                   className="-mx-2 flex items-center justify-between gap-3 rounded-md px-2 py-3 transition-colors hover:bg-muted"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">
-                      {c.description}
-                    </p>
+                    <p className="truncate text-sm font-medium">{c.description}</p>
                     <p className="text-xs text-muted-foreground">
                       {c.residentName} · {c.category.toLowerCase()}
                     </p>
@@ -238,6 +355,20 @@ function ComplaintsPanel({
   );
 }
 
+function ChartSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <div className="space-y-2 py-2">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="h-8 animate-pulse rounded bg-muted"
+          style={{ width: `${60 + (i % 3) * 15}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function PanelSkeleton() {
   return (
     <div className="space-y-3 py-1">
@@ -249,5 +380,7 @@ function PanelSkeleton() {
 }
 
 function EmptyRow({ text }: { text: string }) {
-  return <p className="py-6 text-center text-sm text-muted-foreground">{text}</p>;
+  return (
+    <p className="py-6 text-center text-sm text-muted-foreground">{text}</p>
+  );
 }

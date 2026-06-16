@@ -16,3 +16,4 @@ export * from "./schemas/deposit";
 export * from "./schemas/complaint";
 export * from "./schemas/operations";
 export * from "./schemas/billing";
+export * from "./schemas/dashboard";
