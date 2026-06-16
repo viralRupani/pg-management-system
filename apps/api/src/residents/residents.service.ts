@@ -3,12 +3,24 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { and, count, eq, exists, ilike, isNull, not, or } from "drizzle-orm";
+import {
+  and,
+  count,
+  eq,
+  exists,
+  ilike,
+  inArray,
+  isNull,
+  not,
+  or,
+} from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
   type RegisterResidentInput,
   type ResidentListQuery,
   type ResidentListResult,
   type ResidentSummary,
+  BookingStatus,
   DocumentStatus,
   DocumentType,
   KycStatus,
@@ -20,10 +32,15 @@ import {
   allocations,
   authIdentities,
   beds,
+  bookings,
   documents,
   rooms,
   users,
 } from "../db/schema";
+
+// A resident's held bed (PENDING booking) joins `beds` a SECOND time, so it
+// needs its own alias to avoid colliding with the active-allocation bed join.
+const bookedBeds = alias(beds, "booked_beds");
 
 const PG_UNIQUE_VIOLATION = "23505";
 
@@ -104,7 +121,13 @@ export class ResidentsService {
   async list(query: ResidentListQuery): Promise<ResidentListResult> {
     const { q, status, kyc, page, limit } = query;
     const conditions = [eq(users.role, UserRole.RESIDENT)];
-    if (status !== "ALL") conditions.push(eq(users.status, status));
+    if (status === "CURRENT") {
+      conditions.push(
+        inArray(users.status, [ResidentStatus.ACTIVE, ResidentStatus.UPCOMING]),
+      );
+    } else if (status !== "ALL") {
+      conditions.push(eq(users.status, status));
+    }
     if (q) {
       const pattern = `%${q}%`;
       conditions.push(
@@ -172,6 +195,8 @@ export class ResidentsService {
         status: users.status,
         bedLabel: beds.label,
         roomCapacity: rooms.capacity,
+        bookedBedLabel: bookedBeds.label,
+        moveInDate: bookings.moveInDate,
         kycDocStatus: documents.status,
       })
       .from(users)
@@ -184,6 +209,16 @@ export class ResidentsService {
       )
       .leftJoin(beds, eq(beds.id, allocations.bedId))
       .leftJoin(rooms, eq(rooms.id, beds.roomId))
+      // The resident's held bed, if any: the (at most one) PENDING booking and
+      // its bed. One-per-resident deposit makes this 1:1, so it can't fan out.
+      .leftJoin(
+        bookings,
+        and(
+          eq(bookings.residentId, users.id),
+          eq(bookings.status, BookingStatus.PENDING),
+        ),
+      )
+      .leftJoin(bookedBeds, eq(bookedBeds.id, bookings.bedId))
       // 1:1 — the unique (tenant, resident, type) index means at most one
       // Aadhaar row per resident, so this can't fan out the result set.
       .leftJoin(
@@ -209,6 +244,8 @@ type ResidentRow = {
   status: string;
   bedLabel: string | null;
   roomCapacity: number | null;
+  bookedBedLabel: string | null;
+  moveInDate: Date | null;
   kycDocStatus: string | null;
 };
 
@@ -243,6 +280,8 @@ function toSummary(r: ResidentRow): ResidentSummary {
     status: r.status as ResidentStatus,
     bedLabel: r.bedLabel,
     roomCapacity: r.roomCapacity ?? null,
+    bookedBedLabel: r.bookedBedLabel,
+    moveInDate: r.moveInDate ? r.moveInDate.toISOString() : null,
     kycStatus: toKycStatus(r.kycDocStatus),
   };
 }

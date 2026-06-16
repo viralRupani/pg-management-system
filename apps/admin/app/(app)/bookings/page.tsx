@@ -28,6 +28,18 @@ function ymd(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Page through every ACTIVE resident (API caps limit at 100 per page). */
+async function fetchAllActiveResidents(): Promise<ResidentSummary[]> {
+  const limit = 100;
+  const all: ResidentSummary[] = [];
+  for (let page = 1; ; page++) {
+    const res = await api.residents.list({ status: "ACTIVE", limit, page });
+    all.push(...res.items);
+    if (all.length >= res.total || res.items.length === 0) break;
+  }
+  return all;
+}
+
 const statusTone = (s: BookingSummary["status"]) =>
   s === "PENDING" ? "warning" : s === "ACTIVATED" ? "success" : "neutral";
 
@@ -54,12 +66,12 @@ export default function BookingsPage() {
   // Pickers: residents not currently housed + non-reserved beds.
   const loadOptions = useCallback(async () => {
     try {
-      const [res, bedList, roomList] = await Promise.all([
-        api.residents.list({ status: "ACTIVE", limit: 200 }),
+      const [allResidents, bedList, roomList] = await Promise.all([
+        fetchAllActiveResidents(),
         api.property.beds(),
         api.property.rooms(),
       ]);
-      setResidents(res.items.filter((r) => !r.bedLabel));
+      setResidents(allResidents.filter((r) => !r.bedLabel));
       setBeds(bedList);
       setRooms(roomList);
     } catch (err) {

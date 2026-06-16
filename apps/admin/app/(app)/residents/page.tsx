@@ -39,7 +39,7 @@ const inputClass =
   "flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
 
 const residentTone = (s: ResidentSummary["status"]) =>
-  s === "ACTIVE" ? "success" : "neutral";
+  s === "ACTIVE" ? "success" : s === "UPCOMING" ? "warning" : "neutral";
 const docTone = (s: DocumentSummary["status"]) =>
   s === "VERIFIED" ? "success" : s === "REJECTED" ? "danger" : "warning";
 const invoiceTone = (s: InvoiceSummary["status"]) =>
@@ -84,7 +84,8 @@ function ResidentsRouter() {
 /* ------------------------------------------------------------------ list --- */
 
 const PAGE_SIZE = 10;
-type StatusFilter = ResidentStatus | "ALL";
+// "CURRENT" = active + upcoming (the PG's current roster); the default view.
+type StatusFilter = ResidentStatus | "ALL" | "CURRENT";
 type KycFilter = "ALL" | "PENDING" | "VERIFIED";
 
 function ResidentsList() {
@@ -96,7 +97,7 @@ function ResidentsList() {
 
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<StatusFilter>(ResidentStatus.ACTIVE);
+  const [status, setStatus] = useState<StatusFilter>("CURRENT");
   const [kyc, setKyc] = useState<KycFilter>("ALL");
   const [page, setPage] = useState(1);
 
@@ -170,7 +171,8 @@ function ResidentsList() {
             className={cn(inputClass, "w-full appearance-none pr-8")}
             aria-label="Filter by status"
           >
-            <option value={ResidentStatus.ACTIVE}>Active</option>
+            <option value="CURRENT">Active</option>
+            <option value={ResidentStatus.UPCOMING}>Upcoming</option>
             <option value={ResidentStatus.EXITED}>Exited</option>
             <option value="ALL">All</option>
           </select>
@@ -226,7 +228,9 @@ function ResidentsList() {
                       <span className="text-sm text-muted-foreground">
                         {r.bedLabel
                           ? `${r.bedLabel}${r.roomCapacity != null ? ` · ${sharingLabel(r.roomCapacity)}` : ""}`
-                          : "No bed"}
+                          : r.status === "UPCOMING" && r.bookedBedLabel
+                            ? `${r.bookedBedLabel}${r.moveInDate ? ` · moves in ${formatDate(r.moveInDate)}` : ""}`
+                            : "No bed"}
                       </span>
                       <Badge tone={kycTone(r.kycStatus)}>
                         {kycLabel(r.kycStatus)}

@@ -113,6 +113,36 @@ describe("future-dated bed booking (e2e)", () => {
     expect(dep.body.deposit).toMatchObject({ amountPaise: 1500000, status: "HELD" });
   });
 
+  it("roster filters: CURRENT shows upcoming, ACTIVE hides it, UPCOMING shows held bed", async () => {
+    const ids = async (status: string) => {
+      const res = await h.req("get", `/residents?status=${status}`, pgA.managerToken);
+      return res.body.items as Array<{
+        id: string;
+        status: string;
+        bookedBedLabel: string | null;
+        moveInDate: string | null;
+      }>;
+    };
+
+    // CURRENT = active + upcoming: the upcoming joiner shows up...
+    const current = await ids("CURRENT");
+    const vac = current.find((r) => r.id === residentVac);
+    expect(vac?.status).toBe("UPCOMING");
+    expect(current.some((r) => r.id === residentDouble)).toBe(true); // a live ACTIVE one too
+
+    // ...but strict ACTIVE hides the upcoming resident (the booking picker relies on this).
+    const active = await ids("ACTIVE");
+    expect(active.some((r) => r.id === residentVac)).toBe(false);
+    expect(active.some((r) => r.id === residentDouble)).toBe(true);
+
+    // UPCOMING isolates them and surfaces the held bed + move-in date.
+    const upcoming = await ids("UPCOMING");
+    const onlyVac = upcoming.find((r) => r.id === residentVac);
+    expect(onlyVac).toMatchObject({ bookedBedLabel: "V" });
+    expect(onlyVac?.moveInDate).toBeTruthy();
+    expect(upcoming.some((r) => r.id === residentDouble)).toBe(false);
+  });
+
   it("does not make the booked resident a live allocation", async () => {
     const active = await h.req("get", "/allocations", pgA.managerToken);
     expect(active.body.map((a: { residentId: string }) => a.residentId)).not.toContain(

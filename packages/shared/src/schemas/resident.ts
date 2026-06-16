@@ -61,14 +61,26 @@ export const residentSummarySchema = z.object({
   bedLabel: z.string().nullable(),
   roomCapacity: z.number().int().nullable(),
   kycStatus: z.nativeEnum(KycStatus),
+  // For an UPCOMING resident the bed is held via a PENDING booking (no live
+  // allocation yet), so `bedLabel` is null. These surface that held bed +
+  // move-in date so the roster shows "B-12 · moves in …" instead of "No bed".
+  bookedBedLabel: z.string().nullable(),
+  moveInDate: z.string().nullable(), // ISO; set only while UPCOMING
 });
 export type ResidentSummary = z.infer<typeof residentSummarySchema>;
 
 /** Query params for the manager's resident list — search + status filter + pagination. */
 export const residentListQuerySchema = z.object({
   q: z.string().trim().min(1).max(120).optional(),
+  // "CURRENT" = ACTIVE or UPCOMING (the PG's current roster — booked residents
+  // shown alongside live ones). Strict single-status values still work; the
+  // bookings picker relies on "ACTIVE" excluding UPCOMING.
   status: z
-    .union([z.nativeEnum(ResidentStatus), z.literal("ALL")])
+    .union([
+      z.nativeEnum(ResidentStatus),
+      z.literal("ALL"),
+      z.literal("CURRENT"),
+    ])
     .default(ResidentStatus.ACTIVE),
   // KYC rollup filter: PENDING = anything not VERIFIED (not submitted, awaiting
   // review, or rejected — i.e. KYC still needs chasing); VERIFIED = Aadhaar done.
