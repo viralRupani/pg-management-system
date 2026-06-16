@@ -134,6 +134,13 @@
       "when": 1781445173923,
       "tag": "0018_smart_green_goblin",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1781633053859,
+      "tag": "0019_youthful_loa",
+      "breakpoints": true
     }
   ]
 }

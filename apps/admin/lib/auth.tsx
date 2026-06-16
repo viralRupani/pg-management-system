@@ -33,6 +33,8 @@ interface AuthContextValue {
   /** Owner: leave the active PG, restore the global token (→ PG chooser). */
   exitPg: () => void;
   refreshBranding: () => Promise<void>;
+  /** Re-read the stored token and update the in-memory user (e.g. after a token swap). */
+  refreshUser: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -104,6 +106,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== "undefined") location.href = "/login";
   }, []);
 
+  const refreshUser = useCallback(() => {
+    setUser(currentUser());
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -116,6 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         switchPg,
         exitPg,
         refreshBranding: loadBranding,
+        refreshUser,
       }}
     >
       {children}

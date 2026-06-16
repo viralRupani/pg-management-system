@@ -265,6 +265,8 @@ export class OwnerService {
       .returning();
 
     // auth_identities has NO RLS → set tenantId explicitly (never from input).
+    // mustChangePassword: the owner sets a temp password; the manager must replace
+    // it on first login before they can access the app.
     await db.insert(authIdentities).values({
       tenantId,
       role: UserRole.PG_MANAGER,
@@ -272,6 +274,7 @@ export class OwnerService {
       email: input.email,
       phone: input.phone,
       passwordHash,
+      mustChangePassword: true,
     });
 
     return {

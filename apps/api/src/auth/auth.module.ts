@@ -5,6 +5,8 @@ import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { AuthRepository } from "./auth.repository";
 import { OtpService } from "./otp.service";
+import { PasswordResetService } from "./password-reset.service";
+import { ConsoleEmailStub, EMAIL_PROVIDER } from "./email-provider";
 
 @Module({
   imports: [
@@ -25,7 +27,13 @@ import { OtpService } from "./otp.service";
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, AuthRepository, OtpService],
+  providers: [
+    AuthService,
+    AuthRepository,
+    OtpService,
+    PasswordResetService,
+    { provide: EMAIL_PROVIDER, useClass: ConsoleEmailStub },
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}

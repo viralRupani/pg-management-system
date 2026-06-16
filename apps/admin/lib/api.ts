@@ -92,8 +92,14 @@ export function needsPgSelection(user: JwtPayload | null): boolean {
   return user?.role === UserRole.PG_OWNER && user.tenantId == null;
 }
 
+/** A manager whose password was set by an owner must change it before using the app. */
+export function needsPasswordChange(user: JwtPayload | null): boolean {
+  return user?.mustChangePassword === true;
+}
+
 /** Where a freshly-authenticated user should land. */
 export function landingPath(user: JwtPayload | null): string {
   if (!user) return "/login";
+  if (needsPasswordChange(user)) return "/change-password";
   return needsPgSelection(user) ? "/pgs" : "/dashboard";
 }

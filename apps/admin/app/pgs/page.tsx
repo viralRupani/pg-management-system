@@ -1,8 +1,11 @@
 "use client";
 
+import { ApiError } from "@pg/api-client";
 import type { OwnerPgSummary } from "@pg/shared";
 import {
   Building2,
+  Check,
+  KeyRound,
   Loader2,
   LogOut,
   Plus,
@@ -35,6 +38,7 @@ export default function PgsPage() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [entering, setEntering] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   // Guard: only signed-in owners belong here.
@@ -84,10 +88,16 @@ export default function PgsPage() {
           <Building2 className="h-5 w-5 text-brand" />
           <span className="font-semibold">Your PGs</span>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => setConfirmingLogout(true)}>
-          <LogOut className="h-4 w-4" />
-          Sign out
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setChangingPassword(true)}>
+            <KeyRound className="h-4 w-4" />
+            Change password
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setConfirmingLogout(true)}>
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </Button>
+        </div>
       </header>
 
       <main className="mx-auto max-w-5xl p-5 md:p-8">
@@ -178,6 +188,10 @@ export default function PgsPage() {
         )}
       </main>
 
+      {changingPassword && (
+        <ChangePasswordDialog onClose={() => setChangingPassword(false)} />
+      )}
+
       {creating && (
         <CreatePgDialog
           onClose={() => setCreating(false)}
@@ -219,6 +233,112 @@ export default function PgsPage() {
         </Dialog>
       )}
     </div>
+  );
+}
+
+/* -------------------------------------------------- change-password --- */
+
+function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
+  const toast = useToast();
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const mismatch = next.length > 0 && confirm.length > 0 && next !== confirm;
+  const valid =
+    current.length >= 8 && next.length >= 8 && next === confirm;
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!valid) return;
+    setBusy(true);
+    try {
+      await api.auth.changePassword({ currentPassword: current, newPassword: next });
+      setSaved(true);
+      setCurrent("");
+      setNext("");
+      setConfirm("");
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError && err.status === 401
+          ? "Current password is incorrect."
+          : "Could not change password. Please try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Change password"
+      description="Update your owner account password."
+    >
+      {saved ? (
+        <div className="flex flex-col items-center gap-3 py-4 text-center">
+          <span className="inline-flex items-center gap-1.5 text-sm text-success">
+            <Check className="h-5 w-5" />
+            Password updated successfully.
+          </span>
+          <Button variant="ghost" onClick={onClose}>Close</Button>
+        </div>
+      ) : (
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="cpd-curr">Current password</Label>
+            <input
+              id="cpd-curr"
+              type="password"
+              autoComplete="current-password"
+              className={inputClass}
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+              placeholder="••••••••"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cpd-new">New password</Label>
+            <input
+              id="cpd-new"
+              type="password"
+              autoComplete="new-password"
+              className={inputClass}
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+              placeholder="••••••••"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cpd-confirm">Confirm new password</Label>
+            <input
+              id="cpd-confirm"
+              type="password"
+              autoComplete="new-password"
+              className={inputClass}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="••••••••"
+            />
+            {mismatch && (
+              <p className="text-xs text-danger">Passwords do not match.</p>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={busy || !valid}>
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+              {busy ? "Saving…" : "Update password"}
+            </Button>
+          </div>
+        </form>
+      )}
+    </Dialog>
   );
 }
 

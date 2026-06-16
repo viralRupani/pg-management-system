@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   pgTable,
   text,
@@ -33,6 +34,9 @@ export const authIdentities = pgTable(
     email: text("email"),
     phone: text("phone"),
     passwordHash: text("password_hash"), // null for OTP-only residents
+    // Set true when an owner creates a manager with a temp password; cleared on
+    // first successful password change so the manager must set their own credential.
+    mustChangePassword: boolean("must_change_password").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

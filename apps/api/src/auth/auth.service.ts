@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Inject,
   Injectable,
   UnauthorizedException,
@@ -7,22 +8,35 @@ import { JwtService } from "@nestjs/jwt";
 import * as argon2 from "argon2";
 import {
   type AuthTokens,
+  type ChangePasswordInput,
+  type ForgotPasswordInput,
   type JwtPayload,
   type ManagerLoginInput,
   type OtpRequestInput,
   type OtpVerifyInput,
+  type ResetPasswordInput,
   UserRole,
 } from "@pg/shared";
 import { ENV, type AppEnv } from "../config/env";
 import { AuthRepository } from "./auth.repository";
 import { OtpService } from "./otp.service";
+import { PasswordResetService } from "./password-reset.service";
+import { EMAIL_PROVIDER, type EmailProvider } from "./email-provider";
+
+/** Roles that authenticate with an email + password (and can reset it). */
+const PASSWORD_ROLES: readonly UserRole[] = [
+  UserRole.PG_MANAGER,
+  UserRole.PG_OWNER,
+];
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly repo: AuthRepository,
     private readonly otp: OtpService,
+    private readonly reset: PasswordResetService,
     private readonly jwt: JwtService,
+    @Inject(EMAIL_PROVIDER) private readonly email: EmailProvider,
     @Inject(ENV) private readonly env: AppEnv,
   ) {}
 
@@ -38,11 +52,13 @@ export class AuthService {
     const ok = await argon2.verify(identity.passwordHash, input.password);
     if (!ok) throw new UnauthorizedException("Invalid credentials");
 
-    return this.issueTokens({
+    const payload: JwtPayload = {
       sub: identity.userId ?? identity.id,
       tenantId: identity.tenantId,
       role: identity.role as UserRole,
-    });
+    };
+    if (identity.mustChangePassword) payload.mustChangePassword = true;
+    return this.issueTokens(payload);
   }
 
   async requestOtp(input: OtpRequestInput): Promise<{ sent: boolean }> {
@@ -109,6 +125,92 @@ export class AuthService {
       tenantId: payload.tenantId,
       role: payload.role,
     });
+  }
+
+  /**
+   * Change the caller's own password. The credential row is resolved from the
+   * JWT principal (sub + tenantId + role): a manager's row is PG-scoped, an
+   * owner's single credential row has tenantId NULL and is only addressable on
+   * the owner's global token. We never trust an id from the request body.
+   */
+  async changePassword(
+    principal: JwtPayload,
+    input: ChangePasswordInput,
+  ): Promise<AuthTokens> {
+    const identity = await this.repo.findIdentityForPrincipal(
+      principal.sub,
+      principal.tenantId,
+      principal.role,
+    );
+    if (!identity || !identity.passwordHash) {
+      throw new UnauthorizedException("Invalid credentials");
+    }
+    const ok = await argon2.verify(
+      identity.passwordHash,
+      input.currentPassword,
+    );
+    if (!ok) throw new UnauthorizedException("Current password is incorrect");
+    if (input.newPassword === input.currentPassword) {
+      throw new BadRequestException(
+        "New password must differ from the current one",
+      );
+    }
+    await this.repo.updatePasswordHash(
+      identity.id,
+      await argon2.hash(input.newPassword),
+    );
+    // Return fresh tokens so the caller can swap them without a re-login.
+    // mustChangePassword is NOT included — updatePasswordHash cleared the flag.
+    return this.issueTokens({
+      sub: principal.sub,
+      tenantId: principal.tenantId,
+      role: principal.role,
+    });
+  }
+
+  /**
+   * Start a forgot-password flow. Resolve the identity by email and, if it's a
+   * password-based account, email a single-use reset link. ALWAYS reports
+   * `{ sent: true }` so the response can't be used to enumerate which emails
+   * (or roles) exist.
+   */
+  async forgotPassword(
+    input: ForgotPasswordInput,
+  ): Promise<{ sent: boolean }> {
+    const identity = await this.repo.findIdentityByEmail(input.email);
+    if (
+      identity &&
+      identity.passwordHash &&
+      PASSWORD_ROLES.includes(identity.role as UserRole)
+    ) {
+      const token = await this.reset.issue(identity.id, input.email);
+      const link = `${this.env.APP_BASE_URL}/reset-password?token=${token}`;
+      await this.email.send(
+        input.email,
+        "Reset your PG Manager password",
+        `Use this link to set a new password (valid for ${Math.round(
+          this.env.PWRESET_TTL_SECONDS / 60,
+        )} minutes):\n\n${link}\n\nIf you didn't request this, you can ignore this email.`,
+      );
+    }
+    return { sent: true };
+  }
+
+  /** Finish a forgot-password flow: spend the token, set the new password. */
+  async resetPassword(input: ResetPasswordInput): Promise<{ ok: true }> {
+    const identityId = await this.reset.consume(input.token);
+    if (!identityId) {
+      throw new UnauthorizedException("Invalid or expired token");
+    }
+    const identity = await this.repo.findIdentityById(identityId);
+    if (!identity) {
+      throw new UnauthorizedException("Invalid or expired token");
+    }
+    await this.repo.updatePasswordHash(
+      identity.id,
+      await argon2.hash(input.newPassword),
+    );
+    return { ok: true };
   }
 
   /**

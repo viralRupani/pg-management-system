@@ -1,16 +1,24 @@
 import { Body, Controller, Post, UseGuards } from "@nestjs/common";
 import { SkipThrottle, Throttle, ThrottlerGuard } from "@nestjs/throttler";
 import {
+  changePasswordSchema,
+  forgotPasswordSchema,
   managerLoginSchema,
   otpRequestSchema,
   otpVerifySchema,
   refreshTokenSchema,
+  resetPasswordSchema,
+  type ChangePasswordInput,
+  type ForgotPasswordInput,
+  type JwtPayload,
   type ManagerLoginInput,
   type OtpRequestInput,
   type OtpVerifyInput,
   type RefreshTokenInput,
+  type ResetPasswordInput,
+  UserRole,
 } from "@pg/shared";
-import { Public } from "../common/decorators";
+import { CurrentUser, Public, Roles } from "../common/decorators";
 import { ZodBody } from "../common/zod-validation.pipe";
 import { AuthService } from "./auth.service";
 
@@ -54,5 +62,32 @@ export class AuthController {
   @Post("refresh")
   refresh(@Body(new ZodBody(refreshTokenSchema)) dto: RefreshTokenInput) {
     return this.auth.refresh(dto.refreshToken);
+  }
+
+  @Roles(UserRole.PG_MANAGER, UserRole.PG_OWNER)
+  @Post("change-password")
+  changePassword(
+    @CurrentUser() user: JwtPayload,
+    @Body(new ZodBody(changePasswordSchema)) dto: ChangePasswordInput,
+  ) {
+    return this.auth.changePassword(user, dto);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @Post("forgot-password")
+  forgotPassword(
+    @Body(new ZodBody(forgotPasswordSchema)) dto: ForgotPasswordInput,
+  ) {
+    return this.auth.forgotPassword(dto);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post("reset-password")
+  resetPassword(
+    @Body(new ZodBody(resetPasswordSchema)) dto: ResetPasswordInput,
+  ) {
+    return this.auth.resetPassword(dto);
   }
 }

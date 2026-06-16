@@ -32,6 +32,11 @@ const envSchema = z.object({
   JWT_REFRESH_TTL: z.string().default("30d"),
 
   OTP_TTL_SECONDS: z.coerce.number().default(300),
+  // Single-use password-reset token lifetime, in seconds (default 15 min).
+  PWRESET_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  // Base URL of the admin web app — used to build password-reset links emailed
+  // to managers/owners. Defaults to the local admin dev server.
+  APP_BASE_URL: z.string().url().default("http://localhost:3000"),
   // Logs OTP codes to stdout for local dev. Defaults OFF (safe by default) and is
   // force-disabled in production regardless of the env value (see loadEnv) so a
   // misconfigured prod box can never leak codes to logs.

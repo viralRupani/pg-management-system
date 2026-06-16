@@ -1,5 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
+import type { UserRole } from "@pg/shared";
 import { APP_DB, type Database } from "../db/database.module";
 import { authIdentities, tenants } from "../db/schema";
 
@@ -47,5 +48,41 @@ export class AuthRepository {
         eq(authIdentities.tenantId, tenantId),
       ),
     });
+  }
+
+  /**
+   * The credential row for the JWT principal, used by change-password. A
+   * manager's row carries `tenantId` (PG-scoped token); an owner's single
+   * credential row has `tenantId = NULL` and is only addressable on the owner's
+   * global token (where `sub = owners.id`). `eq(col, null)` compiles to `= NULL`
+   * (always false), so the null case MUST use `isNull`.
+   */
+  findIdentityForPrincipal(
+    userId: string,
+    tenantId: string | null,
+    role: UserRole,
+  ) {
+    return this.db.query.authIdentities.findFirst({
+      where: and(
+        eq(authIdentities.userId, userId),
+        eq(authIdentities.role, role),
+        tenantId === null
+          ? isNull(authIdentities.tenantId)
+          : eq(authIdentities.tenantId, tenantId),
+      ),
+    });
+  }
+
+  findIdentityById(id: string) {
+    return this.db.query.authIdentities.findFirst({
+      where: eq(authIdentities.id, id),
+    });
+  }
+
+  async updatePasswordHash(id: string, passwordHash: string): Promise<void> {
+    await this.db
+      .update(authIdentities)
+      .set({ passwordHash, mustChangePassword: false })
+      .where(eq(authIdentities.id, id));
   }
 }

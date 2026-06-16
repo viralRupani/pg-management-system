@@ -1,6 +1,7 @@
 "use client";
 
-import { Building2, Check, Upload } from "lucide-react";
+import { ApiError } from "@pg/api-client";
+import { Building2, Check, Loader2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   MAX_UPLOAD_BYTES,
@@ -50,6 +51,7 @@ export default function SettingsPage() {
             name={branding.name}
             onSaved={refreshBranding}
           />
+          <ChangePasswordCard />
         </>
       )}
     </div>
@@ -202,6 +204,108 @@ function AccentPreview({ accent }: { accent: string }) {
         />
       </div>
     </div>
+  );
+}
+
+/** Change the logged-in manager's own password. */
+function ChangePasswordCard() {
+  const toast = useToast();
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const mismatch = next.length > 0 && confirm.length > 0 && next !== confirm;
+  const valid =
+    current.length >= 8 &&
+    next.length >= 8 &&
+    confirm.length >= 8 &&
+    next === confirm;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!valid) return;
+    setBusy(true);
+    setSaved(false);
+    try {
+      await api.auth.changePassword({
+        currentPassword: current,
+        newPassword: next,
+      });
+      setSaved(true);
+      setCurrent("");
+      setNext("");
+      setConfirm("");
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError && err.status === 401
+          ? "Current password is incorrect."
+          : "Could not change password. Please try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Change password</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={submit} className="space-y-4 max-w-sm">
+          <div className="space-y-1.5">
+            <Label htmlFor="curr-pw">Current password</Label>
+            <Input
+              id="curr-pw"
+              type="password"
+              autoComplete="current-password"
+              value={current}
+              onChange={(e) => { setCurrent(e.target.value); setSaved(false); }}
+              placeholder="••••••••"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="new-pw">New password</Label>
+            <Input
+              id="new-pw"
+              type="password"
+              autoComplete="new-password"
+              value={next}
+              onChange={(e) => { setNext(e.target.value); setSaved(false); }}
+              placeholder="••••••••"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="confirm-pw">Confirm new password</Label>
+            <Input
+              id="confirm-pw"
+              type="password"
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => { setConfirm(e.target.value); setSaved(false); }}
+              placeholder="••••••••"
+            />
+            {mismatch && (
+              <p className="text-xs text-danger">Passwords do not match.</p>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <Button type="submit" disabled={busy || !valid}>
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+              {busy ? "Saving…" : "Update password"}
+            </Button>
+            {saved && (
+              <span className="inline-flex items-center gap-1 text-sm text-success">
+                <Check className="h-4 w-4" />
+                Password updated
+              </span>
+            )}
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 

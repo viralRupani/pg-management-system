@@ -79,6 +79,8 @@ export interface Harness {
   residentLogin(slug: string, tenantId: string, phone: string): Promise<string>;
   /** Read the current OTP code from Redis (or null) — for testing the verify flow. */
   getOtp(tenantId: string, phone: string): Promise<string | null>;
+  /** Read the password-reset token for a specific email (null if none/expired). */
+  getPwResetToken(email: string): Promise<string | null>;
   /** Tear down: delete created tenants (cascade) and close the app. */
   close(): Promise<void>;
 }
@@ -196,6 +198,10 @@ export async function createHarness(): Promise<Harness> {
     return redis.get(`otp:${tenantId}:${phone}`);
   }
 
+  function getPwResetToken(email: string): Promise<string | null> {
+    return redis.get(`pwreset:email:${email.toLowerCase()}`);
+  }
+
   async function close(): Promise<void> {
     if (createdTenantIds.length) {
       await platformDb
@@ -214,6 +220,7 @@ export async function createHarness(): Promise<Harness> {
     registerResident,
     residentLogin,
     getOtp,
+    getPwResetToken,
     close,
   };
 }

@@ -98,6 +98,19 @@ Still deferred:
   payment/KYC/complaint-photo uploads are best-effort in dev (the key still
   persists). See Infrastructure below.
 
+### Auth security
+
+**Refresh-token invalidation after password change** (deferred from password-change / forgot-password feature, 2026-06-16)
+- Changing or resetting a password does **not** invalidate existing refresh tokens.
+  Stateless 30-day JWTs stay valid after a reset, so a compromised session survives
+  a password change (gap window = up to 30 days).
+- Fix: add a `passwordChangedAt` (or monotone `tokenVersion integer`) column to
+  `auth_identities`. On `AuthService.refresh`, compare `token.iat` against
+  `passwordChangedAt` (or check `tokenVersion` embedded in the JWT claim) and throw
+  if the token predates the most recent password change.
+- Same `auth_identities` table, no RLS implications. Requires a migration and
+  updating `issueTokens` to embed the version / `AuthRepository.refresh` to verify it.
+
 ---
 
 ## Infrastructure / cross-cutting

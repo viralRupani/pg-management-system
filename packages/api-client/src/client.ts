@@ -7,6 +7,7 @@ import type {
   AvailableBed,
   BedSummary,
   BookingSummary,
+  ChangePasswordInput,
   CreateBookingInput,
   CreateTransferRequestInput,
   TransferRequestSummary,
@@ -33,6 +34,7 @@ import type {
   ExpenseSummary,
   FileComplaintInput,
   FloorSummary,
+  ForgotPasswordInput,
   GenerateInvoicesInput,
   InvoiceListQuery,
   InvoiceListResult,
@@ -55,6 +57,7 @@ import type {
   ResidentListQuery,
   ResidentListResult,
   ResidentSummary,
+  ResetPasswordInput,
   RoomSummary,
   SetBudgetInput,
   SettlementResult,
@@ -104,6 +107,24 @@ export class PgApiClient {
       this.http.post<AuthTokens>(
         "/auth/refresh",
         { refreshToken },
+        { auth: false },
+      ),
+    /** Change the caller's own password (authenticated — managers and owners).
+     *  Returns fresh tokens so the caller can swap them without a re-login. */
+    changePassword: (input: ChangePasswordInput) =>
+      this.http.post<AuthTokens>("/auth/change-password", input),
+    /** Request a password-reset link for an email. Always resolves (no enumeration). */
+    forgotPassword: (input: ForgotPasswordInput) =>
+      this.http.post<{ sent: boolean }>(
+        "/auth/forgot-password",
+        input,
+        { auth: false },
+      ),
+    /** Exchange a single-use reset token for a new password. */
+    resetPassword: (input: ResetPasswordInput) =>
+      this.http.post<{ ok: true }>(
+        "/auth/reset-password",
+        input,
         { auth: false },
       ),
   };
