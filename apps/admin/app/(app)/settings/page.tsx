@@ -51,6 +51,10 @@ export default function SettingsPage() {
             name={branding.name}
             onSaved={refreshBranding}
           />
+          <UpiQrCard
+            upiQrUrl={branding.upiQrUrl}
+            onSaved={refreshBranding}
+          />
           <ChangePasswordCard />
         </>
       )}
@@ -204,6 +208,151 @@ function AccentPreview({ accent }: { accent: string }) {
         />
       </div>
     </div>
+  );
+}
+
+/** UPI QR code: presign → POST bytes → PATCH the returned key → refetch branding. */
+function UpiQrCard({
+  upiQrUrl,
+  onSaved,
+}: {
+  upiQrUrl: string | null;
+  onSaved: () => Promise<void> | void;
+}) {
+  const toast = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState(false);
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  const pick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] ?? null;
+    if (f && f.size > MAX_UPLOAD_BYTES) {
+      toast.error(`Image must be under ${MAX_UPLOAD_LABEL}.`);
+      setFile(null);
+      return;
+    }
+    if (f && !UPLOAD_ALLOWED_TYPES.upi_qr.includes(f.type)) {
+      toast.error("Image must be a JPG, PNG or WebP.");
+      setFile(null);
+      return;
+    }
+    setFile(f);
+  };
+
+  const upload = async () => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const { url, fields, key } = await api.branding.upiQrUploadUrl({
+        contentType: file.type,
+      });
+      const form = new FormData();
+      for (const [k, v] of Object.entries(fields)) form.append(k, v);
+      form.append("file", file);
+      const res = await fetch(url, { method: "POST", body: form });
+      if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+      await api.branding.update({ upiQrKey: key });
+      await onSaved();
+      setFile(null);
+      if (fileRef.current) fileRef.current.value = "";
+    } catch (err) {
+      toast.error(
+        toMessage(
+          err,
+          "Could not upload the QR code. Storage may be unavailable in local dev.",
+        ),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    setRemoving(true);
+    try {
+      await api.branding.update({ upiQrKey: null });
+      await onSaved();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not remove the QR code."));
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const shown = previewUrl ?? upiQrUrl;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>UPI QR Code</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Residents see this QR code on the payment screen so they know where to
+          send money. Upload your UPI QR code screenshot or the QR from your UPI app.
+        </p>
+        <div className="flex items-start gap-4">
+          <div className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted">
+            {shown ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={shown}
+                alt="UPI QR code"
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              <span className="text-xs text-muted-foreground text-center px-2">No QR code set</span>
+            )}
+          </div>
+          <div className="min-w-0 flex-1 space-y-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={pick}
+              className={cn(
+                "block w-full text-sm text-muted-foreground",
+                "file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-2",
+                "file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/70",
+              )}
+            />
+            <p className="text-xs text-muted-foreground">
+              PNG, JPG, or WebP, up to {MAX_UPLOAD_LABEL}.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          {upiQrUrl && !file && (
+            <Button
+              variant="danger"
+              onClick={remove}
+              disabled={removing}
+            >
+              {removing ? "Removing…" : "Remove QR code"}
+            </Button>
+          )}
+          <div className="ml-auto">
+            <Button onClick={upload} disabled={!file || busy}>
+              <Upload className="h-4 w-4" />
+              {busy ? "Uploading…" : "Upload QR code"}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

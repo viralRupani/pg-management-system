@@ -18,6 +18,7 @@ export const tenants = pgTable("tenants", {
   // holds a KEY, not a URL — the TS field name `logoKey` is the source of truth.
   logoKey: text("logo_url"),
   accentColor: text("accent_color"),
+  upiQrKey: text("upi_qr_key"),
   status: text("status").notNull().default("ACTIVE"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

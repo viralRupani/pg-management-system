@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { eq } from "drizzle-orm";
 import {
+  type PaymentInfo,
   type PresignedUploadResult,
   type TenantBranding,
   type UpdateBrandingInput,
@@ -55,18 +56,24 @@ export class BrandingService {
     return this.toBranding(row);
   }
 
-  /** Resolve a stored logo key into a presigned download URL (null if unset). */
+  /** Resolve stored keys into presigned download URLs (null if unset). */
   private async toBranding(
     row: typeof tenants.$inferSelect,
   ): Promise<TenantBranding> {
-    const logoUrl = row.logoKey
-      ? (await this.storage.presignDownload(row.logoKey)).downloadUrl
-      : null;
+    const [logoUrl, upiQrUrl] = await Promise.all([
+      row.logoKey
+        ? this.storage.presignDownload(row.logoKey).then((r) => r.downloadUrl)
+        : null,
+      row.upiQrKey
+        ? this.storage.presignDownload(row.upiQrKey).then((r) => r.downloadUrl)
+        : null,
+    ]);
     return {
       name: row.name,
       slug: row.slug,
       logoUrl,
       accentColor: row.accentColor,
+      upiQrUrl,
     };
   }
 
@@ -77,6 +84,7 @@ export class BrandingService {
     if (input.name !== undefined) patch.name = input.name;
     if (input.logoKey !== undefined) patch.logoKey = input.logoKey;
     if (input.accentColor !== undefined) patch.accentColor = input.accentColor;
+    if (input.upiQrKey !== undefined) patch.upiQrKey = input.upiQrKey;
 
     const [row] = await this.ctx
       .db()
@@ -98,5 +106,32 @@ export class BrandingService {
       kind: "logos",
       contentType,
     });
+  }
+
+  /** Manager: presigned URL to upload a UPI QR code image (tenant-namespaced key). */
+  async requestUpiQrUploadUrl(
+    contentType: string,
+  ): Promise<PresignedUploadResult> {
+    assertAllowedType("upi_qr", contentType);
+    return this.storage.presignUpload({
+      tenantId: this.ctx.currentTenantId()!,
+      kind: "upi_qr",
+      contentType,
+    });
+  }
+
+  /** Resident: presigned URL for the tenant's UPI QR code, or null if not configured. */
+  async getPaymentInfo(): Promise<PaymentInfo> {
+    const tenantId = this.ctx.currentTenantId()!;
+    const [row] = await this.ctx
+      .db()
+      .select({ upiQrKey: tenants.upiQrKey })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId));
+    if (!row) throw new NotFoundException("PG not found");
+    const upiQrUrl = row.upiQrKey
+      ? (await this.storage.presignDownload(row.upiQrKey)).downloadUrl
+      : null;
+    return { upiQrUrl };
   }
 }

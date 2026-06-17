@@ -1,4 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as MediaLibrary from 'expo-media-library';
+import * as Sharing from 'expo-sharing';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
@@ -13,7 +16,7 @@ import { Screen } from '@/components/ui/screen';
 import { Sheet } from '@/components/ui/sheet';
 import { invoiceStatus } from '@/components/ui/status';
 import { api } from '@/lib/api';
-import { qk, useInvoices } from '@/lib/queries';
+import { qk, useInvoices, usePaymentInfo } from '@/lib/queries';
 import { InvoiceStatus, PaymentMethod } from '@pg/shared';
 import {
   MAX_UPLOAD_LABEL,
@@ -31,11 +34,60 @@ export default function InvoiceDetailScreen() {
   const { data } = useInvoices();
   const invoice = data?.find((i) => i.id === id);
 
+  const { data: paymentInfo } = usePaymentInfo();
+
   const [sheetOpen, setSheetOpen] = useState(false);
   const [method, setMethod] = useState<PaymentMethod>(PaymentMethod.UPI);
   const [picked, setPicked] = useState<PickedImage | null>(null);
   const [reference, setReference] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [sharing, setSharing] = useState(false);
+
+  async function getCachedQr(): Promise<string> {
+    const dest = FileSystem.cacheDirectory + 'upi-qr.png';
+    await FileSystem.downloadAsync(paymentInfo!.upiQrUrl!, dest);
+    return dest;
+  }
+
+  async function saveQrToGallery() {
+    setSaving(true);
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission required',
+          'Please allow access to Photos so the QR code can be saved to your gallery.',
+        );
+        return;
+      }
+      const dest = await getCachedQr();
+      await MediaLibrary.saveToLibraryAsync(dest);
+      Alert.alert(
+        'Saved to gallery',
+        'Open your UPI app → Pay via QR → pick from gallery to pay.',
+      );
+    } catch {
+      Alert.alert('Could not save', 'Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function shareQrCode() {
+    setSharing(true);
+    try {
+      const dest = await getCachedQr();
+      await Sharing.shareAsync(dest, {
+        mimeType: 'image/png',
+        dialogTitle: 'Share UPI QR code',
+      });
+    } catch {
+      Alert.alert('Could not share QR', 'Please try again.');
+    } finally {
+      setSharing(false);
+    }
+  }
 
   if (!invoice) {
     return (
@@ -161,6 +213,49 @@ export default function InvoiceDetailScreen() {
         title="Submit payment"
         subtitle={`How did you pay ${formatPaise(invoice.amountPaise)}?`}
       >
+        {paymentInfo?.upiQrUrl ? (
+          <View className="items-center rounded-btn border border-line bg-surface2 p-4 gap-3">
+            <Text className="text-[11px] font-bold uppercase tracking-wider text-ink3">
+              Scan to pay
+            </Text>
+            <Image
+              source={{ uri: paymentInfo.upiQrUrl }}
+              className="h-48 w-48 rounded-lg"
+              resizeMode="contain"
+            />
+            <Text className="text-[12px] text-ink3 text-center">
+              Scan with your UPI app, or save the QR to your gallery and pay from there.
+            </Text>
+            <View className="w-full gap-1.5">
+              <View className="flex-row gap-2">
+                <Pressable
+                  onPress={saveQrToGallery}
+                  disabled={saving || sharing}
+                  className="flex-1 flex-row items-center justify-center gap-1.5 rounded-btn border border-line bg-surface py-2.5 active:opacity-60 disabled:opacity-40"
+                >
+                  <Ionicons name="download-outline" size={16} color="#0b7d73" />
+                  <Text className="text-[13px] font-semibold text-brand">
+                    {saving ? 'Opening…' : 'Save to gallery'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={shareQrCode}
+                  disabled={saving || sharing}
+                  className="flex-1 flex-row items-center justify-center gap-1.5 rounded-btn border border-line bg-surface py-2.5 active:opacity-60 disabled:opacity-40"
+                >
+                  <Ionicons name="share-outline" size={16} color="#0b7d73" />
+                  <Text className="text-[13px] font-semibold text-brand">
+                    {sharing ? 'Opening…' : 'Share'}
+                  </Text>
+                </Pressable>
+              </View>
+              <Text className="text-center text-[11px] text-ink3">
+                Save the QR to your gallery, then open it from your UPI app.
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
         <View className="flex-row gap-3">
           <MethodOption
             icon="phone-portrait-outline"

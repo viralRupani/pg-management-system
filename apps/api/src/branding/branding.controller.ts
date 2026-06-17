@@ -2,9 +2,11 @@ import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
 import {
   type LogoUploadUrlInput,
   type UpdateBrandingInput,
+  type UpiQrUploadUrlInput,
   UserRole,
   logoUploadUrlSchema,
   updateBrandingSchema,
+  upiQrUploadUrlSchema,
 } from "@pg/shared";
 import { Public, Roles } from "../common/decorators";
 import { ZodBody } from "../common/zod-validation.pipe";
@@ -47,5 +49,19 @@ export class BrandingController {
   @Roles(UserRole.PG_MANAGER)
   logoUrl(@Body(new ZodBody(logoUploadUrlSchema)) dto: LogoUploadUrlInput) {
     return this.branding.requestLogoUploadUrl(dto.contentType);
+  }
+
+  /** Manager: presigned URL to upload a UPI QR code image. */
+  @Post("tenants/upi-qr-url")
+  @Roles(UserRole.PG_MANAGER)
+  upiQrUrl(@Body(new ZodBody(upiQrUploadUrlSchema)) dto: UpiQrUploadUrlInput) {
+    return this.branding.requestUpiQrUploadUrl(dto.contentType);
+  }
+
+  /** Resident: UPI QR URL for their tenant (null if manager hasn't configured one). */
+  @Get("tenant/payment-info")
+  @Roles(UserRole.RESIDENT)
+  paymentInfo() {
+    return this.branding.getPaymentInfo();
   }
 }

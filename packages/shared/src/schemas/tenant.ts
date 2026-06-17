@@ -37,6 +37,8 @@ export const tenantBrandingSchema = z.object({
   // Presigned download URL derived from the stored logo key (null if no logo).
   logoUrl: z.string().url().nullable(),
   accentColor: z.string().nullable(),
+  // Presigned download URL for the UPI QR code image (null if not configured).
+  upiQrUrl: z.string().url().nullable(),
 });
 export type TenantBranding = z.infer<typeof tenantBrandingSchema>;
 
@@ -54,6 +56,7 @@ export const updateBrandingSchema = z
       .regex(/^#[0-9a-fA-F]{6}$/)
       .nullable()
       .optional(),
+    upiQrKey: z.string().min(1).nullable().optional(),
   })
   .refine((d) => Object.keys(d).length > 0, {
     message: "At least one branding field is required",
@@ -65,6 +68,18 @@ export const logoUploadUrlSchema = z.object({
   contentType: contentTypeField,
 });
 export type LogoUploadUrlInput = z.infer<typeof logoUploadUrlSchema>;
+
+/** Manager asks for a presigned URL to upload a UPI QR code image. */
+export const upiQrUploadUrlSchema = z.object({
+  contentType: contentTypeField,
+});
+export type UpiQrUploadUrlInput = z.infer<typeof upiQrUploadUrlSchema>;
+
+/** Resident-accessible payment destination info for the active tenant. */
+export const paymentInfoSchema = z.object({
+  upiQrUrl: z.string().url().nullable(),
+});
+export type PaymentInfo = z.infer<typeof paymentInfoSchema>;
 
 export const tenantSummarySchema = z.object({
   id: z.string().uuid(),

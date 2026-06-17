@@ -17,6 +17,7 @@ export const qk = {
   menuConfig: ['menu', 'config'] as const,
   menu: (from: string, to: string) => ['menu', from, to] as const,
   notifications: ['notifications'] as const,
+  paymentInfo: ['tenant', 'payment-info'] as const,
 };
 
 export const useInvoices = () =>
@@ -58,3 +59,6 @@ export const useMenu = (from: string, to: string) =>
 
 export const useNotifications = () =>
   useQuery({ queryKey: qk.notifications, queryFn: () => api.resident.notifications.list() });
+
+export const usePaymentInfo = () =>
+  useQuery({ queryKey: qk.paymentInfo, queryFn: () => api.resident.branding.paymentInfo() });

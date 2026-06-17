@@ -48,6 +48,7 @@ import type {
   OtpRequestInput,
   OtpVerifyInput,
   OwnerPgSummary,
+  PaymentInfo,
   PaymentSummary,
   PaymentUploadUrlInput,
   PresignedUploadResult,
@@ -70,6 +71,7 @@ import type {
   MenuConfig,
   MenuSlotSummary,
   UpdateMenuConfigInput,
+  UpiQrUploadUrlInput,
   UpsertMenuSlotInput,
 } from "@pg/shared";
 import { Http } from "./http";
@@ -167,6 +169,9 @@ export class PgApiClient {
       this.http.patch<TenantBranding>("/tenants/branding", input),
     logoUploadUrl: (input: LogoUploadUrlInput) =>
       this.http.post<PresignedUploadResult>("/tenants/logo-url", input),
+    /** Manager: presigned URL to upload a UPI QR code image. */
+    upiQrUploadUrl: (input: UpiQrUploadUrlInput) =>
+      this.http.post<PresignedUploadResult>("/tenants/upi-qr-url", input),
   };
 
   readonly residents = {
@@ -434,6 +439,10 @@ export class PgApiClient {
       /** Register/refresh the device's Expo push token (idempotent). */
       registerToken: (input: RegisterPushTokenInput) =>
         this.http.post<{ ok: true }>("/notifications/push-token", input),
+    },
+    branding: {
+      /** Resident: UPI QR URL for their PG (null if manager hasn't set one). */
+      paymentInfo: () => this.http.get<PaymentInfo>("/tenant/payment-info"),
     },
   };
 }

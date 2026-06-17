@@ -16,7 +16,7 @@ export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 export const MAX_UPLOAD_LABEL = "5 MB";
 
 /** The storage "kind" (also the S3 key prefix: `{tenantId}/{kind}/{uuid}`). */
-export const UPLOAD_KINDS = ["kyc", "payments", "complaints", "logos"] as const;
+export const UPLOAD_KINDS = ["kyc", "payments", "complaints", "logos", "upi_qr"] as const;
 export type UploadKind = (typeof UPLOAD_KINDS)[number];
 
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
@@ -26,6 +26,7 @@ export const UPLOAD_ALLOWED_TYPES: Record<UploadKind, readonly string[]> = {
   payments: IMAGE_TYPES,
   complaints: IMAGE_TYPES,
   logos: IMAGE_TYPES,
+  upi_qr: IMAGE_TYPES,
   kyc: [...IMAGE_TYPES, "application/pdf"],
 };
 
