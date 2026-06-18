@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
  */
 export const qk = {
   invoices: ['invoices', 'mine'] as const,
+  invoiceCharges: (id: string) => ['invoices', id, 'charges'] as const,
   deposit: ['deposit', 'mine'] as const,
   documents: ['documents', 'mine'] as const,
   complaints: ['complaints', 'mine'] as const,
@@ -22,6 +23,12 @@ export const qk = {
 
 export const useInvoices = () =>
   useQuery({ queryKey: qk.invoices, queryFn: () => api.resident.invoices.listMine() });
+
+export const useInvoiceCharges = (id: string) =>
+  useQuery({
+    queryKey: qk.invoiceCharges(id),
+    queryFn: () => api.resident.invoices.charges(id),
+  });
 
 export const useDeposit = () =>
   useQuery({ queryKey: qk.deposit, queryFn: () => api.resident.deposits.mine() });

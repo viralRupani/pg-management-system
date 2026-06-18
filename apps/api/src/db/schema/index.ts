@@ -13,6 +13,8 @@ export * from "./bookings";
 export * from "./invoices";
 export * from "./payments";
 export * from "./rent-adjustments";
+export * from "./extra-charges";
+export * from "./invoice-charges";
 export * from "./notifications";
 export * from "./push-tokens";
 export * from "./documents";
@@ -42,6 +44,8 @@ import { bookings } from "./bookings";
 import { invoices } from "./invoices";
 import { payments } from "./payments";
 import { rentAdjustments } from "./rent-adjustments";
+import { extraCharges } from "./extra-charges";
+import { invoiceCharges } from "./invoice-charges";
 import { notifications } from "./notifications";
 import { pushTokens } from "./push-tokens";
 import { documents } from "./documents";
@@ -73,6 +77,8 @@ export const schema = {
   invoices,
   payments,
   rentAdjustments,
+  extraCharges,
+  invoiceCharges,
   notifications,
   pushTokens,
   documents,
@@ -107,6 +113,8 @@ export const RLS_TABLES = [
   "invoices",
   "payments",
   "rent_adjustments",
+  "extra_charges",
+  "invoice_charges",
   "notifications",
   "push_tokens",
   "documents",

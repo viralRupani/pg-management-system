@@ -1,7 +1,7 @@
 "use client";
 
 import type { InvoiceSummary, PaymentSummary } from "@pg/shared";
-import { ImageIcon, Plus } from "lucide-react";
+import { ImageIcon, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -370,6 +370,8 @@ function InvoicesTab({ refreshKey }: { refreshKey: number }) {
   const [items, setItems] = useState<InvoiceSummary[] | null>(null);
   const [total, setTotal] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [deleting, setDeleting] = useState<InvoiceSummary | null>(null);
+  const [localRefresh, setLocalRefresh] = useState(0);
 
   // Debounce the search so we hit the API once the user pauses typing.
   useEffect(() => {
@@ -407,7 +409,7 @@ function InvoicesTab({ refreshKey }: { refreshKey: number }) {
     return () => {
       cancelled = true;
     };
-  }, [search, page, refreshKey, toast]);
+  }, [search, page, refreshKey, localRefresh, toast]);
 
   const totalPages = Math.max(1, Math.ceil(total / INVOICES_PAGE_SIZE));
 
@@ -459,34 +461,63 @@ function InvoicesTab({ refreshKey }: { refreshKey: number }) {
             />
           ) : (
             <ul className="divide-y divide-border">
-              {items.map((inv) => (
-                <li
-                  key={inv.id}
-                  className="flex flex-wrap items-center gap-x-4 gap-y-3 py-4"
-                >
-                  <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
-                    <Link
-                      href={`/residents?id=${inv.residentId}`}
-                      className="block truncate text-sm font-medium text-foreground hover:text-brand hover:underline"
-                    >
-                      {inv.residentName}
-                    </Link>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {inv.period} · due {formatDate(inv.dueDate)}
-                    </p>
-                  </div>
-                  <div className="ml-auto flex items-center gap-4">
-                    <span className="w-28 text-right text-sm font-semibold tabular-nums text-foreground">
-                      {formatPaise(inv.amountPaise)}
-                    </span>
-                    <div className="flex w-24 justify-center">
-                      <Badge tone={invoiceTone(inv.status)}>
-                        {inv.status.toLowerCase()}
-                      </Badge>
+              {items.map((inv) => {
+                const deleted = Boolean(inv.deletedAt);
+                return (
+                  <li
+                    key={inv.id}
+                    className="flex flex-wrap items-center gap-x-4 gap-y-3 py-4"
+                  >
+                    <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
+                      <Link
+                        href={`/residents?id=${inv.residentId}`}
+                        className={cn(
+                          "block truncate text-sm font-medium hover:text-brand hover:underline",
+                          deleted
+                            ? "text-muted-foreground line-through"
+                            : "text-foreground",
+                        )}
+                      >
+                        {inv.residentName}
+                      </Link>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {inv.period} · due {formatDate(inv.dueDate)}
+                      </p>
+                      {deleted && inv.deletedReason && (
+                        <p className="mt-1 text-xs font-medium text-danger">
+                          Deleted: {inv.deletedReason}
+                        </p>
+                      )}
                     </div>
-                  </div>
-                </li>
-              ))}
+                    <div className="ml-auto flex items-center gap-4">
+                      <span
+                        className={cn(
+                          "w-28 text-right text-sm font-semibold tabular-nums",
+                          deleted
+                            ? "text-muted-foreground line-through"
+                            : "text-foreground",
+                        )}
+                      >
+                        {formatPaise(inv.amountPaise)}
+                      </span>
+                      <div className="flex w-24 justify-center">
+                        <Badge tone={deleted ? "neutral" : invoiceTone(inv.status)}>
+                          {deleted ? "deleted" : inv.status.toLowerCase()}
+                        </Badge>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Delete invoice"
+                        disabled={deleted}
+                        onClick={() => setDeleting(inv)}
+                        className="text-muted-foreground transition-colors hover:text-danger disabled:invisible"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -520,7 +551,89 @@ function InvoicesTab({ refreshKey }: { refreshKey: number }) {
           </div>
         </div>
       )}
+
+      <DeleteInvoiceDialog
+        invoice={deleting}
+        onClose={() => setDeleting(null)}
+        onDone={() => {
+          setDeleting(null);
+          setLocalRefresh((n) => n + 1);
+        }}
+      />
     </div>
+  );
+}
+
+function DeleteInvoiceDialog({
+  invoice,
+  onClose,
+  onDone,
+}: {
+  invoice: InvoiceSummary | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setReason("");
+  }, [invoice?.id]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!invoice) return;
+    setBusy(true);
+    try {
+      await api.invoices.delete(invoice.id, { reason: reason.trim() });
+      onDone();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not delete the invoice."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={invoice !== null}
+      onClose={onClose}
+      title="Delete invoice?"
+      description={
+        invoice
+          ? `${invoice.residentName} · ${invoice.period} · ${formatPaise(invoice.amountPaise)}. This voids the invoice — it can no longer be paid, but stays listed with your reason.`
+          : undefined
+      }
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="delete-reason">Reason</Label>
+          <textarea
+            id="delete-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            required
+            maxLength={300}
+            rows={3}
+            placeholder="Why is this invoice being deleted? (shown on the invoice)"
+            className="flex w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand"
+          />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="danger"
+            disabled={busy || reason.trim().length === 0}
+          >
+            {busy ? "Deleting…" : "Delete invoice"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 

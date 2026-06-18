@@ -171,6 +171,17 @@ export const ComplaintCategory = {
 export type ComplaintCategory =
   (typeof ComplaintCategory)[keyof typeof ComplaintCategory];
 
+/**
+ * An extra charge's billing cadence. ONE_TIME is folded into a single invoice
+ * once; MONTHLY is re-applied to every monthly invoice while the charge is active.
+ */
+export const ChargeFrequency = {
+  ONE_TIME: "ONE_TIME",
+  MONTHLY: "MONTHLY",
+} as const;
+export type ChargeFrequency =
+  (typeof ChargeFrequency)[keyof typeof ChargeFrequency];
+
 export const MealType = {
   BREAKFAST: "BREAKFAST",
   LUNCH: "LUNCH",

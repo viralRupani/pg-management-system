@@ -12,6 +12,7 @@ import { AllocationModule } from "./allocation/allocation.module";
 import { BookingsModule } from "./bookings/bookings.module";
 import { StorageModule } from "./storage/storage.module";
 import { RentModule } from "./rent/rent.module";
+import { ChargesModule } from "./charges/charges.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { JobsModule } from "./jobs/jobs.module";
 import { DocumentsModule } from "./documents/documents.module";
@@ -46,6 +47,7 @@ class HealthController {
     BookingsModule,
     StorageModule,
     RentModule,
+    ChargesModule,
     NotificationsModule,
     JobsModule,
     DocumentsModule,

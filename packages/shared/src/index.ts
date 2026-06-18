@@ -10,6 +10,7 @@ export * from "./schemas/allocation";
 export * from "./schemas/booking";
 export * from "./schemas/upload";
 export * from "./schemas/rent";
+export * from "./schemas/extra-charge";
 export * from "./schemas/notification";
 export * from "./schemas/document";
 export * from "./schemas/deposit";

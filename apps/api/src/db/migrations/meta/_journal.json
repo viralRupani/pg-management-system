@@ -148,6 +148,20 @@
       "when": 1781705473090,
       "tag": "0020_goofy_jane_foster",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1781722343547,
+      "tag": "0021_colorful_eddie_brock",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1781724803064,
+      "tag": "0022_absurd_rockslide",
+      "breakpoints": true
     }
   ]
 }

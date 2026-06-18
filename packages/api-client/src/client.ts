@@ -35,8 +35,12 @@ import type {
   ExpenseSummary,
   FileComplaintInput,
   FloorSummary,
+  CreateExtraChargeInput,
+  DeleteInvoiceInput,
+  ExtraChargeSummary,
   ForgotPasswordInput,
   GenerateInvoicesInput,
+  InvoiceCharge,
   InvoiceListQuery,
   InvoiceListResult,
   InvoiceSummary,
@@ -286,6 +290,9 @@ export class PgApiClient {
         "/invoices/generate",
         input,
       ),
+    /** Void (soft-delete) an invoice with a mandatory reason; stays listed. */
+    delete: (id: string, input: DeleteInvoiceInput) =>
+      this.http.post<{ deletedAt: string }>(`/invoices/${id}/delete`, input),
   };
 
   readonly payments = {
@@ -298,6 +305,25 @@ export class PgApiClient {
     approve: (id: string) => this.http.post(`/payments/${id}/approve`),
     reject: (id: string, note: string) =>
       this.http.post(`/payments/${id}/reject`, { note }),
+  };
+
+  readonly charges = {
+    /** Every extra charge defined for a resident (active + history). */
+    list: (residentId: string) =>
+      this.http.get<ExtraChargeSummary[]>("/charges", {
+        query: { residentId },
+      }),
+    /** Add a one-time or recurring monthly charge to a resident. */
+    create: (input: CreateExtraChargeInput) =>
+      this.http.post<{ id: string; appliedToInvoiceId: string | null }>(
+        "/charges",
+        input,
+      ),
+    /** Stop a recurring charge from future months (soft; keeps billed history). */
+    remove: (id: string) => this.http.post(`/charges/${id}/remove`),
+    /** Labelled breakdown of the extra charges folded into one invoice. */
+    forInvoice: (invoiceId: string) =>
+      this.http.get<InvoiceCharge[]>(`/invoices/${invoiceId}/charges`),
   };
 
   readonly complaints = {
@@ -377,6 +403,9 @@ export class PgApiClient {
     invoices: {
       /** The caller's own rent invoices, newest period first. */
       listMine: () => this.http.get<InvoiceSummary[]>("/invoices/mine"),
+      /** Labelled extra-charge breakdown for one of the caller's invoices. */
+      charges: (invoiceId: string) =>
+        this.http.get<InvoiceCharge[]>(`/invoices/${invoiceId}/charges`),
     },
     payments: {
       /** Presigned POST to upload a UPI-payment screenshot for an invoice. */

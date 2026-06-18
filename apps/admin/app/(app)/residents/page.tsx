@@ -2,10 +2,13 @@
 
 import {
   type AvailableBed,
+  ChargeFrequency,
   type DepositSummary,
   type DepositTransactionSummary,
   type DocumentSummary,
   EmergencyRelation,
+  type ExtraChargeSummary,
+  type InvoiceCharge,
   type InvoiceSummary,
   KycStatus,
   OccupationType,
@@ -21,6 +24,7 @@ import {
   ChevronDown,
   Download,
   Plus,
+  Trash2,
   UserPlus,
 } from "lucide-react";
 import Link from "next/link";
@@ -501,6 +505,7 @@ interface DetailData {
   deposit: DepositSummary | null;
   ledger: DepositTransactionSummary[];
   invoices: InvoiceSummary[];
+  charges: ExtraChargeSummary[];
   transfers: TransferRequestSummary[];
 }
 
@@ -511,17 +516,26 @@ function ResidentDetail({ id }: { id: string }) {
   const [allocating, setAllocating] = useState(false);
   const [transferring, setTransferring] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
+  const [chargeOpen, setChargeOpen] = useState(false);
+  const [deletingInvoice, setDeletingInvoice] = useState<InvoiceSummary | null>(
+    null,
+  );
   const [exitOpen, setExitOpen] = useState(false);
+  const [breakdowns, setBreakdowns] = useState<Record<string, InvoiceCharge[]>>(
+    {},
+  );
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [rejectingDoc, setRejectingDoc] = useState<DocumentSummary | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [resident, allDocs, dep, invoiceList, allTransfers] =
+    const [resident, allDocs, dep, invoiceList, charges, allTransfers] =
       await Promise.all([
         api.residents.get(id),
         api.documents.list(),
         api.deposits.byResident(id),
         api.invoices.list({ residentId: id, limit: 100 }),
+        api.charges.list(id),
         api.allocations.transfers.list(),
       ]);
     setData({
@@ -530,6 +544,7 @@ function ResidentDetail({ id }: { id: string }) {
       deposit: dep.deposit,
       ledger: dep.ledger,
       invoices: invoiceList.items,
+      charges,
       transfers: allTransfers.filter((t) => t.residentId === id),
     });
   }, [id]);
@@ -538,12 +553,13 @@ function ResidentDetail({ id }: { id: string }) {
     let cancelled = false;
     (async () => {
       try {
-        const [resident, allDocs, dep, invoiceList, allTransfers] =
+        const [resident, allDocs, dep, invoiceList, charges, allTransfers] =
           await Promise.all([
             api.residents.get(id),
             api.documents.list(),
             api.deposits.byResident(id),
             api.invoices.list({ residentId: id, limit: 100 }),
+            api.charges.list(id),
             api.allocations.transfers.list(),
           ]);
         if (cancelled) return;
@@ -553,6 +569,7 @@ function ResidentDetail({ id }: { id: string }) {
           deposit: dep.deposit,
           ledger: dep.ledger,
           invoices: invoiceList.items,
+          charges,
           transfers: allTransfers.filter((t) => t.residentId === id),
         });
       } catch (err) {
@@ -608,6 +625,36 @@ function ResidentDetail({ id }: { id: string }) {
     }
   };
 
+  const removeCharge = async (chargeId: string) => {
+    setBusy(true);
+    try {
+      await api.charges.remove(chargeId);
+      await load();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not remove the charge."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Lazy-load an invoice's labelled charge breakdown on first expand.
+  const toggleBreakdown = async (invoiceId: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(invoiceId)) next.delete(invoiceId);
+      else next.add(invoiceId);
+      return next;
+    });
+    if (!breakdowns[invoiceId]) {
+      try {
+        const rows = await api.charges.forInvoice(invoiceId);
+        setBreakdowns((prev) => ({ ...prev, [invoiceId]: rows }));
+      } catch (err) {
+        toast.error(toMessage(err, "Could not load the invoice breakdown."));
+      }
+    }
+  };
+
   const verifyDoc = async (docId: string) => {
     setBusy(true);
     try {
@@ -650,7 +697,8 @@ function ResidentDetail({ id }: { id: string }) {
     );
   }
 
-  const { resident, documents, deposit, ledger, invoices, transfers } = data;
+  const { resident, documents, deposit, ledger, invoices, charges, transfers } =
+    data;
   const active = resident.status === "ACTIVE";
   const pendingTransfer = transfers.find((t) => t.status === "PENDING") ?? null;
 
@@ -913,20 +961,78 @@ function ResidentDetail({ id }: { id: string }) {
         </CardContent>
       </Card>
 
+      {/* Extra charges */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Extra charges</CardTitle>
+          <Button size="sm" onClick={() => setChargeOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Add charge
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {charges.length === 0 ? (
+            <EmptyRow text="No extra charges. Add a one-time or monthly charge for this resident." />
+          ) : (
+            <ul className="divide-y divide-border">
+              {charges.map((c) => {
+                const stopped =
+                  c.frequency === ChargeFrequency.MONTHLY && !c.active;
+                return (
+                  <li
+                    key={c.id}
+                    className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{c.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {c.frequency === ChargeFrequency.MONTHLY
+                          ? stopped
+                            ? "monthly · stopped"
+                            : "monthly"
+                          : c.appliedAt
+                            ? "one-time · billed"
+                            : "one-time · queued"}
+                      </p>
+                    </div>
+                    <span className="text-sm font-semibold tabular-nums">
+                      {formatPaise(c.amountPaise)}
+                    </span>
+                    {c.frequency === ChargeFrequency.MONTHLY && c.active && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => removeCharge(c.id)}
+                      >
+                        Stop
+                      </Button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Rent invoices */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Rent invoices</CardTitle>
           {invoices.length > 0 && (
             <span className="text-xs text-muted-foreground">
+              {/* Voided (deleted) invoices are no longer owed — excluded. */}
               {formatPaise(
                 invoices
-                  .filter((i) => i.status === "PAID")
+                  .filter((i) => !i.deletedAt && i.status === "PAID")
                   .reduce((sum, i) => sum + i.amountPaise, 0),
               )}{" "}
               paid of{" "}
               {formatPaise(
-                invoices.reduce((sum, i) => sum + i.amountPaise, 0),
+                invoices
+                  .filter((i) => !i.deletedAt)
+                  .reduce((sum, i) => sum + i.amountPaise, 0),
               )}{" "}
               billed
             </span>
@@ -937,25 +1043,91 @@ function ResidentDetail({ id }: { id: string }) {
             <EmptyRow text="No invoices yet. Generate rent from the Rent page." />
           ) : (
             <ul className="divide-y divide-border">
-              {invoices.map((inv) => (
-                <li
-                  key={inv.id}
-                  className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">{inv.period}</p>
-                    <p className="text-xs text-muted-foreground">
-                      due {formatDate(inv.dueDate)}
-                    </p>
-                  </div>
-                  <span className="text-sm font-semibold tabular-nums">
-                    {formatPaise(inv.amountPaise)}
-                  </span>
-                  <Badge tone={invoiceTone(inv.status)}>
-                    {inv.status.toLowerCase()}
-                  </Badge>
-                </li>
-              ))}
+              {invoices.map((inv) => {
+                const isOpen = expanded.has(inv.id);
+                const lines = breakdowns[inv.id];
+                const chargeSum = lines
+                  ? lines.reduce((s, l) => s + l.amountPaise, 0)
+                  : 0;
+                const deleted = Boolean(inv.deletedAt);
+                return (
+                  <li key={inv.id} className="py-3">
+                    <div className="flex w-full items-center gap-x-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleBreakdown(inv.id)}
+                        className="flex flex-1 flex-wrap items-center gap-x-4 gap-y-2 text-left"
+                      >
+                        <ChevronDown
+                          className={cn(
+                            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                            isOpen && "rotate-180",
+                          )}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className={cn(
+                              "text-sm font-medium",
+                              deleted && "text-muted-foreground line-through",
+                            )}
+                          >
+                            {inv.period}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            due {formatDate(inv.dueDate)}
+                          </p>
+                        </div>
+                        <span
+                          className={cn(
+                            "text-sm font-semibold tabular-nums",
+                            deleted && "text-muted-foreground line-through",
+                          )}
+                        >
+                          {formatPaise(inv.amountPaise)}
+                        </span>
+                        <Badge tone={deleted ? "neutral" : invoiceTone(inv.status)}>
+                          {deleted ? "deleted" : inv.status.toLowerCase()}
+                        </Badge>
+                      </button>
+                      {!deleted && (
+                        <button
+                          type="button"
+                          aria-label="Delete invoice"
+                          onClick={() => setDeletingInvoice(inv)}
+                          className="text-muted-foreground transition-colors hover:text-danger"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    {deleted && inv.deletedReason && (
+                      <p className="mt-1 pl-8 text-xs font-medium text-danger">
+                        Deleted: {inv.deletedReason}
+                      </p>
+                    )}
+                    {isOpen && lines && (
+                      <ul className="mt-2 space-y-1 pl-8 text-xs text-muted-foreground">
+                        {/* "Rent & adjustments" is the remainder — it also absorbs
+                            proration, transfers, and carry-forward credits. */}
+                        <li className="flex justify-between gap-3">
+                          <span>Rent &amp; adjustments</span>
+                          <span className="tabular-nums">
+                            {formatPaise(inv.amountPaise - chargeSum)}
+                          </span>
+                        </li>
+                        {lines.map((l) => (
+                          <li key={l.id} className="flex justify-between gap-3">
+                            <span>{l.label}</span>
+                            <span className="tabular-nums">
+                              {formatPaise(l.amountPaise)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </CardContent>
@@ -986,6 +1158,25 @@ function ResidentDetail({ id }: { id: string }) {
         onClose={() => setDepositOpen(false)}
         onDone={async () => {
           setDepositOpen(false);
+          await refresh();
+        }}
+      />
+      <AddChargeDialog
+        open={chargeOpen}
+        residentId={id}
+        onClose={() => setChargeOpen(false)}
+        onDone={async () => {
+          setChargeOpen(false);
+          setBreakdowns({}); // invoice totals may have changed — drop cache
+          setExpanded(new Set());
+          await refresh();
+        }}
+      />
+      <DeleteInvoiceDialog
+        invoice={deletingInvoice}
+        onClose={() => setDeletingInvoice(null)}
+        onDone={async () => {
+          setDeletingInvoice(null);
           await refresh();
         }}
       />
@@ -1292,6 +1483,177 @@ function RecordDepositDialog({
           </Button>
           <Button type="submit" disabled={busy || rupees === ""}>
             {busy ? "Saving…" : "Record"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+function AddChargeDialog({
+  open,
+  residentId,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  residentId: string;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+}) {
+  const toast = useToast();
+  const [label, setLabel] = useState("");
+  const [rupees, setRupees] = useState("");
+  const [frequency, setFrequency] = useState<ChargeFrequency>(
+    ChargeFrequency.ONE_TIME,
+  );
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setLabel("");
+      setRupees("");
+      setFrequency(ChargeFrequency.ONE_TIME);
+    }
+  }, [open]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.charges.create({
+        residentId,
+        label: label.trim(),
+        amountPaise: Math.round(Number(rupees) * 100),
+        frequency,
+      });
+      await onDone();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not add the charge."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Add extra charge"
+      description="Bill this resident beyond rent. A monthly charge recurs every invoice until stopped; both fold into the resident's current open invoice when possible."
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="What is this charge for?" htmlFor="charge-label">
+          <Input
+            id="charge-label"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            required
+            maxLength={120}
+            placeholder="e.g. Laundry, extra electricity, late fee"
+          />
+        </Field>
+        <Field label="Amount (₹)" htmlFor="charge-amount">
+          <Input
+            id="charge-amount"
+            type="number"
+            min={1}
+            step="1"
+            value={rupees}
+            onChange={(e) => setRupees(e.target.value)}
+            required
+            placeholder="e.g. 500"
+          />
+        </Field>
+        <Field label="Frequency" htmlFor="charge-frequency">
+          <select
+            id="charge-frequency"
+            className={inputClass}
+            value={frequency}
+            onChange={(e) => setFrequency(e.target.value as ChargeFrequency)}
+          >
+            <option value={ChargeFrequency.ONE_TIME}>One-time</option>
+            <option value={ChargeFrequency.MONTHLY}>Every month</option>
+          </select>
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={busy || label.trim() === "" || rupees === ""}>
+            {busy ? "Saving…" : "Add charge"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+function DeleteInvoiceDialog({
+  invoice,
+  onClose,
+  onDone,
+}: {
+  invoice: InvoiceSummary | null;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+}) {
+  const toast = useToast();
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setReason("");
+  }, [invoice?.id]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!invoice) return;
+    setBusy(true);
+    try {
+      await api.invoices.delete(invoice.id, { reason: reason.trim() });
+      await onDone();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not delete the invoice."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={invoice !== null}
+      onClose={onClose}
+      title="Delete invoice?"
+      description={
+        invoice
+          ? `${invoice.period} · ${formatPaise(invoice.amountPaise)}. This voids the invoice — it can no longer be paid, but stays listed with your reason.`
+          : undefined
+      }
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Reason" htmlFor="del-invoice-reason">
+          <textarea
+            id="del-invoice-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            required
+            maxLength={300}
+            rows={3}
+            placeholder="Why is this invoice being deleted? (shown on the invoice)"
+            className={inputClass + " h-auto py-2"}
+          />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="danger"
+            disabled={busy || reason.trim() === ""}
+          >
+            {busy ? "Deleting…" : "Delete invoice"}
           </Button>
         </div>
       </form>

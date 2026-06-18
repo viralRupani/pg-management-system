@@ -21,12 +21,15 @@ import { TenantContextService } from "../db/tenant-context";
 import {
   allocations,
   beds,
+  extraCharges,
+  invoiceCharges,
   invoices,
   payments,
   rentAdjustments,
   rooms,
   users,
 } from "../db/schema";
+import { ChargeFrequency } from "@pg/shared";
 import {
   STORAGE_PROVIDER,
   type StorageProvider,
@@ -138,6 +141,7 @@ export class RentService {
       // invoice has a unique residentId (ON CONFLICT on resident_id+period, one
       // period), so the map is unambiguous. The remaining writes run only for
       // residents who actually have adjustments.
+      const residentIds = inserted.map((i) => i.residentId);
       const pendingByResident = new Map<
         string,
         { id: string; amountPaise: number }[]
@@ -151,10 +155,7 @@ export class RentService {
         .from(rentAdjustments)
         .where(
           and(
-            inArray(
-              rentAdjustments.residentId,
-              inserted.map((i) => i.residentId),
-            ),
+            inArray(rentAdjustments.residentId, residentIds),
             isNull(rentAdjustments.appliedToInvoiceId),
           ),
         );
@@ -167,22 +168,101 @@ export class RentService {
           ]);
       }
 
-      for (const inv of inserted) {
-        const pending = pendingByResident.get(inv.residentId);
-        if (!pending || pending.length === 0) continue;
-
-        const sum = pending.reduce((s, a) => s + a.amountPaise, 0);
-        const newTotal = inv.amountPaise + sum;
-
-        await tx
-          .update(rentAdjustments)
-          .set({ appliedToInvoiceId: inv.id, appliedAt: new Date() })
-          .where(
-            inArray(
-              rentAdjustments.id,
-              pending.map((p) => p.id),
+      // Manager/owner-authored extra charges fold in the SAME way — added into
+      // each invoice's total (and recorded as an `invoice_charges` line for the
+      // breakdown). One ONE_TIME charge is consumed once (filtered on
+      // applied_at IS NULL here, stamped applied below); every active MONTHLY
+      // charge recurs each run. Folding charges into `newTotal` alongside the
+      // signed adjustments means a carried-forward credit correctly offsets a
+      // charge before any carry-forward is recomputed.
+      const chargesByResident = new Map<
+        string,
+        { id: string; label: string; amountPaise: number; oneTime: boolean }[]
+      >();
+      const allCharges = await tx
+        .select({
+          id: extraCharges.id,
+          residentId: extraCharges.residentId,
+          label: extraCharges.label,
+          amountPaise: extraCharges.amountPaise,
+          frequency: extraCharges.frequency,
+        })
+        .from(extraCharges)
+        .where(
+          and(
+            inArray(extraCharges.residentId, residentIds),
+            eq(extraCharges.active, true),
+            or(
+              eq(extraCharges.frequency, ChargeFrequency.MONTHLY),
+              and(
+                eq(extraCharges.frequency, ChargeFrequency.ONE_TIME),
+                isNull(extraCharges.appliedToInvoiceId),
+              ),
             ),
-          );
+          ),
+        );
+      for (const c of allCharges) {
+        const entry = {
+          id: c.id,
+          label: c.label,
+          amountPaise: c.amountPaise,
+          oneTime: c.frequency === ChargeFrequency.ONE_TIME,
+        };
+        const list = chargesByResident.get(c.residentId);
+        if (list) list.push(entry);
+        else chargesByResident.set(c.residentId, [entry]);
+      }
+
+      for (const inv of inserted) {
+        const pending = pendingByResident.get(inv.residentId) ?? [];
+        const charges = chargesByResident.get(inv.residentId) ?? [];
+        if (pending.length === 0 && charges.length === 0) continue;
+
+        const adjSum = pending.reduce((s, a) => s + a.amountPaise, 0);
+        const chargeSum = charges.reduce((s, c) => s + c.amountPaise, 0);
+        const newTotal = inv.amountPaise + adjSum + chargeSum;
+
+        if (pending.length > 0) {
+          await tx
+            .update(rentAdjustments)
+            .set({ appliedToInvoiceId: inv.id, appliedAt: new Date() })
+            .where(
+              inArray(
+                rentAdjustments.id,
+                pending.map((p) => p.id),
+              ),
+            );
+        }
+
+        if (charges.length > 0) {
+          // unique(charge_id, period) keeps a re-run from double-recording a
+          // monthly charge for the same month.
+          await tx
+            .insert(invoiceCharges)
+            .values(
+              charges.map((c) => ({
+                tenantId,
+                invoiceId: inv.id,
+                chargeId: c.id,
+                residentId: inv.residentId,
+                label: c.label,
+                amountPaise: c.amountPaise,
+                period,
+              })),
+            )
+            .onConflictDoNothing({
+              target: [invoiceCharges.chargeId, invoiceCharges.period],
+            });
+          const oneTimeIds = charges
+            .filter((c) => c.oneTime)
+            .map((c) => c.id);
+          if (oneTimeIds.length > 0) {
+            await tx
+              .update(extraCharges)
+              .set({ appliedToInvoiceId: inv.id, appliedAt: new Date() })
+              .where(inArray(extraCharges.id, oneTimeIds));
+          }
+        }
 
         if (newTotal >= 0) {
           await tx
@@ -224,6 +304,7 @@ export class RentService {
     const cutoff = istStartOfDayUtc(new Date());
     const conds = [
       eq(invoices.status, InvoiceStatus.PENDING),
+      isNull(invoices.deletedAt), // a voided invoice never becomes overdue
       sql`${invoices.dueDate} < ${cutoff}`,
     ];
     if (period) conds.push(eq(invoices.period, period));
@@ -262,6 +343,8 @@ export class RentService {
         amountPaise: invoices.amountPaise,
         dueDate: invoices.dueDate,
         status: invoices.status,
+        deletedAt: invoices.deletedAt,
+        deletedReason: invoices.deletedReason,
       })
       .from(invoices)
       .innerJoin(users, eq(users.id, invoices.residentId));
@@ -275,6 +358,7 @@ export class RentService {
     // bucket newest period / most-recently created. OVERDUE outranks PENDING
     // because it's the rent a manager most needs to chase.
     const collectFirst = sql`case
+      when ${invoices.deletedAt} is not null then 3
       when ${invoices.status} = ${InvoiceStatus.OVERDUE} then 0
       when ${invoices.status} = ${InvoiceStatus.PENDING} then 1
       else 2 end`;
@@ -295,6 +379,8 @@ export class RentService {
         amountPaise: r.amountPaise,
         dueDate: r.dueDate.toISOString(),
         status: r.status as InvoiceStatus,
+        deletedAt: r.deletedAt ? r.deletedAt.toISOString() : null,
+        deletedReason: r.deletedReason,
       })),
       total,
       page,
@@ -314,6 +400,8 @@ export class RentService {
         amountPaise: invoices.amountPaise,
         dueDate: invoices.dueDate,
         status: invoices.status,
+        deletedAt: invoices.deletedAt,
+        deletedReason: invoices.deletedReason,
       })
       .from(invoices)
       .innerJoin(users, eq(users.id, invoices.residentId))
@@ -327,7 +415,43 @@ export class RentService {
       amountPaise: r.amountPaise,
       dueDate: r.dueDate.toISOString(),
       status: r.status as InvoiceStatus,
+      deletedAt: r.deletedAt ? r.deletedAt.toISOString() : null,
+      deletedReason: r.deletedReason,
     }));
+  }
+
+  /**
+   * Manager: void (soft-delete) an invoice with a mandatory reason. The invoice
+   * stays in the list (shown cancelled, with the reason) but is no longer owed:
+   * it can't be paid, overdue-marking skips it, and it drops out of totals.
+   * Conditional flip on `deleted_at IS NULL` so a double-delete is a 409, not a
+   * silent reason-overwrite. `status` is intentionally left as-is.
+   */
+  async deleteInvoice(
+    invoiceId: string,
+    managerId: string,
+    reason: string,
+  ): Promise<{ deletedAt: string }> {
+    const voided = await this.ctx
+      .db()
+      .update(invoices)
+      .set({
+        deletedAt: new Date(),
+        deletedReason: reason,
+        deletedByUserId: managerId, // actor from JWT sub
+      })
+      .where(and(eq(invoices.id, invoiceId), isNull(invoices.deletedAt)))
+      .returning({ deletedAt: invoices.deletedAt });
+    if (voided.length !== 1) {
+      const [exists] = await this.ctx
+        .db()
+        .select({ id: invoices.id })
+        .from(invoices)
+        .where(eq(invoices.id, invoiceId));
+      if (!exists) throw new NotFoundException("Invoice not found");
+      throw new ConflictException("Invoice is already deleted");
+    }
+    return { deletedAt: voided[0].deletedAt!.toISOString() };
   }
 
   /** Resident: presigned URL to upload a screenshot for THEIR invoice. */
@@ -352,6 +476,9 @@ export class RentService {
   ): Promise<{ id: string }> {
     const tenantId = this.ctx.currentTenantId()!;
     const invoice = await this.ownedInvoice(residentId, input.invoiceId);
+    // A voided (soft-deleted) invoice is no longer owed — reject any payment.
+    if (invoice.deletedAt)
+      throw new ConflictException("Invoice has been cancelled");
     // Only a payable invoice (PENDING or its past-due OVERDUE form) takes a
     // payment — blocks piling dead SUBMITTED rows onto an already-settled one
     // (PAID, or WAIVED where the manager forgave the rent so there's nothing to
@@ -512,11 +639,16 @@ export class RentService {
                 InvoiceStatus.PENDING,
                 InvoiceStatus.OVERDUE,
               ]),
+              // A voided invoice is no longer owed — approving a payment that was
+              // submitted before the void must NOT resurrect it to PAID. The
+              // shared txn rolls back, leaving the payment SUBMITTED (same guard
+              // shape as the single-settle invariant above).
+              isNull(invoices.deletedAt),
             ),
           )
           .returning({ id: invoices.id });
         if (paid.length !== 1)
-          throw new ConflictException("Invoice is already paid");
+          throw new ConflictException("Invoice is already paid or cancelled");
       }
       return { status: decision };
     });

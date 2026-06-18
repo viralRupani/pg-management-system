@@ -54,6 +54,37 @@ Fixed since the audit: HIGH OVERDUE-can't-settle (`e53195f`), auth rate-limiting
 - Driven daily @ 08:00 (before the 09:00 reminders) via the `mark-overdue`
   repeatable job; manual trigger at `POST /platform/jobs/mark-overdue`.
 
+### Resident billing
+
+**Extra charges** (2026-06-18) — ✅ DONE
+- Manager/owner adds free-text-labelled charges to a resident — `ONE_TIME` or
+  recurring `MONTHLY` (`extra_charges` definition + `invoice_charges` per-invoice
+  snapshot). Applied to the resident's current open invoice immediately (skipped
+  when a `SUBMITTED` payment is in flight → queued), and folded into each monthly
+  generation alongside `rent_adjustments`. Remove = soft-deactivate (keeps billed
+  history). Admin: resident-profile "Extra charges" card + per-invoice breakdown;
+  mobile: invoice-detail breakdown. `ChargesModule`, `apps/api/src/charges/`.
+- Still open (deferred):
+  - **Notify the resident** when a charge is added (via the `NotificationsModule`
+    stub) — not wired; push is stubbed anyway.
+  - **Reverse/refund an already-applied charge** — would need a credit
+    `rent_adjustment`; today remove only stops future months. Same gap covers
+    **voiding an invoice that already consumed a one-time charge**: the charge's
+    `appliedAt` stays stamped, so it is not re-queued onto a future invoice.
+
+**Invoice soft-delete (void)** (2026-06-18) — ✅ DONE
+- Manager voids an invoice with a mandatory reason (`invoices.deleted_at`/
+  `deleted_reason`/`deleted_by_user_id`; conditional-flip guard → 409 on
+  double-delete). A voided invoice is no longer owed: `submitPayment` rejects it,
+  `markOverdue` skips it, and it drops out of billed/paid totals + extra-charge
+  apply-now — but it stays in every list (greyed, with the reason). `RentService.
+  deleteInvoice`, `POST /invoices/:id/delete`. Admin: delete button + confirm
+  modal (required reason) on both the Rent invoices tab and the resident profile;
+  mobile shows a "Cancelled" state + reason and hides Pay.
+- Still open (deferred): **no un-delete / restore** path — voiding is one-way in
+  the UI (a mis-void needs a DB fix or re-generation). Add `POST /invoices/:id/
+  restore` if managers need it.
+
 ### Owner/manager management
 
 **Manager reactivation** (PG Owner deferred)

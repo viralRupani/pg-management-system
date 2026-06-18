@@ -29,6 +29,12 @@ export const invoices = pgTable(
     amountPaise: integer("amount_paise").notNull(),
     dueDate: timestamp("due_date", { withTimezone: true }).notNull(),
     status: text("status").notNull().default("PENDING"), // InvoiceStatus
+    // Manager soft-delete (void). null = live; when set the invoice is cancelled:
+    // unpayable, skipped by overdue-marking, and dropped from billed/paid totals,
+    // but it stays in the list with the reason shown. status is left untouched.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedReason: text("deleted_reason"),
+    deletedByUserId: uuid("deleted_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -39,6 +45,11 @@ export const invoices = pgTable(
       foreignColumns: [users.id, users.tenantId],
       name: "invoices_resident_id_tenant_id_fk",
     }).onDelete("cascade"),
+    deletedByFk: foreignKey({
+      columns: [t.deletedByUserId, t.tenantId],
+      foreignColumns: [users.id, users.tenantId],
+      name: "invoices_deleted_by_user_id_tenant_id_fk",
+    }),
     idTenant: unique("invoices_id_tenant_id_unique").on(t.id, t.tenantId),
     residentPeriod: unique("invoices_resident_id_period_unique").on(
       t.residentId,

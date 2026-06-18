@@ -16,7 +16,7 @@ import { Screen } from '@/components/ui/screen';
 import { Sheet } from '@/components/ui/sheet';
 import { invoiceStatus } from '@/components/ui/status';
 import { api } from '@/lib/api';
-import { qk, useInvoices, usePaymentInfo } from '@/lib/queries';
+import { qk, useInvoiceCharges, useInvoices, usePaymentInfo } from '@/lib/queries';
 import { InvoiceStatus, PaymentMethod } from '@pg/shared';
 import {
   MAX_UPLOAD_LABEL,
@@ -35,6 +35,7 @@ export default function InvoiceDetailScreen() {
   const invoice = data?.find((i) => i.id === id);
 
   const { data: paymentInfo } = usePaymentInfo();
+  const { data: charges } = useInvoiceCharges(id);
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [method, setMethod] = useState<PaymentMethod>(PaymentMethod.UPI);
@@ -99,9 +100,11 @@ export default function InvoiceDetailScreen() {
   }
 
   const status = invoiceStatus(invoice.status);
+  const deleted = Boolean(invoice.deletedAt);
   const payable =
-    invoice.status === InvoiceStatus.PENDING ||
-    invoice.status === InvoiceStatus.OVERDUE;
+    !deleted &&
+    (invoice.status === InvoiceStatus.PENDING ||
+      invoice.status === InvoiceStatus.OVERDUE);
 
   async function choose(source: 'library' | 'camera') {
     const img = await pickImage(source);
@@ -178,9 +181,40 @@ export default function InvoiceDetailScreen() {
           <Text className="text-[15px] font-bold text-ink">
             {formatPeriod(invoice.period)}
           </Text>
-          <Badge label={status.label} variant={status.variant} />
+          {deleted ? (
+            <Badge label="Cancelled" variant="neutral" />
+          ) : (
+            <Badge label={status.label} variant={status.variant} />
+          )}
         </View>
         <View className="my-3 h-px bg-line2" />
+        {charges && charges.length > 0 ? (
+          <View className="mb-3 gap-1.5">
+            {/* "Rent & adjustments" is the remainder — it also covers proration
+                and any transfer/carry-forward corrections. */}
+            <View className="flex-row items-center justify-between">
+              <Text className="text-[13px] text-ink2">Rent &amp; adjustments</Text>
+              <Text className="text-[13px] text-ink">
+                {formatPaise(
+                  invoice.amountPaise -
+                    charges.reduce((s, c) => s + c.amountPaise, 0),
+                )}
+              </Text>
+            </View>
+            {charges.map((c) => (
+              <View
+                key={c.id}
+                className="flex-row items-center justify-between"
+              >
+                <Text className="text-[13px] text-ink2">{c.label}</Text>
+                <Text className="text-[13px] text-ink">
+                  {formatPaise(c.amountPaise)}
+                </Text>
+              </View>
+            ))}
+            <View className="my-1.5 h-px bg-line2" />
+          </View>
+        ) : null}
         <View className="flex-row items-center justify-between">
           <Text className="text-[13px] text-ink2">Total payable</Text>
           <Text className="text-[22px] font-extrabold text-ink">
@@ -192,6 +226,20 @@ export default function InvoiceDetailScreen() {
         </Text>
       </Card>
 
+      {deleted ? (
+        <Card className="bg-surface2">
+          <Text className="text-[11px] font-bold uppercase tracking-wider text-ink3">
+            Invoice cancelled
+          </Text>
+          <Text className="mt-1.5 text-[13px] leading-5 text-ink2">
+            Your manager cancelled this invoice
+            {invoice.deletedReason ? `: ${invoice.deletedReason}` : '.'} Nothing
+            is owed — no payment is needed.
+          </Text>
+        </Card>
+      ) : null}
+
+      {deleted ? null : (
       <Card className="bg-surface2">
         <Text className="text-[11px] font-bold uppercase tracking-wider text-ink3">
           How to pay
@@ -202,6 +250,7 @@ export default function InvoiceDetailScreen() {
           Your manager reviews and approves it.
         </Text>
       </Card>
+      )}
 
       {payable ? (
         <Button title="Submit payment" onPress={() => setSheetOpen(true)} />

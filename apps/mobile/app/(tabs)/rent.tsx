@@ -25,7 +25,10 @@ export default function RentScreen() {
   const { data, isLoading, isFetching, refetch } = useInvoices();
 
   const due = data?.find(
-    (i) => i.status === InvoiceStatus.PENDING || i.status === InvoiceStatus.OVERDUE,
+    (i) =>
+      !i.deletedAt &&
+      (i.status === InvoiceStatus.PENDING ||
+        i.status === InvoiceStatus.OVERDUE),
   );
 
   return (
@@ -93,6 +96,7 @@ function InvoiceRow({
   first: boolean;
   onPress: () => void;
 }) {
+  const deleted = Boolean(invoice.deletedAt);
   const r = RICON[invoice.status] ?? RICON[InvoiceStatus.PENDING];
   const status = invoiceStatus(invoice.status);
   return (
@@ -101,8 +105,14 @@ function InvoiceRow({
       onPress={onPress}
       leading={<Ricon name={r.name} className={r.bg} color={r.color} />}
       title={formatPeriod(invoice.period)}
-      subtitle={formatPaise(invoice.amountPaise)}
-      trailing={<Badge label={status.label} variant={status.variant} />}
+      subtitle={deleted ? 'Cancelled' : formatPaise(invoice.amountPaise)}
+      trailing={
+        deleted ? (
+          <Badge label="Cancelled" variant="neutral" />
+        ) : (
+          <Badge label={status.label} variant={status.variant} />
+        )
+      }
     />
   );
 }

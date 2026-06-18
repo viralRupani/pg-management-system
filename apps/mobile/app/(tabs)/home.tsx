@@ -60,7 +60,10 @@ export default function HomeScreen() {
 
   const name = invoices.data?.[0]?.residentName?.split(' ')[0] ?? 'there';
   const dueInvoice = invoices.data?.find(
-    (i) => i.status === InvoiceStatus.PENDING || i.status === InvoiceStatus.OVERDUE,
+    (i) =>
+      !i.deletedAt &&
+      (i.status === InvoiceStatus.PENDING ||
+        i.status === InvoiceStatus.OVERDUE),
   );
   const isOverdue = dueInvoice?.status === InvoiceStatus.OVERDUE;
   const rentBadge = dueInvoice ? invoiceStatus(dueInvoice.status) : null;

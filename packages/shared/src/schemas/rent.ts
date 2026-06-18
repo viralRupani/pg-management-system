@@ -26,8 +26,18 @@ export const invoiceSummarySchema = z.object({
   amountPaise: z.number().int(),
   dueDate: z.string(),
   status: z.nativeEnum(InvoiceStatus),
+  // Soft-delete (void): non-null when the invoice has been cancelled by a
+  // manager; `deletedReason` is the required note shown over the invoice.
+  deletedAt: z.string().nullable(),
+  deletedReason: z.string().nullable(),
 });
 export type InvoiceSummary = z.infer<typeof invoiceSummarySchema>;
+
+/** Manager voids (soft-deletes) an invoice — a reason is mandatory. */
+export const deleteInvoiceSchema = z.object({
+  reason: z.string().trim().min(1).max(300),
+});
+export type DeleteInvoiceInput = z.infer<typeof deleteInvoiceSchema>;
 
 /** Query params for the manager's invoice list — search + offset pagination. */
 export const invoiceListQuerySchema = z.object({

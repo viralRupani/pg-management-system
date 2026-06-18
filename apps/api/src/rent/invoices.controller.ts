@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import {
+  type DeleteInvoiceInput,
   type GenerateInvoicesInput,
   type InvoiceListQuery,
   type JwtPayload,
   UserRole,
+  deleteInvoiceSchema,
   generateInvoicesSchema,
   invoiceListQuerySchema,
 } from "@pg/shared";
@@ -33,5 +35,15 @@ export class InvoicesController {
   @Roles(UserRole.RESIDENT)
   listMine(@CurrentUser() user: JwtPayload) {
     return this.rent.listMyInvoices(user.sub);
+  }
+
+  @Post(":id/delete")
+  @Roles(UserRole.PG_MANAGER)
+  delete(
+    @CurrentUser() user: JwtPayload,
+    @Param("id") id: string,
+    @Body(new ZodBody(deleteInvoiceSchema)) dto: DeleteInvoiceInput,
+  ) {
+    return this.rent.deleteInvoice(id, user.sub, dto.reason);
   }
 }
