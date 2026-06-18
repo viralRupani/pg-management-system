@@ -3,7 +3,8 @@
 import type { InvoiceSummary, PaymentSummary } from "@pg/shared";
 import { ImageIcon, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -42,8 +43,25 @@ const currentPeriod = () => new Date().toISOString().slice(0, 7);
 const INVOICES_PAGE_SIZE = 10;
 
 export default function RentPage() {
+  return (
+    <Suspense
+      fallback={<div className="h-40 animate-pulse rounded bg-muted" />}
+    >
+      <RentPageInner />
+    </Suspense>
+  );
+}
+
+function RentPageInner() {
   const toast = useToast();
-  const [tab, setTab] = useState<Tab>("payments");
+  // A "View invoices" link from a resident lands here pre-filtered to them.
+  const residentId = useSearchParams().get("resident") ?? undefined;
+  const [tab, setTab] = useState<Tab>(residentId ? "invoices" : "payments");
+
+  // Following a fresh resident link keeps us on the Invoices tab.
+  useEffect(() => {
+    if (residentId) setTab("invoices");
+  }, [residentId]);
   const [payments, setPayments] = useState<PaymentSummary[] | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("SUBMITTED");
   const [paymentsFailed, setPaymentsFailed] = useState(false);
@@ -62,9 +80,7 @@ export default function RentPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const loadPayments = useCallback(async (filter: StatusFilter) => {
-    const list = await api.payments.list(
-      filter === "ALL" ? undefined : filter,
-    );
+    const list = await api.payments.list(filter === "ALL" ? undefined : filter);
     setPayments(list);
   }, []);
 
@@ -185,7 +201,7 @@ export default function RentPage() {
           onView={viewScreenshot}
         />
       ) : (
-        <InvoicesTab refreshKey={invoicesRefresh} />
+        <InvoicesTab refreshKey={invoicesRefresh} residentId={residentId} />
       )}
 
       <RejectDialog
@@ -294,7 +310,8 @@ function PaymentsTab({
                       </p>
                       {p.method === "CASH" ? (
                         <p className="mt-0.5 text-xs text-muted-foreground">
-                          Paid in cash — confirm you received it before approving.
+                          Paid in cash — confirm you received it before
+                          approving.
                         </p>
                       ) : p.referenceId ? (
                         <p className="mt-0.5 text-xs text-muted-foreground">
@@ -362,7 +379,13 @@ function PaymentsTab({
   );
 }
 
-function InvoicesTab({ refreshKey }: { refreshKey: number }) {
+function InvoicesTab({
+  refreshKey,
+  residentId,
+}: {
+  refreshKey: number;
+  residentId?: string;
+}) {
   const toast = useToast();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -372,6 +395,7 @@ function InvoicesTab({ refreshKey }: { refreshKey: number }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [deleting, setDeleting] = useState<InvoiceSummary | null>(null);
   const [localRefresh, setLocalRefresh] = useState(0);
+  const [residentName, setResidentName] = useState<string | null>(null);
 
   // Debounce the search so we hit the API once the user pauses typing.
   useEffect(() => {
@@ -379,19 +403,20 @@ function InvoicesTab({ refreshKey }: { refreshKey: number }) {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  // A new search invalidates the current page.
+  // A new search or resident filter invalidates the current page.
   useEffect(() => {
     setPage(1);
-  }, [search]);
+  }, [search, residentId]);
 
-  // Server-side search + pagination; also refetch when the parent signals a
-  // change (generate / approval) via refreshKey.
+  // Server-side search + pagination, scoped to a resident when one is set; also
+  // refetch when the parent signals a change (generate / approval) via refreshKey.
   useEffect(() => {
     let cancelled = false;
     setLoadFailed(false);
     (async () => {
       try {
         const res = await api.invoices.list({
+          residentId,
           q: search || undefined,
           page,
           limit: INVOICES_PAGE_SIZE,
@@ -409,7 +434,32 @@ function InvoicesTab({ refreshKey }: { refreshKey: number }) {
     return () => {
       cancelled = true;
     };
-  }, [search, page, refreshKey, localRefresh, toast]);
+  }, [search, page, refreshKey, localRefresh, residentId, toast]);
+
+  // Resolve the filtered resident's name for the banner — prefer a loaded
+  // invoice row, fall back to a light fetch so it shows even with zero invoices.
+  useEffect(() => {
+    if (!residentId) {
+      setResidentName(null);
+      return;
+    }
+    if (items && items.length > 0) {
+      setResidentName(items[0].residentName);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api.residents.get(residentId);
+        if (!cancelled) setResidentName(r.name);
+      } catch {
+        /* banner falls back to generic copy */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [residentId, items]);
 
   const totalPages = Math.max(1, Math.ceil(total / INVOICES_PAGE_SIZE));
 
@@ -426,6 +476,20 @@ function InvoicesTab({ refreshKey }: { refreshKey: number }) {
 
   return (
     <div className="space-y-4">
+      {residentId && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-4 py-2.5 text-sm">
+          <span className="text-muted-foreground">
+            Showing invoices for{" "}
+            <span className="font-medium text-foreground">
+              {residentName ?? "this resident"}
+            </span>
+          </span>
+          <Link href="/rent" className="font-medium text-brand hover:underline">
+            View all invoices
+          </Link>
+        </div>
+      )}
+
       {showSearch && (
         <Input
           value={searchInput}
@@ -501,7 +565,9 @@ function InvoicesTab({ refreshKey }: { refreshKey: number }) {
                         {formatPaise(inv.amountPaise)}
                       </span>
                       <div className="flex w-24 justify-center">
-                        <Badge tone={deleted ? "neutral" : invoiceTone(inv.status)}>
+                        <Badge
+                          tone={deleted ? "neutral" : invoiceTone(inv.status)}
+                        >
                           {deleted ? "deleted" : inv.status.toLowerCase()}
                         </Badge>
                       </div>
@@ -770,7 +836,8 @@ function GenerateDialog({
             .map((r) => ({ id: r.id, name: r.name, bedLabel: r.bedLabel! })),
         );
       } catch (err) {
-        if (!cancelled) toast.error(toMessage(err, "Could not load residents."));
+        if (!cancelled)
+          toast.error(toMessage(err, "Could not load residents."));
       } finally {
         if (!cancelled) setLoadingTargets(false);
       }
@@ -931,7 +998,11 @@ function ScreenshotDialog({
   state,
   onClose,
 }: {
-  state: { payment: PaymentSummary; url: string | null; error: string | null } | null;
+  state: {
+    payment: PaymentSummary;
+    url: string | null;
+    error: string | null;
+  } | null;
   onClose: () => void;
 }) {
   return (

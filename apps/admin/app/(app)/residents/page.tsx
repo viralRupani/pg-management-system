@@ -8,7 +8,6 @@ import {
   type DocumentSummary,
   EmergencyRelation,
   type ExtraChargeSummary,
-  type InvoiceCharge,
   type InvoiceSummary,
   KycStatus,
   OccupationType,
@@ -22,10 +21,10 @@ import {
   ArrowRightLeft,
   BedDouble,
   ChevronDown,
-  Download,
+  Eye,
   MessageSquare,
   Plus,
-  Trash2,
+  Receipt,
   UserPlus,
 } from "lucide-react";
 import Link from "next/link";
@@ -47,14 +46,6 @@ const residentTone = (s: ResidentSummary["status"]) =>
   s === "ACTIVE" ? "success" : s === "UPCOMING" ? "warning" : "neutral";
 const docTone = (s: DocumentSummary["status"]) =>
   s === "VERIFIED" ? "success" : s === "REJECTED" ? "danger" : "warning";
-const invoiceTone = (s: InvoiceSummary["status"]) =>
-  s === "PAID"
-    ? "success"
-    : s === "OVERDUE"
-      ? "danger"
-      : s === "WAIVED"
-        ? "neutral"
-        : "warning";
 
 const kycTone = (s: KycStatus) =>
   s === "VERIFIED"
@@ -75,7 +66,9 @@ const kycLabel = (s: KycStatus) =>
 
 export default function ResidentsPage() {
   return (
-    <Suspense fallback={<div className="h-40 animate-pulse rounded bg-muted" />}>
+    <Suspense
+      fallback={<div className="h-40 animate-pulse rounded bg-muted" />}
+    >
       <ResidentsRouter />
     </Suspense>
   );
@@ -519,15 +512,8 @@ function ResidentDetail({ id }: { id: string }) {
   const [transferring, setTransferring] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
   const [chargeOpen, setChargeOpen] = useState(false);
-  const [deletingInvoice, setDeletingInvoice] = useState<InvoiceSummary | null>(
-    null,
-  );
   const [exitOpen, setExitOpen] = useState(false);
-  const [breakdowns, setBreakdowns] = useState<Record<string, InvoiceCharge[]>>(
-    {},
-  );
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [rejectingDoc, setRejectingDoc] = useState<DocumentSummary | null>(null);
+  const [viewingDoc, setViewingDoc] = useState<DocumentSummary | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -575,7 +561,8 @@ function ResidentDetail({ id }: { id: string }) {
           transfers: allTransfers.filter((t) => t.residentId === id),
         });
       } catch (err) {
-        if (!cancelled) setLoadError(toMessage(err, "Could not load resident."));
+        if (!cancelled)
+          setLoadError(toMessage(err, "Could not load resident."));
       }
     })();
     return () => {
@@ -639,43 +626,14 @@ function ResidentDetail({ id }: { id: string }) {
     }
   };
 
-  // Lazy-load an invoice's labelled charge breakdown on first expand.
-  const toggleBreakdown = async (invoiceId: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(invoiceId)) next.delete(invoiceId);
-      else next.add(invoiceId);
-      return next;
-    });
-    if (!breakdowns[invoiceId]) {
-      try {
-        const rows = await api.charges.forInvoice(invoiceId);
-        setBreakdowns((prev) => ({ ...prev, [invoiceId]: rows }));
-      } catch (err) {
-        toast.error(toMessage(err, "Could not load the invoice breakdown."));
-      }
-    }
+  const handleApproveDoc = async (docId: string) => {
+    await api.documents.verify(docId);
+    await load();
   };
 
-  const verifyDoc = async (docId: string) => {
-    setBusy(true);
-    try {
-      await api.documents.verify(docId);
-      await load();
-    } catch (err) {
-      toast.error(toMessage(err, "Could not verify the document."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const downloadDoc = async (docId: string) => {
-    try {
-      const { downloadUrl } = await api.documents.download(docId);
-      window.open(downloadUrl, "_blank", "noopener");
-    } catch (err) {
-      toast.error(toMessage(err, "Could not open the document."));
-    }
+  const handleRejectDoc = async (docId: string, note: string) => {
+    await api.documents.reject(docId, note);
+    await load();
   };
 
   if (loadError && !data) {
@@ -703,445 +661,394 @@ function ResidentDetail({ id }: { id: string }) {
     data;
   const active = resident.status === "ACTIVE";
   const pendingTransfer = transfers.find((t) => t.status === "PENDING") ?? null;
+  // What the resident still owes — every non-voided invoice that isn't PAID or
+  // WAIVED (covers UNPAID + OVERDUE). Drives the summary tile; the full list
+  // lives on the Rent page (via the "View invoices" button).
+  const outstandingPaise = invoices
+    .filter((i) => !i.deletedAt && i.status !== "PAID" && i.status !== "WAIVED")
+    .reduce((sum, i) => sum + i.amountPaise, 0);
+  const initials = resident.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("");
 
   return (
     <div className="space-y-6">
       <BackLink />
 
-      {/* Header */}
+      {/* Summary header — identity + at-a-glance tiles */}
       <Card>
-        <CardContent className="flex flex-wrap items-start justify-between gap-4 pt-5">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold tracking-tight">
-                {resident.name}
-              </h1>
-              <Badge tone={residentTone(resident.status)}>
-                {resident.status.toLowerCase()}
-              </Badge>
+        <CardContent className="space-y-5 pt-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex min-w-0 items-start gap-4">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-brand/10 text-lg font-semibold text-brand">
+                {initials || "?"}
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-xl font-semibold tracking-tight">
+                    {resident.name}
+                  </h1>
+                  <Badge tone={residentTone(resident.status)}>
+                    {resident.status.toLowerCase()}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {resident.phone}
+                  {resident.age != null ? ` · ${resident.age} yrs` : ""} ·{" "}
+                  {resident.occupationType.toLowerCase()}
+                  {resident.nativePlace ? ` · ${resident.nativePlace}` : ""}
+                </p>
+                {resident.emergencyContactName && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Emergency:{" "}
+                    <span className="font-medium text-foreground">
+                      {resident.emergencyContactName}
+                    </span>
+                    {resident.emergencyContactRelation
+                      ? ` · ${resident.emergencyContactRelation.toLowerCase()}`
+                      : ""}
+                    {resident.emergencyContactPhone
+                      ? ` · ${resident.emergencyContactPhone}`
+                      : ""}
+                  </p>
+                )}
+              </div>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {resident.phone}
-              {resident.age != null ? ` · ${resident.age} yrs` : ""} ·{" "}
-              {resident.occupationType.toLowerCase()}
-              {resident.nativePlace ? ` · ${resident.nativePlace}` : ""}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/complaints?resident=${id}`)}
+              >
+                <MessageSquare className="h-4 w-4" />
+                View complaints
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/rent?resident=${id}`)}
+              >
+                <Receipt className="h-4 w-4" />
+                View invoices
+              </Button>
+            </div>
+          </div>
+
+          {/* At-a-glance tiles */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                Bed / Room
+              </p>
+              <p
+                className={cn(
+                  "mt-1 truncate text-base font-semibold",
+                  !resident.bedLabel && "text-muted-foreground",
+                )}
+              >
+                {resident.bedLabel ?? "Unallocated"}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                Rent outstanding
+              </p>
+              <p
+                className={cn(
+                  "mt-1 text-base font-semibold tabular-nums",
+                  outstandingPaise > 0 ? "text-danger" : "text-foreground",
+                )}
+              >
+                {formatPaise(outstandingPaise)}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                Deposit
+              </p>
+              <p
+                className={cn(
+                  "mt-1 text-base font-semibold tabular-nums",
+                  !deposit && "text-muted-foreground",
+                )}
+              >
+                {deposit ? formatPaise(deposit.amountPaise) : "None"}
+              </p>
+              {deposit && (
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {deposit.status.toLowerCase()}
+                </p>
+              )}
+            </div>
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="text-xs font-medium text-muted-foreground">KYC</p>
+              <div className="mt-1.5">
+                <Badge tone={kycTone(resident.kycStatus)}>
+                  {resident.kycStatus.replace("_", " ").toLowerCase()}
+                </Badge>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pending transfer — time-sensitive, kept prominent above the fold */}
+      {pendingTransfer && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4">
+          <div className="min-w-0 text-sm">
+            <p className="font-medium">
+              Pending move → bed {pendingTransfer.toBedLabel}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              planned {formatDate(pendingTransfer.plannedDate)} · executing
+              splits this month&apos;s rent and credits/charges the difference
+              on the next invoice
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => router.push(`/complaints?resident=${id}`)}
-          >
-            <MessageSquare className="h-4 w-4" />
-            View complaints
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Emergency contact */}
-      {resident.emergencyContactName && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Emergency contact</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm">
-              <span className="font-medium">
-                {resident.emergencyContactName}
-              </span>
-              {resident.emergencyContactRelation
-                ? ` · ${resident.emergencyContactRelation.toLowerCase()}`
-                : ""}
-              {resident.emergencyContactPhone
-                ? ` · ${resident.emergencyContactPhone}`
-                : ""}
-            </p>
-          </CardContent>
-        </Card>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() => executeTransfer(pendingTransfer.id)}
+            >
+              Execute move
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => cancelTransfer(pendingTransfer.id)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
       )}
 
-      {/* Allocation */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Bed allocation</CardTitle>
-          {active &&
-            (resident.bedLabel ? (
-              <div className="flex gap-2">
-                {!pendingTransfer && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setTransferring(true)}
-                  >
-                    <ArrowRightLeft className="h-4 w-4" />
-                    Transfer room
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={busy}
-                  onClick={moveOut}
-                >
-                  Move out
-                </Button>
-              </div>
-            ) : (
-              <Button size="sm" onClick={() => setAllocating(true)}>
-                <BedDouble className="h-4 w-4" />
-                Allocate to bed
-              </Button>
-            ))}
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm">
-            {resident.bedLabel ? (
-              <span className="font-medium">
-                {resident.bedLabel}
-                {resident.roomCapacity != null
-                  ? ` · ${sharingLabel(resident.roomCapacity)}`
-                  : ""}
-              </span>
-            ) : (
-              <span className="text-muted-foreground">
-                Not assigned to a bed.
-              </span>
-            )}
-          </p>
-
-          {pendingTransfer && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-muted/40 p-3">
-              <div className="min-w-0 text-sm">
-                <p className="font-medium">
-                  Pending move → bed {pendingTransfer.toBedLabel}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  planned {formatDate(pendingTransfer.plannedDate)} · executing
-                  splits this month&apos;s rent and credits/charges the
-                  difference on the next invoice
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => executeTransfer(pendingTransfer.id)}
-                >
-                  Execute move
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => cancelTransfer(pendingTransfer.id)}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* KYC documents */}
-      <Card>
-        <CardHeader>
-          <CardTitle>KYC documents</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {documents.length === 0 ? (
-            <EmptyRow text="Awaiting Aadhaar upload from the resident (uploaded from their app)." />
-          ) : (
-            <ul className="divide-y divide-border">
-              {documents.map((d) => (
-                <li
-                  key={d.id}
-                  className="flex flex-wrap items-center justify-between gap-3 py-3"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">
-                      {d.type.replace("_", " ").toLowerCase()}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatDate(d.createdAt)}
-                      {d.reviewNote ? ` · note: ${d.reviewNote}` : ""}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge tone={docTone(d.status)}>
-                      {d.status.toLowerCase()}
-                    </Badge>
+      {/* Detail sections — two columns on desktop, single on mobile. Cards
+          stretch to match their row neighbour's height (grid default). */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* Allocation */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Bed allocation</CardTitle>
+            {active &&
+              (resident.bedLabel ? (
+                <div className="flex gap-2">
+                  {!pendingTransfer && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => downloadDoc(d.id)}
+                      onClick={() => setTransferring(true)}
                     >
-                      <Download className="h-4 w-4" />
+                      <ArrowRightLeft className="h-4 w-4" />
+                      Transfer room
                     </Button>
-                    {d.status === "PENDING" && (
-                      <>
-                        <Button
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => verifyDoc(d.id)}
-                        >
-                          Verify
-                        </Button>
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => setRejectingDoc(d)}
-                        >
-                          Ask for re-upload
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Deposit */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Security deposit</CardTitle>
-          <div className="flex gap-2">
-            {!deposit && active && (
-              <Button size="sm" onClick={() => setDepositOpen(true)}>
-                <Plus className="h-4 w-4" />
-                Record deposit
-              </Button>
-            )}
-            {active && (
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => setExitOpen(true)}
-              >
-                Settle exit
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {deposit ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium">
-                  {formatPaise(deposit.amountPaise)}
-                </span>
-                <Badge tone={deposit.status === "HELD" ? "brand" : "neutral"}>
-                  {deposit.status.toLowerCase()}
-                </Badge>
-              </div>
-              {ledger.length > 0 && (
-                <ul className="divide-y divide-border border-t border-border">
-                  {ledger.map((t) => (
-                    <li
-                      key={t.id}
-                      className="flex items-center justify-between gap-3 py-2 text-sm"
-                    >
-                      <span className="text-muted-foreground">
-                        {t.type.toLowerCase()}
-                        {t.reason ? ` · ${t.reason}` : ""}
-                      </span>
-                      <span
-                        className={cn(
-                          "font-medium",
-                          t.type === "REFUND" ? "text-success" : "text-danger",
-                        )}
-                      >
-                        {t.type === "REFUND" ? "+" : "−"}
-                        {formatPaise(t.amountPaise)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No deposit on record.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Extra charges */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Extra charges</CardTitle>
-          <Button size="sm" onClick={() => setChargeOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Add charge
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {charges.length === 0 ? (
-            <EmptyRow text="No extra charges. Add a one-time or monthly charge for this resident." />
-          ) : (
-            <ul className="divide-y divide-border">
-              {charges.map((c) => {
-                const stopped =
-                  c.frequency === ChargeFrequency.MONTHLY && !c.active;
-                return (
-                  <li
-                    key={c.id}
-                    className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3"
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={moveOut}
                   >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium">{c.label}</p>
+                    Move out
+                  </Button>
+                </div>
+              ) : (
+                <Button size="sm" onClick={() => setAllocating(true)}>
+                  <BedDouble className="h-4 w-4" />
+                  Allocate to bed
+                </Button>
+              ))}
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm">
+              {resident.bedLabel ? (
+                <span className="font-medium">
+                  {resident.bedLabel}
+                  {resident.roomCapacity != null
+                    ? ` · ${sharingLabel(resident.roomCapacity)}`
+                    : ""}
+                </span>
+              ) : (
+                <span className="text-muted-foreground">
+                  Not assigned to a bed.
+                </span>
+              )}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* KYC documents */}
+        <Card>
+          <CardHeader>
+            <CardTitle>KYC documents</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {documents.length === 0 ? (
+              <EmptyRow text="Awaiting Aadhaar upload from the resident (uploaded from their app)." />
+            ) : (
+              <ul className="divide-y divide-border">
+                {documents.map((d) => (
+                  <li
+                    key={d.id}
+                    className="flex flex-wrap items-center justify-between gap-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">
+                        {d.type.replace("_", " ").toLowerCase()}
+                      </p>
                       <p className="text-xs text-muted-foreground">
-                        {c.frequency === ChargeFrequency.MONTHLY
-                          ? stopped
-                            ? "monthly · stopped"
-                            : "monthly"
-                          : c.appliedAt
-                            ? "one-time · billed"
-                            : "one-time · queued"}
+                        {formatDate(d.createdAt)}
+                        {d.reviewNote ? ` · note: ${d.reviewNote}` : ""}
                       </p>
                     </div>
-                    <span className="text-sm font-semibold tabular-nums">
-                      {formatPaise(c.amountPaise)}
-                    </span>
-                    {c.frequency === ChargeFrequency.MONTHLY && c.active && (
+                    <div className="flex items-center gap-2">
+                      <Badge tone={docTone(d.status)}>
+                        {d.status.toLowerCase()}
+                      </Badge>
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={busy}
-                        onClick={() => removeCharge(c.id)}
+                        onClick={() => setViewingDoc(d)}
                       >
-                        Stop
+                        <Eye className="h-4 w-4" />
+                        View
                       </Button>
-                    )}
+                    </div>
                   </li>
-                );
-              })}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
 
-      {/* Rent invoices */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Rent invoices</CardTitle>
-          {invoices.length > 0 && (
-            <span className="text-xs text-muted-foreground">
-              {/* Voided (deleted) invoices are no longer owed — excluded. */}
-              {formatPaise(
-                invoices
-                  .filter((i) => !i.deletedAt && i.status === "PAID")
-                  .reduce((sum, i) => sum + i.amountPaise, 0),
-              )}{" "}
-              paid of{" "}
-              {formatPaise(
-                invoices
-                  .filter((i) => !i.deletedAt)
-                  .reduce((sum, i) => sum + i.amountPaise, 0),
-              )}{" "}
-              billed
-            </span>
-          )}
-        </CardHeader>
-        <CardContent>
-          {invoices.length === 0 ? (
-            <EmptyRow text="No invoices yet. Generate rent from the Rent page." />
-          ) : (
-            <ul className="divide-y divide-border">
-              {invoices.map((inv) => {
-                const isOpen = expanded.has(inv.id);
-                const lines = breakdowns[inv.id];
-                const chargeSum = lines
-                  ? lines.reduce((s, l) => s + l.amountPaise, 0)
-                  : 0;
-                const deleted = Boolean(inv.deletedAt);
-                return (
-                  <li key={inv.id} className="py-3">
-                    <div className="flex w-full items-center gap-x-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleBreakdown(inv.id)}
-                        className="flex flex-1 flex-wrap items-center gap-x-4 gap-y-2 text-left"
+        {/* Deposit */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Security deposit</CardTitle>
+            <div className="flex gap-2">
+              {!deposit && active && (
+                <Button size="sm" onClick={() => setDepositOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  Record deposit
+                </Button>
+              )}
+              {active && (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => setExitOpen(true)}
+                >
+                  Settle exit
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {deposit ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium">
+                    {formatPaise(deposit.amountPaise)}
+                  </span>
+                  <Badge tone={deposit.status === "HELD" ? "brand" : "neutral"}>
+                    {deposit.status.toLowerCase()}
+                  </Badge>
+                </div>
+                {ledger.length > 0 && (
+                  <ul className="divide-y divide-border border-t border-border">
+                    {ledger.map((t) => (
+                      <li
+                        key={t.id}
+                        className="flex items-center justify-between gap-3 py-2 text-sm"
                       >
-                        <ChevronDown
-                          className={cn(
-                            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-                            isOpen && "rotate-180",
-                          )}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p
-                            className={cn(
-                              "text-sm font-medium",
-                              deleted && "text-muted-foreground line-through",
-                            )}
-                          >
-                            {inv.period}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            due {formatDate(inv.dueDate)}
-                          </p>
-                        </div>
+                        <span className="text-muted-foreground">
+                          {t.type.toLowerCase()}
+                          {t.reason ? ` · ${t.reason}` : ""}
+                        </span>
                         <span
                           className={cn(
-                            "text-sm font-semibold tabular-nums",
-                            deleted && "text-muted-foreground line-through",
+                            "font-medium",
+                            t.type === "REFUND"
+                              ? "text-success"
+                              : "text-danger",
                           )}
                         >
-                          {formatPaise(inv.amountPaise)}
+                          {t.type === "REFUND" ? "+" : "−"}
+                          {formatPaise(t.amountPaise)}
                         </span>
-                        <Badge tone={deleted ? "neutral" : invoiceTone(inv.status)}>
-                          {deleted ? "deleted" : inv.status.toLowerCase()}
-                        </Badge>
-                      </button>
-                      {!deleted && (
-                        <button
-                          type="button"
-                          aria-label="Delete invoice"
-                          onClick={() => setDeletingInvoice(inv)}
-                          className="text-muted-foreground transition-colors hover:text-danger"
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No deposit on record.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Extra charges */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Extra charges</CardTitle>
+            <Button size="sm" onClick={() => setChargeOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Add charge
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {charges.length === 0 ? (
+              <EmptyRow text="No extra charges. Add a one-time or monthly charge for this resident." />
+            ) : (
+              <ul className="divide-y divide-border">
+                {charges.map((c) => {
+                  const stopped =
+                    c.frequency === ChargeFrequency.MONTHLY && !c.active;
+                  return (
+                    <li
+                      key={c.id}
+                      className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">{c.label}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {c.frequency === ChargeFrequency.MONTHLY
+                            ? stopped
+                              ? "monthly · stopped"
+                              : "monthly"
+                            : c.appliedAt
+                              ? "one-time · billed"
+                              : "one-time · queued"}
+                        </p>
+                      </div>
+                      <span className="text-sm font-semibold tabular-nums">
+                        {formatPaise(c.amountPaise)}
+                      </span>
+                      {c.frequency === ChargeFrequency.MONTHLY && c.active && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => removeCharge(c.id)}
                         >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                          Stop
+                        </Button>
                       )}
-                    </div>
-                    {deleted && inv.deletedReason && (
-                      <p className="mt-1 pl-8 text-xs font-medium text-danger">
-                        Deleted: {inv.deletedReason}
-                      </p>
-                    )}
-                    {isOpen && lines && (
-                      <ul className="mt-2 space-y-1 pl-8 text-xs text-muted-foreground">
-                        {/* "Rent & adjustments" is the remainder — it also absorbs
-                            proration, transfers, and carry-forward credits. */}
-                        <li className="flex justify-between gap-3">
-                          <span>Rent &amp; adjustments</span>
-                          <span className="tabular-nums">
-                            {formatPaise(inv.amountPaise - chargeSum)}
-                          </span>
-                        </li>
-                        {lines.map((l) => (
-                          <li key={l.id} className="flex justify-between gap-3">
-                            <span>{l.label}</span>
-                            <span className="tabular-nums">
-                              {formatPaise(l.amountPaise)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <AllocateDialog
         open={allocating}
@@ -1177,16 +1084,6 @@ function ResidentDetail({ id }: { id: string }) {
         onClose={() => setChargeOpen(false)}
         onDone={async () => {
           setChargeOpen(false);
-          setBreakdowns({}); // invoice totals may have changed — drop cache
-          setExpanded(new Set());
-          await refresh();
-        }}
-      />
-      <DeleteInvoiceDialog
-        invoice={deletingInvoice}
-        onClose={() => setDeletingInvoice(null)}
-        onDone={async () => {
-          setDeletingInvoice(null);
           await refresh();
         }}
       />
@@ -1200,13 +1097,11 @@ function ResidentDetail({ id }: { id: string }) {
           await refresh();
         }}
       />
-      <RejectDocDialog
-        doc={rejectingDoc}
-        onClose={() => setRejectingDoc(null)}
-        onDone={async () => {
-          setRejectingDoc(null);
-          await refresh();
-        }}
+      <DocViewerDialog
+        doc={viewingDoc}
+        onClose={() => setViewingDoc(null)}
+        onApprove={handleApproveDoc}
+        onReject={handleRejectDoc}
       />
     </div>
   );
@@ -1236,7 +1131,8 @@ function AllocateDialog({
         const list = await api.allocations.suggestions(residentId);
         if (!cancelled) setBeds(list);
       } catch (err) {
-        if (!cancelled) toast.error(toMessage(err, "Could not load vacant beds."));
+        if (!cancelled)
+          toast.error(toMessage(err, "Could not load vacant beds."));
       }
     })();
     return () => {
@@ -1279,7 +1175,8 @@ function AllocateDialog({
                   {b.roomLabel} · {b.bedLabel}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {formatPaise(b.monthlyRentPaise)}/mo · {sharingLabel(b.capacity)}
+                  {formatPaise(b.monthlyRentPaise)}/mo ·{" "}
+                  {sharingLabel(b.capacity)}
                   {b.matchReasons.length > 0
                     ? ` · ${b.matchReasons.join(", ")}`
                     : ""}
@@ -1590,80 +1487,11 @@ function AddChargeDialog({
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={busy || label.trim() === "" || rupees === ""}>
-            {busy ? "Saving…" : "Add charge"}
-          </Button>
-        </div>
-      </form>
-    </Dialog>
-  );
-}
-
-function DeleteInvoiceDialog({
-  invoice,
-  onClose,
-  onDone,
-}: {
-  invoice: InvoiceSummary | null;
-  onClose: () => void;
-  onDone: () => Promise<void> | void;
-}) {
-  const toast = useToast();
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    setReason("");
-  }, [invoice?.id]);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!invoice) return;
-    setBusy(true);
-    try {
-      await api.invoices.delete(invoice.id, { reason: reason.trim() });
-      await onDone();
-    } catch (err) {
-      toast.error(toMessage(err, "Could not delete the invoice."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Dialog
-      open={invoice !== null}
-      onClose={onClose}
-      title="Delete invoice?"
-      description={
-        invoice
-          ? `${invoice.period} · ${formatPaise(invoice.amountPaise)}. This voids the invoice — it can no longer be paid, but stays listed with your reason.`
-          : undefined
-      }
-    >
-      <form onSubmit={submit} className="space-y-4">
-        <Field label="Reason" htmlFor="del-invoice-reason">
-          <textarea
-            id="del-invoice-reason"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            required
-            maxLength={300}
-            rows={3}
-            placeholder="Why is this invoice being deleted? (shown on the invoice)"
-            className={inputClass + " h-auto py-2"}
-          />
-        </Field>
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
           <Button
             type="submit"
-            variant="danger"
-            disabled={busy || reason.trim() === ""}
+            disabled={busy || label.trim() === "" || rupees === ""}
           >
-            {busy ? "Deleting…" : "Delete invoice"}
+            {busy ? "Saving…" : "Add charge"}
           </Button>
         </div>
       </form>
@@ -1788,9 +1616,7 @@ function ExitDialog({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() =>
-                      setRows((r) => r.filter((_, j) => j !== i))
-                    }
+                    onClick={() => setRows((r) => r.filter((_, j) => j !== i))}
                   >
                     Remove
                   </Button>
@@ -1828,29 +1654,61 @@ function ExitDialog({
   );
 }
 
-function RejectDocDialog({
+function DocViewerDialog({
   doc,
   onClose,
-  onDone,
+  onApprove,
+  onReject,
 }: {
   doc: DocumentSummary | null;
   onClose: () => void;
-  onDone: () => Promise<void> | void;
+  onApprove: (docId: string) => Promise<void>;
+  onReject: (docId: string, note: string) => Promise<void>;
 }) {
   const toast = useToast();
+  const [imgUrl, setImgUrl] = useState<string | null>(null);
+  const [imgLoading, setImgLoading] = useState(false);
+  const [confirm, setConfirm] = useState<null | "approve" | "reupload">(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    setNote("");
-  }, [doc?.id]);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (!doc) {
+      setImgUrl(null);
+      setConfirm(null);
+      setNote("");
+      return;
+    }
+    setImgLoading(true);
+    setImgUrl(null);
+    setConfirm(null);
+    setNote("");
+    api.documents
+      .download(doc.id)
+      .then(({ downloadUrl }) => setImgUrl(downloadUrl))
+      .catch(() => toast.error("Could not load document preview."))
+      .finally(() => setImgLoading(false));
+  }, [doc?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleApprove = async () => {
     if (!doc) return;
     setBusy(true);
     try {
-      await api.documents.reject(doc.id, note.trim());
-      await onDone();
+      await onApprove(doc.id);
+      onClose();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not verify the document."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!doc || !note.trim()) return;
+    setBusy(true);
+    try {
+      await onReject(doc.id, note.trim());
+      onClose();
     } catch (err) {
       toast.error(toMessage(err, "Could not request a re-upload."));
     } finally {
@@ -1858,39 +1716,111 @@ function RejectDocDialog({
     }
   };
 
+  const isPending = doc?.status === "PENDING";
+
   return (
     <Dialog
       open={doc !== null}
       onClose={onClose}
-      title="Ask for re-upload"
-      description={doc ? doc.type.replace("_", " ").toLowerCase() : undefined}
+      title={doc ? doc.type.replace(/_/g, " ").toLowerCase() : "Document"}
+      description={doc ? formatDate(doc.createdAt) : undefined}
+      className="max-w-3xl"
     >
-      <form onSubmit={submit} className="space-y-4">
-        <Field label="What needs fixing?" htmlFor="doc-note">
-          <textarea
-            id="doc-note"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            required
-            maxLength={500}
-            rows={3}
-            placeholder="Tell the resident what to fix so they can re-upload…"
-            className={inputClass}
+      {/* Image area */}
+      <div className="flex min-h-[300px] items-center justify-center overflow-hidden rounded-lg bg-muted">
+        {imgLoading ? (
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+        ) : imgUrl ? (
+          <img
+            src={imgUrl}
+            alt={doc?.type ?? "document"}
+            className="max-h-[60vh] w-full object-contain"
           />
-        </Field>
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="danger"
-            disabled={busy || note.trim() === ""}
-          >
-            Ask for re-upload
-          </Button>
+        ) : (
+          <p className="text-sm text-muted-foreground">No preview available.</p>
+        )}
+      </div>
+
+      {/* Status row + actions */}
+      <div className="mt-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Badge tone={docTone(doc?.status ?? "PENDING")}>
+            {doc?.status?.toLowerCase()}
+          </Badge>
+          {doc?.reviewNote && (
+            <span className="text-xs text-muted-foreground">
+              Note: {doc.reviewNote}
+            </span>
+          )}
         </div>
-      </form>
+
+        {isPending && confirm === null && (
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => setConfirm("approve")}>
+              Approve
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => setConfirm("reupload")}
+            >
+              Ask for re-upload
+            </Button>
+          </div>
+        )}
+
+        {isPending && confirm === "approve" && (
+          <div className="space-y-3 rounded-lg border border-border bg-muted/50 p-4">
+            <p className="text-sm font-medium">Approve this document?</p>
+            <p className="text-xs text-muted-foreground">
+              This will mark the document as verified.
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" disabled={busy} onClick={handleApprove}>
+                {busy ? "Approving…" : "Yes, approve"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirm(null)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {isPending && confirm === "reupload" && (
+          <div className="space-y-3 rounded-lg border border-border bg-muted/50 p-4">
+            <p className="text-sm font-medium">Ask for re-upload</p>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Tell the resident what to fix so they can re-upload…"
+              rows={3}
+              maxLength={500}
+              className={inputClass}
+            />
+            <div className="flex gap-2">
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={busy || !note.trim()}
+                onClick={handleReject}
+              >
+                {busy ? "Sending…" : "Send request"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirm(null)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     </Dialog>
   );
 }
