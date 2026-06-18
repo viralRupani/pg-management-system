@@ -1,7 +1,9 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { SQL, and, asc, count, desc, eq } from "drizzle-orm";
 import {
   type ComplaintCategory,
+  type ComplaintListQuery,
+  type ComplaintListResult,
   type ComplaintStatus as ComplaintStatusType,
   ComplaintStatus,
   type ComplaintSummary,
@@ -61,11 +63,96 @@ export class ComplaintsService {
     return { id: row.id };
   }
 
-  /** Resident: their own complaints. Manager: pass undefined for all. */
-  async list(residentId?: string): Promise<ComplaintSummary[]> {
-    return this.query(
-      residentId ? eq(complaints.residentId, residentId) : undefined,
-    );
+  /** Resident: their own complaints (unfiltered, unordered by page). */
+  async list(residentId: string): Promise<ComplaintSummary[]> {
+    return this.query(eq(complaints.residentId, residentId));
+  }
+
+  /** Manager: paginated list with optional status and resident filters. */
+  async listAll(query: ComplaintListQuery): Promise<ComplaintListResult> {
+    const { status, residentId, page, limit } = query;
+    const conditions: SQL[] = [];
+    if (status !== "ALL") conditions.push(eq(complaints.status, status));
+    if (residentId) conditions.push(eq(complaints.residentId, residentId));
+    const where = conditions.length ? and(...conditions) : undefined;
+
+    const base = this.ctx
+      .db()
+      .select({
+        id: complaints.id,
+        residentId: complaints.residentId,
+        residentName: users.name,
+        category: complaints.category,
+        description: complaints.description,
+        status: complaints.status,
+        assignedToUserId: complaints.assignedToUserId,
+        photoKey: complaints.photoKey,
+        createdAt: complaints.createdAt,
+      })
+      .from(complaints)
+      .innerJoin(users, eq(users.id, complaints.residentId))
+      .orderBy(desc(complaints.createdAt));
+
+    const countBase = this.ctx
+      .db()
+      .select({ total: count() })
+      .from(complaints);
+
+    const [rows, [{ total }]] = await Promise.all([
+      where
+        ? base.where(where).limit(limit).offset((page - 1) * limit)
+        : base.limit(limit).offset((page - 1) * limit),
+      where ? countBase.where(where) : countBase,
+    ]);
+
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        residentId: r.residentId,
+        residentName: r.residentName,
+        category: r.category as ComplaintCategory,
+        description: r.description,
+        status: r.status as ComplaintStatusType,
+        assignedToUserId: r.assignedToUserId,
+        photoKey: r.photoKey,
+        createdAt: r.createdAt.toISOString(),
+      })),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  /** Manager: fetch a single complaint by id. */
+  async getById(id: string): Promise<ComplaintSummary> {
+    const [row] = await this.ctx
+      .db()
+      .select({
+        id: complaints.id,
+        residentId: complaints.residentId,
+        residentName: users.name,
+        category: complaints.category,
+        description: complaints.description,
+        status: complaints.status,
+        assignedToUserId: complaints.assignedToUserId,
+        photoKey: complaints.photoKey,
+        createdAt: complaints.createdAt,
+      })
+      .from(complaints)
+      .innerJoin(users, eq(users.id, complaints.residentId))
+      .where(eq(complaints.id, id));
+    if (!row) throw new NotFoundException("Complaint not found");
+    return {
+      id: row.id,
+      residentId: row.residentId,
+      residentName: row.residentName,
+      category: row.category as ComplaintCategory,
+      description: row.description,
+      status: row.status as ComplaintStatusType,
+      assignedToUserId: row.assignedToUserId,
+      photoKey: row.photoKey,
+      createdAt: row.createdAt.toISOString(),
+    };
   }
 
   /** The complaint thread. Residents may only read their own complaint's. */

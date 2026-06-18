@@ -1,12 +1,12 @@
 "use client";
 
-import { ApiError } from "@pg/api-client";
 import {
   type ComplaintStatus,
   type ComplaintSummary,
   type ComplaintUpdateEntry,
+  type ComplaintListQuery,
 } from "@pg/shared";
-import { ArrowLeft, ImageIcon, Send, UserCheck } from "lucide-react";
+import { ArrowLeft, ImageIcon, Send, UserCheck, X } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
@@ -45,38 +45,61 @@ export default function ComplaintsPage() {
 }
 
 function ComplaintsRouter() {
-  const id = useSearchParams().get("id");
-  return id ? <ComplaintDetail id={id} /> : <ComplaintsList />;
+  const params = useSearchParams();
+  const id = params.get("id");
+  const initialResidentId = params.get("resident") ?? undefined;
+  return id ? <ComplaintDetail id={id} /> : <ComplaintsList initialResidentId={initialResidentId} />;
 }
+
+const PAGE_SIZE = 10;
 
 /* ------------------------------------------------------------------ list --- */
 
-function ComplaintsList() {
+function ComplaintsList({ initialResidentId }: { initialResidentId?: string }) {
   const toast = useToast();
-  const [complaints, setComplaints] = useState<ComplaintSummary[] | null>(null);
+  const [items, setItems] = useState<ComplaintSummary[] | null>(null);
+  const [total, setTotal] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
   const [filter, setFilter] = useState<Filter>("ALL");
+  const [residentId, setResidentId] = useState<string | undefined>(initialResidentId);
+  const [page, setPage] = useState(1);
+
+  const load = useCallback(async () => {
+    const query: Partial<ComplaintListQuery> = {
+      status: filter === "ALL" ? "ALL" : filter,
+      residentId,
+      page,
+      limit: PAGE_SIZE,
+    };
+    try {
+      const result = await api.complaints.list(query);
+      setItems(result.items);
+      setTotal(result.total);
+      setLoadFailed(false);
+    } catch (err) {
+      setLoadFailed(true);
+      toast.error(toMessage(err, "Could not load complaints."));
+    }
+  }, [filter, residentId, page, toast]);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const list = await api.complaints.list();
-        if (!cancelled) setComplaints(list);
-      } catch (err) {
-        if (!cancelled) {
-          setLoadFailed(true);
-          toast.error(toMessage(err, "Could not load complaints."));
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [toast]);
+    setItems(null);
+    void load();
+  }, [load]);
 
-  const shown =
-    complaints?.filter((c) => filter === "ALL" || c.status === filter) ?? null;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * PAGE_SIZE, total);
+
+  const changeFilter = (f: Filter) => {
+    setFilter(f);
+    setPage(1);
+  };
+
+  const changeResident = (id: string | undefined) => {
+    setResidentId(id);
+    setPage(1);
+  };
 
   return (
     <div className="space-y-6">
@@ -87,37 +110,43 @@ function ComplaintsList() {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {FILTERS.map((f) => (
-          <button
-            key={f.value}
-            type="button"
-            onClick={() => setFilter(f.value)}
-            className={cn(
-              "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-              filter === f.value
-                ? "bg-brand text-brand-foreground"
-                : "bg-muted text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <ResidentCombobox
+          initialResidentId={initialResidentId}
+          onChange={changeResident}
+        />
+        <div className="flex flex-wrap gap-2">
+          {FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => changeFilter(f.value)}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                filter === f.value
+                  ? "bg-brand text-brand-foreground"
+                  : "bg-muted text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <Card>
         <CardContent className="pt-5">
-          {shown === null ? (
+          {items === null ? (
             loadFailed ? (
               <EmptyRow text="Couldn't load complaints — try refreshing." />
             ) : (
               <ListSkeleton />
             )
-          ) : shown.length === 0 ? (
+          ) : items.length === 0 ? (
             <EmptyRow text="No complaints in this view." />
           ) : (
             <ul className="divide-y divide-border">
-              {shown.map((c) => (
+              {items.map((c) => (
                 <li key={c.id}>
                   <Link
                     href={`/complaints?id=${c.id}`}
@@ -148,6 +177,171 @@ function ComplaintsList() {
           )}
         </CardContent>
       </Card>
+
+      {items !== null && total > 0 && totalPages > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+          <span>
+            Showing {rangeStart}–{rangeEnd} of {total}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Previous
+            </Button>
+            <span>
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* --------------------------------------------------------- combobox --- */
+
+function ResidentCombobox({
+  initialResidentId,
+  onChange,
+}: {
+  initialResidentId?: string;
+  onChange: (id: string | undefined) => void;
+}) {
+  const [inputValue, setInputValue] = useState("");
+  const [selectedName, setSelectedName] = useState<string | null>(null);
+  const [results, setResults] = useState<{ id: string; name: string; phone: string }[]>([]);
+  const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // On mount with a pre-selected resident (from URL param), fetch their name.
+  useEffect(() => {
+    if (!initialResidentId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api.residents.get(initialResidentId);
+        if (!cancelled) {
+          setSelectedName(r.name);
+          setInputValue(r.name);
+        }
+      } catch {
+        // If fetch fails, just leave the input blank — the list will still filter correctly.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [initialResidentId]);
+
+  // Debounce the search input and call the residents API.
+  useEffect(() => {
+    const q = inputValue.trim();
+    if (selectedName !== null || q.length === 0) {
+      setResults([]);
+      setOpen(false);
+      return;
+    }
+    setSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const result = await api.residents.list({ q, status: "ALL", limit: 8 });
+        setResults(result.items.map((r) => ({ id: r.id, name: r.name, phone: r.phone })));
+        setOpen(true);
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [inputValue, selectedName]);
+
+  // Close the dropdown when clicking outside.
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const select = (id: string, name: string) => {
+    setSelectedName(name);
+    setInputValue(name);
+    setOpen(false);
+    setResults([]);
+    onChange(id);
+  };
+
+  const clear = () => {
+    setSelectedName(null);
+    setInputValue("");
+    setResults([]);
+    setOpen(false);
+    onChange(undefined);
+  };
+
+  return (
+    <div ref={containerRef} className="relative w-64">
+      <div className="relative">
+        <input
+          value={inputValue}
+          onChange={(e) => {
+            setSelectedName(null);
+            setInputValue(e.target.value);
+          }}
+          onFocus={() => { if (results.length > 0) setOpen(true); }}
+          placeholder="Search resident…"
+          className={cn(inputClass, selectedName ? "pr-8" : "")}
+          autoComplete="off"
+        />
+        {selectedName && (
+          <button
+            type="button"
+            onClick={clear}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            aria-label="Clear resident filter"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+        {searching && !selectedName && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+            …
+          </span>
+        )}
+      </div>
+
+      {open && results.length > 0 && (
+        <ul className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-border bg-card shadow-md">
+          {results.map((r) => (
+            <li key={r.id}>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()} // keep input focused until select
+                onClick={() => select(r.id, r.name)}
+                className="flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-muted"
+              >
+                <span className="font-medium">{r.name}</span>
+                <span className="text-xs text-muted-foreground">{r.phone}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -169,13 +363,10 @@ function ComplaintDetail({ id }: { id: string }) {
   const scrollRef = useRef<HTMLUListElement>(null);
 
   const load = useCallback(async () => {
-    // No GET /complaints/:id — derive the row from the (small) tenant list.
-    const [list, updates] = await Promise.all([
-      api.complaints.list(),
+    const [complaint, updates] = await Promise.all([
+      api.complaints.get(id),
       api.complaints.updates(id),
     ]);
-    const complaint = list.find((c) => c.id === id);
-    if (!complaint) throw new ApiError(404, "Complaint not found");
     setData({ complaint, updates });
   }, [id]);
 
@@ -183,16 +374,11 @@ function ComplaintDetail({ id }: { id: string }) {
     let cancelled = false;
     (async () => {
       try {
-        const [list, updates] = await Promise.all([
-          api.complaints.list(),
+        const [complaint, updates] = await Promise.all([
+          api.complaints.get(id),
           api.complaints.updates(id),
         ]);
         if (cancelled) return;
-        const complaint = list.find((c) => c.id === id);
-        if (!complaint) {
-          setLoadError("Complaint not found.");
-          return;
-        }
         setData({ complaint, updates });
       } catch (err) {
         if (!cancelled) setLoadError(toMessage(err, "Could not load complaint."));
@@ -563,3 +749,4 @@ function EmptyRow({ text }: { text: string }) {
     <p className="py-8 text-center text-sm text-muted-foreground">{text}</p>
   );
 }
+

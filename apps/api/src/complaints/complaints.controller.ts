@@ -1,18 +1,20 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import {
+  type ComplaintListQuery,
   type ComplaintPhotoUrlInput,
   type ComplaintUpdateInput,
   type FileComplaintInput,
   type JwtPayload,
   type UpdateComplaintStatusInput,
   UserRole,
+  complaintListQuerySchema,
   complaintPhotoUrlSchema,
   complaintUpdateSchema,
   fileComplaintSchema,
   updateComplaintStatusSchema,
 } from "@pg/shared";
 import { CurrentUser, Roles } from "../common/decorators";
-import { ZodBody } from "../common/zod-validation.pipe";
+import { ZodBody, ZodQuery } from "../common/zod-validation.pipe";
 import { ComplaintsService } from "./complaints.service";
 
 /** Resident scope for owned-reads; undefined (whole tenant) for a manager. */
@@ -51,8 +53,16 @@ export class ComplaintsController {
   // --- Manager ---
   @Get()
   @Roles(UserRole.PG_MANAGER)
-  listAll() {
-    return this.complaints.list();
+  listAll(
+    @Query(new ZodQuery(complaintListQuerySchema)) query: ComplaintListQuery,
+  ) {
+    return this.complaints.listAll(query);
+  }
+
+  @Get(":id")
+  @Roles(UserRole.PG_MANAGER)
+  getById(@Param("id") id: string) {
+    return this.complaints.getById(id);
   }
 
   @Post(":id/status")

@@ -23,6 +23,7 @@ import {
   BedDouble,
   ChevronDown,
   Download,
+  MessageSquare,
   Plus,
   Trash2,
   UserPlus,
@@ -511,6 +512,7 @@ interface DetailData {
 
 function ResidentDetail({ id }: { id: string }) {
   const toast = useToast();
+  const router = useRouter();
   const [data, setData] = useState<DetailData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [allocating, setAllocating] = useState(false);
@@ -725,6 +727,14 @@ function ResidentDetail({ id }: { id: string }) {
               {resident.nativePlace ? ` · ${resident.nativePlace}` : ""}
             </p>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push(`/complaints?resident=${id}`)}
+          >
+            <MessageSquare className="h-4 w-4" />
+            View complaints
+          </Button>
         </CardContent>
       </Card>
 

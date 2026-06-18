@@ -14,6 +14,8 @@ import type {
   TransferRequestSummary,
   BudgetSummaryRow,
   BuildingSummary,
+  ComplaintListQuery,
+  ComplaintListResult,
   ComplaintStatus,
   ComplaintSummary,
   ComplaintUpdateEntry,
@@ -327,8 +329,12 @@ export class PgApiClient {
   };
 
   readonly complaints = {
-    /** Manager: every complaint in the tenant, newest first. */
-    list: () => this.http.get<ComplaintSummary[]>("/complaints"),
+    /** Manager: paginated complaint list with optional status filter. */
+    list: (query?: Partial<ComplaintListQuery>) =>
+      this.http.get<ComplaintListResult>("/complaints", { query }),
+    /** Manager: fetch a single complaint by id. */
+    get: (id: string) =>
+      this.http.get<ComplaintSummary>(`/complaints/${id}`),
     /** The complaint thread (oldest first). */
     updates: (id: string) =>
       this.http.get<ComplaintUpdateEntry[]>(`/complaints/${id}/updates`),

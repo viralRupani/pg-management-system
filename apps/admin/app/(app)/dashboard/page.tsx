@@ -41,13 +41,13 @@ export default function DashboardPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [stats, pendingPayments, complaints] = await Promise.all([
+        const [stats, pendingPayments, complaintsResult] = await Promise.all([
           api.dashboard.stats(),
           api.payments.list("SUBMITTED"),
-          api.complaints.list(),
+          api.complaints.list({ status: "ALL", limit: 100 }),
         ]);
         if (cancelled) return;
-        setData({ stats, pendingPayments, complaints });
+        setData({ stats, pendingPayments, complaints: complaintsResult.items });
       } catch (err) {
         if (cancelled) return;
         setLoadFailed(true);
