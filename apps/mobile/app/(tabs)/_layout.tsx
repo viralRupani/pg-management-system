@@ -16,7 +16,7 @@ const TAB_ICONS: Record<string, IoniconName> = {
   home: 'home-outline',
   rent: 'wallet-outline',
   complaints: 'chatbubble-ellipses-outline',
-  more: 'grid-outline',
+  more: 'person-outline',
 };
 
 const { Navigator } = createMaterialTopTabNavigator();
@@ -42,7 +42,7 @@ export default function TabsLayout() {
         name="complaints"
         options={{ title: 'Complaints' }}
       />
-      <MaterialTopTabs.Screen name="more" options={{ title: 'More' }} />
+      <MaterialTopTabs.Screen name="more" options={{ title: 'Profile' }} />
     </MaterialTopTabs>
   );
 }

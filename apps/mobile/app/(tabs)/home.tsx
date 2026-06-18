@@ -26,7 +26,7 @@ import {
   InvoiceStatus,
   MealType,
 } from '@pg/shared';
-import { cn, formatDate, formatPaise, ymd } from '@/lib/utils';
+import { cn, formatDate, formatPaise, timeAgo, ymd } from '@/lib/utils';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -67,7 +67,13 @@ export default function HomeScreen() {
   );
   const isOverdue = dueInvoice?.status === InvoiceStatus.OVERDUE;
   const rentBadge = dueInvoice ? invoiceStatus(dueInvoice.status) : null;
-  const latestAnnouncement = announcements.data?.items?.[0];
+  const recentAnnouncements = useMemo(
+    () =>
+      (announcements.data?.items ?? []).filter(
+        (a) => Date.now() - new Date(a.createdAt).getTime() <= 2 * 24 * 60 * 60 * 1000,
+      ),
+    [announcements.data],
+  );
   const unread = notifications.data?.filter((n) => !n.readAt).length ?? 0;
 
   // --- "At a glance" strip values (surfaced from already-fetched data) ---
@@ -137,7 +143,9 @@ export default function HomeScreen() {
                   <View className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border border-brand bg-danger-dot" />
                 ) : null}
               </Pressable>
-              <Avatar name={name} size={40} className="border-2 border-white/25" />
+              <Pressable onPress={() => router.push('/(tabs)/more')} className="active:opacity-70">
+                <Avatar name={name} size={40} className="border-2 border-white/25" />
+              </Pressable>
             </View>
           </View>
         </View>
@@ -226,28 +234,64 @@ export default function HomeScreen() {
             />
           </View>
 
-          {/* Latest announcement */}
-          {latestAnnouncement ? (
-            <Pressable
-              onPress={() => router.push('/announcements')}
-              className="active:opacity-70"
-            >
-              <Card>
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-[11px] font-bold uppercase tracking-wider text-ink3">
-                    📣 Announcement
-                  </Text>
+          {/* Announcements — recent ones inline; always shows a "See all" entry */}
+          <View className="gap-2">
+            <View className="flex-row items-center justify-between px-1">
+              <Text className="text-[13px] font-bold text-ink">📣 Notices</Text>
+              <Pressable
+                onPress={() => router.push('/announcements')}
+                className="active:opacity-70"
+              >
+                <Text className="text-[13px] font-semibold text-brand-deep">
+                  See all ›
+                </Text>
+              </Pressable>
+            </View>
+            {recentAnnouncements.length > 0 ? (
+              recentAnnouncements.map((a) => (
+                <Pressable
+                  key={a.id}
+                  onPress={() => router.push('/announcements')}
+                  className="active:opacity-70"
+                >
+                  <Card>
+                    <View className="flex-row items-start justify-between gap-2">
+                      <Text
+                        className="flex-1 text-[15px] font-bold text-ink"
+                        numberOfLines={1}
+                      >
+                        {a.title}
+                      </Text>
+                      <Text className="shrink-0 text-[11px] text-ink3">
+                        {timeAgo(a.createdAt)}
+                      </Text>
+                    </View>
+                    <Text
+                      className="mt-1 text-[13px] leading-5 text-ink2"
+                      numberOfLines={2}
+                    >
+                      {a.body}
+                    </Text>
+                  </Card>
+                </Pressable>
+              ))
+            ) : (
+              <Pressable
+                onPress={() => router.push('/announcements')}
+                className="active:opacity-70"
+              >
+                <Card className="flex-row items-center justify-between bg-page">
+                  <View className="flex-row items-center gap-2.5">
+                    <Ionicons name="megaphone-outline" size={18} color="#9ca3af" />
+                    <Text className="text-[13px] text-ink3">
+                      No new notices in the last 2 days
+                    </Text>
+                  </View>
                   <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
-                </View>
-                <Text className="mt-1.5 text-[15px] font-bold text-ink">
-                  {latestAnnouncement.title}
-                </Text>
-                <Text className="mt-1 text-[13px] text-ink2" numberOfLines={2}>
-                  {latestAnnouncement.body}
-                </Text>
-              </Card>
-            </Pressable>
-          ) : null}
+                </Card>
+              </Pressable>
+            )}
+          </View>
 
           {/* Today's mess */}
           <Pressable
