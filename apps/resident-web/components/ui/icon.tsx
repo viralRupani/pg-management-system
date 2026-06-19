@@ -1,0 +1,161 @@
+"use client";
+
+import {
+  AlertCircle,
+  ArrowLeft,
+  Banknote,
+  BedDouble,
+  Bell,
+  Calendar,
+  Camera,
+  CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Circle,
+  CheckCheck,
+  Clock,
+  Coffee,
+  CreditCard,
+  Download,
+  ExternalLink,
+  Eye,
+  FileText,
+  Home,
+  Image as ImageIcon,
+  Images,
+  IndianRupee,
+  Info,
+  Key,
+  LogOut,
+  Mail,
+  MapPin,
+  Megaphone,
+  MessageCircle,
+  MessagesSquare,
+  MinusCircle,
+  Moon,
+  MoreHorizontal,
+  Phone,
+  Plus,
+  PlusCircle,
+  QrCode,
+  Smartphone,
+  XCircle,
+  Receipt,
+  RefreshCw,
+  Send,
+  Share2,
+  Shield,
+  ShieldCheck,
+  Smile,
+  Sparkles,
+  Sun,
+  Tag,
+  Trash2,
+  UploadCloud,
+  User,
+  UserCircle,
+  UtensilsCrossed,
+  Wallet,
+  Wifi,
+  Wrench,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+
+/**
+ * Maps the Ionicons names the mobile screens use to lucide-react components, so
+ * ported screens keep their `name="..."` calls. Unknown names fall back to a
+ * neutral circle (never crashes). Trailing `-outline`/`-sharp` is stripped.
+ */
+const REGISTRY: Record<string, LucideIcon> = {
+  "chevron-back": ChevronLeft,
+  "chevron-forward": ChevronRight,
+  "chevron-down": ChevronDown,
+  "chevron-up": ChevronUp,
+  "arrow-back": ArrowLeft,
+  add: Plus,
+  "add-circle": PlusCircle,
+  home: Home,
+  wallet: Wallet,
+  "chatbubble-ellipses": MessageCircle,
+  chatbubbles: MessagesSquare,
+  person: User,
+  "person-circle": UserCircle,
+  notifications: Bell,
+  "document-text": FileText,
+  documents: FileText,
+  card: CreditCard,
+  cash: Banknote,
+  calendar: Calendar,
+  megaphone: Megaphone,
+  restaurant: UtensilsCrossed,
+  sparkles: Sparkles,
+  construct: Wrench,
+  wifi: Wifi,
+  shield: Shield,
+  "shield-checkmark": ShieldCheck,
+  "ellipsis-horizontal": MoreHorizontal,
+  "cloud-upload": UploadCloud,
+  camera: Camera,
+  image: ImageIcon,
+  images: Images,
+  "log-out": LogOut,
+  time: Clock,
+  "checkmark-circle": CheckCircle2,
+  "checkmark-done": CheckCheck,
+  checkmark: CheckCircle2,
+  close: X,
+  "close-circle": XCircle,
+  "remove-circle": MinusCircle,
+  "phone-portrait": Smartphone,
+  "share-outline": Share2,
+  "share-social": Share2,
+  download: Download,
+  "qr-code": QrCode,
+  receipt: Receipt,
+  "alert-circle": AlertCircle,
+  "information-circle": Info,
+  send: Send,
+  refresh: RefreshCw,
+  bed: BedDouble,
+  key: Key,
+  call: Phone,
+  mail: Mail,
+  location: MapPin,
+  pricetag: Tag,
+  rupee: IndianRupee,
+  trash: Trash2,
+  eye: Eye,
+  open: ExternalLink,
+  "happy-outline": Smile,
+  moon: Moon,
+  sunny: Sun,
+  cafe: Coffee,
+};
+
+function resolve(name: string): LucideIcon {
+  const base = name.replace(/-(outline|sharp)$/, "");
+  return REGISTRY[base] ?? REGISTRY[name] ?? Circle;
+}
+
+export function Icon({
+  name,
+  size = 20,
+  className,
+  color,
+  strokeWidth = 2,
+}: {
+  name: string;
+  size?: number;
+  className?: string;
+  color?: string;
+  strokeWidth?: number;
+}) {
+  const Cmp = resolve(name);
+  return (
+    <Cmp size={size} className={className} color={color} strokeWidth={strokeWidth} />
+  );
+}

@@ -39,6 +39,8 @@
 apps/api/          NestJS backend — the ONLY server (auth, RLS, business logic)
 apps/admin/        Next.js manager dashboard (static export — all pages done)
 apps/mobile/       Expo resident app (feature-complete, device-verified)
+apps/resident-web/ Next.js resident web app (static export, installable PWA) —
+                   replica of apps/mobile for iPhone users; see its CLAUDE.md
 packages/shared/   Zod schemas + enums — single source of truth for all surfaces
 packages/api-client/ Typed fetch client (ships TS source; no build step)
 infra/             docker-compose: Postgres 16 on :5433, Redis 7 on :6379

@@ -13,9 +13,12 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
+  // 3000 = admin web, 3001 = resident web, 8081 = Expo dev. The browser enforces
+  // CORS (the native app doesn't), so the resident web origin must be allowed.
+  // Override in prod with the deployed admin + resident web origins.
   CORS_ORIGINS: z
     .string()
-    .default("http://localhost:3000,http://localhost:8081"),
+    .default("http://localhost:3000,http://localhost:3001,http://localhost:8081"),
 
   DATABASE_URL: z.string().url(),
   PLATFORM_DATABASE_URL: z.string().url(),
