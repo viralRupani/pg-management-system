@@ -35,7 +35,16 @@ Fixed since the audit: HIGH OVERDUE-can't-settle (`e53195f`), auth rate-limiting
 **Decommission bed** (M2 deferred)
 - An out-of-service bed currently stays allocatable with no way to mark it unavailable.
 - Needs: new `PATCH /property/beds/:id/status` endpoint. Must use the conditional-flip pattern (occupied → 409 before any write).
-- Also deferred: **rename** buildings/floors/rooms/beds (straightforward PATCH, no guard needed).
+
+**Rename buildings/floors/rooms/beds** (M2 deferred) — ✅ DONE (2026-06-20)
+- `PATCH /property/{buildings,floors,rooms,beds}/:id` — pure relabel, no side
+  effects, so a plain conditional UPDATE (404 if not visible under the tenant);
+  no conditional-flip guard. `PropertyService.rename{Building,Floor,Room,Bed}`,
+  routes alongside the existing `rooms/:id/rent`. `renameBuildingSchema` etc. in
+  `@pg/shared`; `api.property.rename*` in `api-client`. Admin property page has a
+  pencil affordance at every level (bed rename works for occupied beds too).
+  e2e in `property-allocation.e2e-spec.ts` (rename each level + empty→400 +
+  cross-tenant→404).
 
 ### Resident lifecycle
 
@@ -102,9 +111,10 @@ Fixed since the audit: HIGH OVERDUE-can't-settle (`e53195f`), auth rate-limiting
 - Admin pages are build-verified + manual click-through only (no committed automated test).
 - A `apps/admin/e2e/` Playwright suite is the missing safety net.
 
-**Bed rename + decommission UI** (property page, M2/M7 deferred)
-- `apps/admin/app/(app)/property/page.tsx` has create + edit-rent but no rename or decommission affordance.
-- Blocked on the backend endpoint above.
+**Bed decommission UI** (property page, M2/M7 deferred)
+- `apps/admin/app/(app)/property/page.tsx` now has create + edit-rent + rename
+  (pencil at every level) but no decommission affordance.
+- Decommission is blocked on the backend endpoint above (rename shipped 2026-06-20).
 
 ### Mobile app (Expo) — M8, built + device-verified
 

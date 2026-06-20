@@ -13,12 +13,20 @@ import {
   type CreateBuildingInput,
   type CreateFloorInput,
   type CreateRoomInput,
+  type RenameBedInput,
+  type RenameBuildingInput,
+  type RenameFloorInput,
+  type RenameRoomInput,
   type UpdateRoomRentInput,
   UserRole,
   createBedSchema,
   createBuildingSchema,
   createFloorSchema,
   createRoomSchema,
+  renameBedSchema,
+  renameBuildingSchema,
+  renameFloorSchema,
+  renameRoomSchema,
   updateRoomRentSchema,
 } from "@pg/shared";
 import { Roles } from "../common/decorators";
@@ -78,6 +86,38 @@ export class PropertyController {
   @Get("beds")
   listBeds(@Query("roomId") roomId?: string) {
     return this.property.listBeds(roomId);
+  }
+
+  @Patch("buildings/:id")
+  renameBuilding(
+    @Param("id") id: string,
+    @Body(new ZodBody(renameBuildingSchema)) dto: RenameBuildingInput,
+  ) {
+    return this.property.renameBuilding(id, dto.name);
+  }
+
+  @Patch("floors/:id")
+  renameFloor(
+    @Param("id") id: string,
+    @Body(new ZodBody(renameFloorSchema)) dto: RenameFloorInput,
+  ) {
+    return this.property.renameFloor(id, dto.label);
+  }
+
+  @Patch("rooms/:id")
+  renameRoom(
+    @Param("id") id: string,
+    @Body(new ZodBody(renameRoomSchema)) dto: RenameRoomInput,
+  ) {
+    return this.property.renameRoom(id, dto.label);
+  }
+
+  @Patch("beds/:id")
+  renameBed(
+    @Param("id") id: string,
+    @Body(new ZodBody(renameBedSchema)) dto: RenameBedInput,
+  ) {
+    return this.property.renameBed(id, dto.label);
   }
 
   @Delete("buildings/:id")

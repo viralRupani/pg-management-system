@@ -188,6 +188,55 @@ export class PropertyService {
     await db.delete(buildings).where(eq(buildings.id, id));
   }
 
+  /** Rename a building. Pure relabel — no side effects, so a plain conditional
+   * UPDATE (404 if not visible under the tenant) is enough. */
+  async renameBuilding(id: string, name: string): Promise<{ id: string }> {
+    const [row] = await this.ctx
+      .db()
+      .update(buildings)
+      .set({ name })
+      .where(eq(buildings.id, id))
+      .returning({ id: buildings.id });
+    if (!row) throw new NotFoundException("Building not found");
+    return { id: row.id };
+  }
+
+  /** Rename a floor (relabel only). */
+  async renameFloor(id: string, label: string): Promise<{ id: string }> {
+    const [row] = await this.ctx
+      .db()
+      .update(floors)
+      .set({ label })
+      .where(eq(floors.id, id))
+      .returning({ id: floors.id });
+    if (!row) throw new NotFoundException("Floor not found");
+    return { id: row.id };
+  }
+
+  /** Rename a room (relabel only; rent edits go through updateRoomRent). */
+  async renameRoom(id: string, label: string): Promise<{ id: string }> {
+    const [row] = await this.ctx
+      .db()
+      .update(rooms)
+      .set({ label })
+      .where(eq(rooms.id, id))
+      .returning({ id: rooms.id });
+    if (!row) throw new NotFoundException("Room not found");
+    return { id: row.id };
+  }
+
+  /** Rename a bed (relabel only). */
+  async renameBed(id: string, label: string): Promise<{ id: string }> {
+    const [row] = await this.ctx
+      .db()
+      .update(beds)
+      .set({ label })
+      .where(eq(beds.id, id))
+      .returning({ id: beds.id });
+    if (!row) throw new NotFoundException("Bed not found");
+    return { id: row.id };
+  }
+
   /** Edit a room's monthly rent (paise). Feeds invoice generation. */
   async updateRoomRent(
     roomId: string,

@@ -22,6 +22,12 @@ export const buildingSummarySchema = z.object({
 });
 export type BuildingSummary = z.infer<typeof buildingSummarySchema>;
 
+/** Rename a building (pure relabel — no side effects, no guard). */
+export const renameBuildingSchema = z.object({
+  name: z.string().min(1).max(120),
+});
+export type RenameBuildingInput = z.infer<typeof renameBuildingSchema>;
+
 // --- Floors ---
 export const createFloorSchema = z.object({
   buildingId: z.string().uuid(),
@@ -37,6 +43,12 @@ export const floorSummarySchema = z.object({
   floorNumber: z.number().int(),
 });
 export type FloorSummary = z.infer<typeof floorSummarySchema>;
+
+/** Rename a floor (pure relabel — no side effects, no guard). */
+export const renameFloorSchema = z.object({
+  label: z.string().min(1).max(60),
+});
+export type RenameFloorInput = z.infer<typeof renameFloorSchema>;
 
 // --- Rooms ---
 export const createRoomSchema = z.object({
@@ -67,6 +79,13 @@ export const roomSummarySchema = z.object({
 });
 export type RoomSummary = z.infer<typeof roomSummarySchema>;
 
+/** Rename a room (pure relabel — no side effects, no guard). Rent edits go
+ * through updateRoomRentSchema; this only touches the label. */
+export const renameRoomSchema = z.object({
+  label: z.string().min(1).max(60),
+});
+export type RenameRoomInput = z.infer<typeof renameRoomSchema>;
+
 // --- Beds ---
 export const createBedSchema = z.object({
   roomId: z.string().uuid(),
@@ -81,3 +100,9 @@ export const bedSummarySchema = z.object({
   status: z.nativeEnum(BedStatus),
 });
 export type BedSummary = z.infer<typeof bedSummarySchema>;
+
+/** Rename a bed (pure relabel — no side effects, no guard). */
+export const renameBedSchema = z.object({
+  label: z.string().min(1).max(40),
+});
+export type RenameBedInput = z.infer<typeof renameBedSchema>;

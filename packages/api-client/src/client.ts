@@ -277,6 +277,15 @@ export class PgApiClient {
       this.http.patch<{ id: string }>(`/property/rooms/${id}/rent`, {
         monthlyRentPaise,
       }),
+    /** Rename helpers (pure relabel, no side effects). */
+    renameBuilding: (id: string, name: string) =>
+      this.http.patch<{ id: string }>(`/property/buildings/${id}`, { name }),
+    renameFloor: (id: string, label: string) =>
+      this.http.patch<{ id: string }>(`/property/floors/${id}`, { label }),
+    renameRoom: (id: string, label: string) =>
+      this.http.patch<{ id: string }>(`/property/rooms/${id}`, { label }),
+    renameBed: (id: string, label: string) =>
+      this.http.patch<{ id: string }>(`/property/beds/${id}`, { label }),
     deleteBuilding: (id: string) =>
       this.http.del<void>(`/property/buildings/${id}`),
     deleteRoom: (id: string) => this.http.del<void>(`/property/rooms/${id}`),

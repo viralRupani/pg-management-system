@@ -10,6 +10,8 @@ describe("M2 property & allocation (e2e)", () => {
   let h: Harness;
   let pgA: TestPg;
   let pgB: TestPg;
+  let buildingId: string;
+  let floorId: string;
   let roomId: string;
   let bed1: string;
   let bed2: string;
@@ -29,10 +31,10 @@ describe("M2 property & allocation (e2e)", () => {
     pgB = await h.onboardPg("prop-b");
     const mgr = pgA.managerToken;
 
-    const buildingId = await id(
+    buildingId = await id(
       await h.req("post", "/property/buildings", mgr, { name: "Block A" }),
     );
-    const floorId = await id(
+    floorId = await id(
       await h.req("post", "/property/floors", mgr, { buildingId, label: "G" }),
     );
     roomId = await id(
@@ -68,6 +70,33 @@ describe("M2 property & allocation (e2e)", () => {
     const rooms = await h.req("get", "/property/rooms", pgA.managerToken);
     const room = rooms.body.find((r: { id: string }) => r.id === roomId);
     expect(room.monthlyRentPaise).toBe(950000);
+  });
+
+  it("renames a building, floor, room, and bed (pure relabel)", async () => {
+    const mgr = pgA.managerToken;
+    expect((await h.req("patch", `/property/buildings/${buildingId}`, mgr, { name: "Block A (renamed)" })).status).toBe(200);
+    expect((await h.req("patch", `/property/floors/${floorId}`, mgr, { label: "Ground" })).status).toBe(200);
+    expect((await h.req("patch", `/property/rooms/${roomId}`, mgr, { label: "101A" })).status).toBe(200);
+    expect((await h.req("patch", `/property/beds/${bed2}`, mgr, { label: "B2" })).status).toBe(200);
+
+    const buildings = await h.req("get", "/property/buildings", mgr);
+    expect(buildings.body.find((b: { id: string }) => b.id === buildingId).name).toBe("Block A (renamed)");
+    const floors = await h.req("get", "/property/floors", mgr);
+    expect(floors.body.find((f: { id: string }) => f.id === floorId).label).toBe("Ground");
+    const rooms = await h.req("get", "/property/rooms", mgr);
+    expect(rooms.body.find((r: { id: string }) => r.id === roomId).label).toBe("101A");
+    const beds = await h.req("get", `/property/beds?roomId=${roomId}`, mgr);
+    expect(beds.body.find((b: { id: string }) => b.id === bed2).label).toBe("B2");
+  });
+
+  it("rejects an empty rename (400) and a cross-tenant rename (404)", async () => {
+    expect(
+      (await h.req("patch", `/property/rooms/${roomId}`, pgA.managerToken, { label: "" })).status,
+    ).toBe(400);
+    // PG B cannot rename PG A's building — RLS hides it → 404.
+    expect(
+      (await h.req("patch", `/property/buildings/${buildingId}`, pgB.managerToken, { name: "Hijack" })).status,
+    ).toBe(404);
   });
 
   it("rejects resident registration without an age (400)", async () => {

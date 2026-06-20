@@ -15,6 +15,7 @@ import {
   ChevronRight,
   DoorOpen,
   Layers,
+  Pencil,
   Plus,
   Trash2,
   X,
@@ -42,6 +43,21 @@ interface Tree {
   bedsByRoom: Map<string, BedSummary[]>;
 }
 
+/** Rename works the same way at every level (pure relabel) — one dialog drives
+ * all four, keyed by `kind`. `label` seeds the input with the current name. */
+type RenameTarget =
+  | { kind: "building"; id: string; label: string }
+  | { kind: "floor"; id: string; label: string }
+  | { kind: "room"; id: string; label: string }
+  | { kind: "bed"; id: string; label: string };
+
+const renameCopy: Record<RenameTarget["kind"], { title: string; field: string }> = {
+  building: { title: "Rename building", field: "Building name" },
+  floor: { title: "Rename floor", field: "Floor label" },
+  room: { title: "Rename room", field: "Room label" },
+  bed: { title: "Rename bed", field: "Bed label" },
+};
+
 function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
   const map = new Map<string, T[]>();
   for (const row of rows) {
@@ -68,6 +84,7 @@ export default function PropertyPage() {
   const [addRoomFor, setAddRoomFor] = useState<FloorSummary | null>(null);
   const [addBedFor, setAddBedFor] = useState<RoomSummary | null>(null);
   const [editRentFor, setEditRentFor] = useState<RoomSummary | null>(null);
+  const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null);
   const [deleteBuildingTarget, setDeleteBuildingTarget] =
     useState<BuildingSummary | null>(null);
   const [deleteRoomTarget, setDeleteRoomTarget] =
@@ -209,6 +226,21 @@ export default function PropertyPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        onClick={() =>
+                          setRenameTarget({
+                            kind: "building",
+                            id: b.id,
+                            label: b.name,
+                          })
+                        }
+                        title="Rename building"
+                        className="text-muted-foreground hover:text-brand"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => setDeleteBuildingTarget(b)}
                         title="Delete building"
                         className="text-muted-foreground hover:text-danger"
@@ -238,6 +270,7 @@ export default function PropertyPage() {
                             onEditRent={setEditRentFor}
                             onDeleteRoom={setDeleteRoomTarget}
                             onDeleteBed={setDeleteBedTarget}
+                            onRename={setRenameTarget}
                           />
                         ))
                       )}
@@ -287,6 +320,14 @@ export default function PropertyPage() {
         onClose={() => setEditRentFor(null)}
         onDone={async () => {
           setEditRentFor(null);
+          await refresh();
+        }}
+      />
+      <RenameDialog
+        target={renameTarget}
+        onClose={() => setRenameTarget(null)}
+        onDone={async () => {
+          setRenameTarget(null);
           await refresh();
         }}
       />
@@ -340,6 +381,7 @@ function FloorBlock({
   onEditRent,
   onDeleteRoom,
   onDeleteBed,
+  onRename,
 }: {
   floor: FloorSummary;
   rooms: RoomSummary[];
@@ -351,6 +393,7 @@ function FloorBlock({
   onEditRent: (room: RoomSummary) => void;
   onDeleteRoom: (room: RoomSummary) => void;
   onDeleteBed: (bed: BedSummary) => void;
+  onRename: (target: RenameTarget) => void;
 }) {
   return (
     <div className="rounded-md border border-border">
@@ -371,10 +414,23 @@ function FloorBlock({
             {rooms.length} room{rooms.length === 1 ? "" : "s"}
           </span>
         </button>
-        <Button variant="outline" size="sm" onClick={onAddRoom}>
-          <Plus className="h-4 w-4" />
-          Room
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onAddRoom}>
+            <Plus className="h-4 w-4" />
+            Room
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() =>
+              onRename({ kind: "floor", id: floor.id, label: floor.label })
+            }
+            title="Rename floor"
+            className="text-muted-foreground hover:text-brand"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {open && (
@@ -391,6 +447,7 @@ function FloorBlock({
                 onEditRent={() => onEditRent(r)}
                 onDeleteRoom={() => onDeleteRoom(r)}
                 onDeleteBed={onDeleteBed}
+                onRename={onRename}
               />
             ))
           )}
@@ -409,6 +466,7 @@ function RoomBlock({
   onEditRent,
   onDeleteRoom,
   onDeleteBed,
+  onRename,
 }: {
   room: RoomSummary;
   beds: BedSummary[];
@@ -416,6 +474,7 @@ function RoomBlock({
   onEditRent: () => void;
   onDeleteRoom: () => void;
   onDeleteBed: (bed: BedSummary) => void;
+  onRename: (target: RenameTarget) => void;
 }) {
   return (
     <div className="rounded-md bg-muted/40 p-3">
@@ -448,6 +507,17 @@ function RoomBlock({
           <Button
             variant="ghost"
             size="icon"
+            onClick={() =>
+              onRename({ kind: "room", id: room.id, label: room.label })
+            }
+            title="Rename room"
+            className="text-muted-foreground hover:text-brand"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onDeleteRoom}
             disabled={beds.some((b) => b.status !== "VACANT")}
             title={
@@ -470,16 +540,36 @@ function RoomBlock({
                 {bed.label} · vacant
                 <button
                   type="button"
-                  onClick={() => onDeleteBed(bed)}
+                  onClick={() =>
+                    onRename({ kind: "bed", id: bed.id, label: bed.label })
+                  }
                   className="ml-0.5 rounded-full p-0.5 hover:bg-success/30"
+                  title="Rename bed"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDeleteBed(bed)}
+                  className="rounded-full p-0.5 hover:bg-success/30"
                   title="Delete bed"
                 >
                   <X className="h-3 w-3" />
                 </button>
               </Badge>
             ) : (
-              <Badge key={bed.id} tone={bedTone(bed.status)}>
+              <Badge key={bed.id} tone={bedTone(bed.status)} className="gap-1 pr-1">
                 {bed.label} · {bed.status.toLowerCase()}
+                <button
+                  type="button"
+                  onClick={() =>
+                    onRename({ kind: "bed", id: bed.id, label: bed.label })
+                  }
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-black/10"
+                  title="Rename bed"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
               </Badge>
             ),
           )}
@@ -864,6 +954,72 @@ function EditRentDialog({
           />
         </Field>
         <DialogActions busy={busy} onClose={onClose} submitLabel="Save rent" />
+      </form>
+    </Dialog>
+  );
+}
+
+function RenameDialog({
+  target,
+  onClose,
+  onDone,
+}: {
+  target: RenameTarget | null;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+}) {
+  const toast = useToast();
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (target) setValue(target.label);
+  }, [target]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!target) return;
+    const next = value.trim();
+    setBusy(true);
+    try {
+      switch (target.kind) {
+        case "building":
+          await api.property.renameBuilding(target.id, next);
+          break;
+        case "floor":
+          await api.property.renameFloor(target.id, next);
+          break;
+        case "room":
+          await api.property.renameRoom(target.id, next);
+          break;
+        case "bed":
+          await api.property.renameBed(target.id, next);
+          break;
+      }
+      await onDone();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not rename."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = target ? renameCopy[target.kind] : null;
+
+  return (
+    <Dialog open={target !== null} onClose={onClose} title={copy?.title ?? "Rename"}>
+      <form onSubmit={submit} className="space-y-4">
+        <Field label={copy?.field ?? "Name"} htmlFor="rn-value">
+          <Input
+            id="rn-value"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            required
+            minLength={1}
+            autoFocus
+          />
+        </Field>
+        <DialogActions busy={busy} onClose={onClose} submitLabel="Save" />
       </form>
     </Dialog>
   );
