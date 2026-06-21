@@ -24,6 +24,6 @@
     "typescript": "^5.7.2"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["argon2", "esbuild", "@nestjs/core"]
+    "onlyBuiltDependencies": ["argon2", "esbuild", "@nestjs/core", "sharp"]
   }
 }

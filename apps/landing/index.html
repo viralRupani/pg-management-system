@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<!-- ===================== PRIMARY SEO ===================== -->
+<title>Basera — PG management software, simplified | ₹10 per bed</title>
+<meta name="description" content="Run your entire PG from one app — beds, rent, KYC, complaints and the mess menu. Residents get their own app to pay rent over UPI. Just ₹10 per occupied bed per month. No setup fees, no payment-gateway cut. Built for PG owners in Ahmedabad &amp; across Gujarat." />
+<link rel="canonical" href="https://basera.in/" />
+<meta name="robots" content="index, follow, max-image-preview:large" />
+<meta name="theme-color" content="#4338ca" />
+<meta name="author" content="Basera Technologies" />
+<meta name="keywords" content="PG management software, paying guest management, hostel management app, PG rent collection, PG software India, PG management Ahmedabad, bed management, resident app" />
+
+<!-- ===================== OPEN GRAPH ===================== -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Basera" />
+<meta property="og:title" content="Basera — PG management, simplified" />
+<meta property="og:description" content="Beds, rent, KYC, complaints and mess — one app for the whole PG. Just ₹10 per occupied bed per month. No setup fees, no payment-gateway cut." />
+<meta property="og:url" content="https://basera.in/" />
+<meta property="og:image" content="https://basera.in/og-image.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Basera — run your entire PG from one app" />
+<meta property="og:locale" content="en_IN" />
+
+<!-- ===================== TWITTER ===================== -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Basera — PG management, simplified" />
+<meta name="twitter:description" content="One app for the whole PG — beds, rent, KYC, complaints and mess. ₹10 per occupied bed per month." />
+<meta name="twitter:image" content="https://basera.in/og-image.png" />
+
+<!-- ===================== ICONS ===================== -->
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="icon" href="/favicon.ico" sizes="32x32" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+<!-- ===================== FONTS (self-hosted, LCP-critical preload) ===================== -->
+<link rel="preload" href="/fonts/bricolage-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/fonts/jakarta-latin.woff2" as="font" type="font/woff2" crossorigin />
+
+<link rel="stylesheet" href="/src/styles.css" />
+<script>document.documentElement.className += " js";</script>
+
+<!-- ===================== STRUCTURED DATA ===================== -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://basera.in/#org",
+      "name": "Basera Technologies",
+      "url": "https://basera.in/",
+      "logo": "https://basera.in/og-image.png",
+      "email": "hello@basera.in",
+      "areaServed": "IN",
+      "address": {
+        "@type": "PostalAddress",
+        "addressLocality": "Ahmedabad",
+        "addressRegion": "Gujarat",
+        "addressCountry": "IN"
+      }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "name": "Basera — PG Management",
+      "operatingSystem": "Web, Android, iOS",
+      "applicationCategory": "BusinessApplication",
+      "url": "https://basera.in/",
+      "description": "All-in-one PG (paying-guest) management software — beds, rent, KYC, deposits, complaints and the mess menu, with a resident mobile app for UPI rent payments.",
+      "publisher": { "@id": "https://basera.in/#org" },
+      "offers": {
+        "@type": "Offer",
+        "price": "10",
+        "priceCurrency": "INR",
+        "description": "₹10 per occupied bed per month. No setup fees. First 30 days free."
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Is there a setup fee?",
+          "acceptedAnswer": { "@type": "Answer", "text": "None at all. There's no onboarding charge and no contract. You start free for 30 days, and after that you only pay ₹10 per occupied bed each month — nothing for empty beds." }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I need a payment gateway?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Residents pay you directly over UPI and upload a screenshot in the app. You approve or reject it in one tap. Because the money never routes through us, there's no gateway cut on your rent." }
+        },
+        {
+          "@type": "Question",
+          "name": "Is my data safe?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Every PG's data is strictly isolated using bank-grade multi-tenant separation, encrypted in transit and at rest. No other owner can ever see your residents, payments or documents." }
+        },
+        {
+          "@type": "Question",
+          "name": "Can residents use it on iPhone and Android?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Both. The resident app works on any iPhone or Android phone, and managers can run the dashboard from a phone or laptop browser — no installation required." }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I manage more than one property?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Absolutely. Manage anywhere from 1 to 10+ properties from a single login, switch between them instantly, and give each manager their own access." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<!-- ===================== NAV ===================== -->
+<header class="nav" id="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top" aria-label="Basera home">
+      <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/><path d="M7 16v-2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg></span>
+      <span>Basera<small>PG management</small></span>
+    </a>
+
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+
+    <div class="nav-cta">
+      <a href="#demo" class="btn btn-ghost">Book a demo</a>
+      <a href="#pricing" class="btn btn-primary">Start free</a>
+      <button class="nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- mobile drawer -->
+<div class="drawer" id="drawer">
+  <div class="drawer-panel">
+    <div class="dh">
+      <span class="brand" style="font-size:18px"><span class="mark" aria-hidden="true" style="width:32px;height:32px"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/><path d="M7 16v-2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg></span>Basera</span>
+      <button class="drawer-close" id="drawerClose" aria-label="Close menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <a class="dl" href="#features">Features</a>
+    <a class="dl" href="#how">How it works</a>
+    <a class="dl" href="#pricing">Pricing</a>
+    <a class="dl" href="#faq">FAQ</a>
+    <a href="#demo" class="btn btn-ghost">Book a demo</a>
+    <a href="#pricing" class="btn btn-primary">Start free</a>
+  </div>
+</div>
+
+<main id="top">
+
+<!-- ===================== HERO ===================== -->
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div class="hero-copy reveal">
+        <span class="pill"><span class="tag">NEW</span> Now live for PG owners in <b>Ahmedabad</b></span>
+        <h1>Run your entire PG from <span class="hl">one app</span> — without spreadsheets or WhatsApp chaos.</h1>
+        <p class="hero-sub">Beds, rent, KYC, complaints and the mess menu — all in one place. Your residents get their own app to pay rent and raise issues. You stay in control.</p>
+        <div class="hero-actions">
+          <a href="#pricing" class="btn btn-primary btn-lg">Start free
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+          <a href="#how" class="btn btn-ghost btn-lg">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M10 9l5 3-5 3z" fill="currentColor" stroke="none"/></svg>
+            See how it works
+          </a>
+        </div>
+      </div>
+
+      <!-- HERO VISUAL: dashboard + phone -->
+      <div class="hero-visual reveal">
+        <div class="mock-dash" role="img" aria-label="Basera manager dashboard showing occupancy, rent collected and a bed map">
+          <div class="mock-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="url">app.basera.in/dashboard</span>
+          </div>
+          <div class="dash-body">
+            <aside class="dash-side">
+              <div class="logo"><i></i> Basera</div>
+              <nav class="dash-nav">
+                <a class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> Dashboard</a>
+                <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M5 10V7a2 2 0 0 1 2-2h3v5M2 18h20"/></svg> Beds</a>
+                <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12M6 8h12M9 13h6M9 3v18M15 3v18"/></svg> Rent</a>
+                <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg> KYC</a>
+                <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Complaints</a>
+              </nav>
+            </aside>
+            <div class="dash-main">
+              <div class="dash-h">
+                <h4>Sunrise Boys PG</h4>
+                <span class="chip">● 92% occupied</span>
+              </div>
+              <div class="kpis">
+                <div class="kpi"><div class="l">OCCUPIED</div><div class="v">110<small>/120</small></div></div>
+                <div class="kpi"><div class="l">RENT (JUN)</div><div class="v">₹3.6L</div></div>
+                <div class="kpi"><div class="l">PENDING</div><div class="v">7</div></div>
+              </div>
+              <div class="dash-card">
+                <div class="ch"><span>Floor 2 — Bed map</span><em>32 beds</em></div>
+                <div class="beds" aria-hidden="true">
+                  <span class="bed occ"></span><span class="bed occ"></span><span class="bed occ"></span><span class="bed res"></span><span class="bed occ"></span><span class="bed occ"></span><span class="bed vacant"></span><span class="bed occ"></span>
+                  <span class="bed occ"></span><span class="bed occ"></span><span class="bed occ"></span><span class="bed occ"></span><span class="bed occ"></span><span class="bed res"></span><span class="bed occ"></span><span class="bed occ"></span>
+                  <span class="bed occ"></span><span class="bed vacant"></span><span class="bed occ"></span><span class="bed occ"></span><span class="bed occ"></span><span class="bed occ"></span><span class="bed occ"></span><span class="bed occ"></span>
+                  <span class="bed occ"></span><span class="bed occ"></span><span class="bed res"></span><span class="bed occ"></span><span class="bed occ"></span><span class="bed vacant"></span><span class="bed occ"></span><span class="bed occ"></span>
+                </div>
+                <div class="legend">
+                  <span><i style="background:var(--occupied)"></i>Occupied</span>
+                  <span><i style="background:var(--reserved)"></i>Reserved</span>
+                  <span><i style="background:var(--vacant)"></i>Vacant</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- floating phone: resident app -->
+        <div class="mock-phone" role="img" aria-label="Resident mobile app showing rent due and quick actions">
+          <div class="phone-screen">
+            <div class="phone-status"><span>9:41</span><span>5G ▪ 84%</span></div>
+            <div class="phone-top">
+              <div class="hi">Good morning,</div>
+              <div class="nm">Rahul 👋</div>
+            </div>
+            <div class="phone-body">
+              <div class="pcard">
+                <div class="due">Rent due · 5 Jun</div>
+                <div class="amt">₹6,500 <small>incl. mess</small></div>
+                <div class="pbtn">Pay with UPI</div>
+              </div>
+              <div class="prow">
+                <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8M5 9v11h14V9"/></svg></span>
+                <div><div class="t">Mess menu</div><div class="s">Lunch · Paneer, dal, rice</div></div>
+              </div>
+              <div class="prow">
+                <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+                <div><div class="t">Complaint #214</div><div class="s">In progress · Plumber assigned</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FEATURES ===================== -->
+<section class="section" id="features">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="eyebrow">Everything in one place</p>
+      <h2>One app for the whole PG — not five WhatsApp groups.</h2>
+      <p>From the first enquiry to move-out settlement, Basera handles the daily running of your property so you can focus on filling beds.</p>
+    </div>
+
+    <div class="feature-grid">
+      <article class="feature reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M5 10V7a2 2 0 0 1 2-2h4v5M2 18h20M3 18v2M21 18v2"/></svg></div>
+        <h3>Beds &amp; property</h3>
+        <p>Map buildings → floors → rooms → beds. Allocate, transfer and reserve beds for residents joining next week.</p>
+      </article>
+
+      <article class="feature teal reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12M6 8h12M15 13H9M9 3v18M15 3v18"/></svg></div>
+        <h3>Rent &amp; payments</h3>
+        <p>Auto-generated monthly invoices and reminders. Residents upload a UPI screenshot — you approve or reject in a tap.</p>
+      </article>
+
+      <article class="feature reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18M3 12h18M5 17h6"/><rect x="2" y="4" width="20" height="16" rx="2"/></svg></div>
+        <h3>Deposits &amp; move-out</h3>
+        <p>Track every security deposit and settle exits cleanly — deductions, refunds and a clear final statement.</p>
+      </article>
+
+      <article class="feature spark reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v5c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <h3>KYC &amp; documents</h3>
+        <p>Collect and verify resident ID documents securely, with everything stored against the right bed.</p>
+      </article>
+
+      <article class="feature reveal wide">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg></div>
+        <h3>Complaints &amp; operations</h3>
+        <p>Resident complaints with live status tracking, a daily mess menu, announcements, and budgets &amp; expenses — the whole back office of running a PG, organised in one timeline.</p>
+      </article>
+
+      <article class="feature teal reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg></div>
+        <h3>Resident mobile app</h3>
+        <p>Residents pay rent, raise complaints, view the mess menu and get announcements — on their own phone.</p>
+      </article>
+
+      <article class="feature spark reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="12" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="13" r="2.5"/><path d="M12 22a10 10 0 1 1 10-10 3 3 0 0 1-3 3h-2a2 2 0 0 0-2 2 2 2 0 0 1-2 2z"/></svg></div>
+        <h3>White-label branding</h3>
+        <p>Theme the resident app with your own PG's brand colour and logo. Your residents see your brand, not ours.</p>
+      </article>
+
+      <article class="feature reveal">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.5"/></svg></div>
+        <h3>Secure &amp; isolated</h3>
+        <p>Every PG's data is strictly separated with bank-grade multi-tenant isolation. Your records stay yours.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== HOW IT WORKS ===================== -->
+<section class="section how" id="how">
+  <div class="wrap">
+    <div class="section-head center reveal">
+      <p class="eyebrow">Up and running in a day</p>
+      <h2>From spreadsheets to sorted in three steps</h2>
+      <p>No installation, no IT team. If you can use WhatsApp, you can run your PG on Basera.</p>
+    </div>
+    <div class="steps">
+      <div class="step reveal">
+        <div class="num" aria-hidden="true"></div>
+        <h3>Sign up free</h3>
+        <p>Create your account in two minutes with just your mobile number. No card, no setup fee.</p>
+        <span class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </div>
+      <div class="step reveal">
+        <div class="num" aria-hidden="true"></div>
+        <h3>Add property &amp; beds</h3>
+        <p>Set up your buildings, floors, rooms and beds. Import existing residents in one go.</p>
+        <span class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </div>
+      <div class="step reveal">
+        <div class="num" aria-hidden="true"></div>
+        <h3>Invite residents</h3>
+        <p>Residents get the app, complete KYC and start paying rent. You watch it all from one dashboard.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== PRICING ===================== -->
+<section class="section" id="pricing">
+  <div class="wrap">
+    <div class="section-head center reveal">
+      <p class="eyebrow">Honest, occupancy-based pricing</p>
+      <h2>Just ₹10 per occupied bed, per month</h2>
+      <p>You only pay for beds that are actually filled. No setup fees, no contracts, and we never take a cut of your rent.</p>
+    </div>
+
+    <div class="pricing-grid">
+      <!-- price card -->
+      <div class="price-card feature-hl reveal">
+        <p class="eyebrow">Pay-as-you-grow</p>
+        <div class="price-hero">
+          <span class="cur">₹</span><span class="num">10</span>
+          <span class="per">/ occupied bed / month</span>
+        </div>
+        <p class="price-note">A 100-bed PG at 90% occupancy pays around <b style="color:var(--ink)">₹900 a month</b> — less than what one empty bed costs you in a day.</p>
+        <ul class="price-list">
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> No setup or onboarding fees</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> No payment-gateway cut on rent</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Unlimited residents, rooms &amp; staff logins</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Resident app + white-label branding included</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Free for your first 30 days</li>
+        </ul>
+        <a href="#demo" class="btn btn-primary btn-lg">Start free — no card needed</a>
+        <p class="price-foot">Managing 5+ properties? <a href="#demo" style="color:var(--primary);font-weight:600">Talk to us about volume pricing →</a></p>
+      </div>
+
+      <!-- calculator -->
+      <div class="calc-card reveal">
+        <h3>What will it cost me?</h3>
+        <p class="sub">Slide to your number of occupied beds and see your monthly bill instantly.</p>
+
+        <div class="calc-row">
+          <span class="lbl">Occupied residents</span>
+          <span class="resn"><span id="calcResidents">80</span></span>
+        </div>
+        <input type="range" min="20" max="300" step="5" value="80" class="slider" id="calcSlider"
+               aria-label="Number of occupied residents" aria-valuemin="20" aria-valuemax="300" aria-valuenow="80" />
+        <div class="slider-scale"><span>20</span><span>300 beds</span></div>
+
+        <div class="calc-out">
+          <div>
+            <div class="ol">Your monthly Basera bill</div>
+            <div class="ov">₹<span id="calcCost">800</span> <small>/ month</small></div>
+          </div>
+          <div class="oside">That's about <b id="calcPerDay">₹27</b> a day for your whole PG.</div>
+        </div>
+
+        <p class="calc-foot">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          Bill drops automatically when beds empty — you never overpay for vacancies.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FAQ ===================== -->
+<section class="section" id="faq">
+  <div class="wrap">
+    <div class="section-head center reveal">
+      <p class="eyebrow">Questions, answered</p>
+      <h2>Everything you're wondering about</h2>
+    </div>
+    <div class="faq-wrap reveal">
+      <details class="faq" open>
+        <summary>Is there a setup fee? <span class="pm" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary>
+        <div class="ans">None at all. There's no onboarding charge and no contract. You start free for 30 days, and after that you only pay ₹10 per occupied bed each month — nothing for empty beds.</div>
+      </details>
+      <details class="faq">
+        <summary>Do I need a payment gateway? <span class="pm" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary>
+        <div class="ans">No. Residents pay you directly over UPI and simply upload a screenshot in the app. You approve or reject it in one tap. Because the money never routes through us, there's no gateway cut on your rent.</div>
+      </details>
+      <details class="faq">
+        <summary>Is my data safe? <span class="pm" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary>
+        <div class="ans">Yes. Every PG's data is strictly isolated using bank-grade multi-tenant separation, encrypted in transit and at rest. No other owner — and no other PG — can ever see your residents, payments or documents.</div>
+      </details>
+      <details class="faq">
+        <summary>Can residents use it on iPhone and Android? <span class="pm" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary>
+        <div class="ans">Both. The resident app works on any iPhone or Android phone, and managers can run the dashboard from a phone or laptop browser — no installation required.</div>
+      </details>
+      <details class="faq">
+        <summary>Can I manage more than one property? <span class="pm" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary>
+        <div class="ans">Absolutely. Manage anywhere from 1 to 10+ properties from a single login, switch between them instantly, and give each manager their own access.</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FINAL CTA ===================== -->
+<section class="section final" id="demo">
+  <div class="wrap">
+    <div class="cta-box reveal">
+      <h2>Your PG, finally on one screen.</h2>
+      <p>Run beds, rent and residents on Basera — built for PG owners across Gujarat. Free for 30 days, set up before tomorrow's rent is due.</p>
+      <div class="cta-actions">
+        <a href="#" class="btn btn-primary btn-lg">Start free</a>
+        <a href="#" class="btn btn-ghost btn-lg">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h2l1 9h11l2-6H7"/><circle cx="9" cy="19" r="1.5"/><circle cx="16" cy="19" r="1.5"/></svg>
+          Book a demo
+        </a>
+      </div>
+      <p class="cta-fine">No credit card · No setup fee · Cancel anytime</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ===================== FOOTER ===================== -->
+<footer class="footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <a class="brand" href="#top">
+          <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/><path d="M7 16v-2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg></span>
+          <span>Basera</span>
+        </a>
+        <p>The all-in-one app for paying-guest owners and managers across India. Beds, rent, KYC and residents — without the spreadsheets.</p>
+        <a class="wa-btn" href="#">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2m0 1.8a8.2 8.2 0 0 1 6.9 12.6l-.3.5.7 2.6-2.7-.7-.5.3A8.2 8.2 0 1 1 12 3.8m-3 3.7c-.2 0-.5 0-.7.4s-.9.9-.9 2.1.9 2.5 1 2.6c.1.2 1.8 2.9 4.5 4 .6.2 1.1.4 1.5.5.6.2 1.2.2 1.6.1.5-.1 1.5-.6 1.7-1.2s.2-1.1.1-1.2c-.1-.1-.2-.2-.5-.3l-1.7-.8c-.2-.1-.4-.1-.6.1l-.7.9c-.1.2-.3.2-.5.1s-1-.4-1.9-1.2c-.7-.6-1.2-1.4-1.3-1.6s0-.4.1-.5l.4-.5c.1-.2.2-.3.2-.5s0-.4-.1-.5l-.8-1.9c-.2-.4-.4-.4-.6-.4z"/></svg>
+          Chat on WhatsApp
+        </a>
+      </div>
+      <div class="foot-col">
+        <h4>Product</h4>
+        <a href="#features">Features</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#how">How it works</a>
+        <a href="#demo">Book a demo</a>
+      </div>
+      <div class="foot-col">
+        <h4>Company</h4>
+        <a href="#">About</a>
+        <a href="#">Blog</a>
+        <a href="#">Careers</a>
+        <a href="#faq">Help &amp; FAQ</a>
+      </div>
+      <div class="foot-col">
+        <h4>Get in touch</h4>
+        <a href="mailto:hello@basera.in">hello@basera.in</a>
+        <a href="tel:+917016393006">+91 70163 93006</a>
+        <a href="#">Ahmedabad, Gujarat</a>
+        <a href="#">Privacy &amp; data security</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© <span id="year">2026</span> Basera Technologies. Made in Ahmedabad. Prices in ₹ (INR).</span>
+      <span class="links"><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Security</a></span>
+    </div>
+  </div>
+</footer>
+
+<script type="module" src="/src/app.js"></script>
+</body>
+</html>
