@@ -413,7 +413,7 @@ function ComplaintsPanel({
                       {c.residentName} · {c.category.toLowerCase()}
                     </p>
                   </div>
-                  <Badge tone={toneFor(c.status)}>
+                  <Badge tone={toneFor(c.status)} className="shrink-0">
                     {c.status.replace("_", " ").toLowerCase()}
                   </Badge>
                 </Link>
