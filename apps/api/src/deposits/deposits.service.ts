@@ -226,7 +226,15 @@ export class DepositsService {
         .where(and(eq(invoices.id, invoiceId), isNull(invoices.deletedAt)));
       if (!invoice) throw new NotFoundException("Invoice not found");
 
-      // (2) The resident's deposit must be HELD.
+      // (2) The resident's deposit must be HELD. LOCK the row (FOR UPDATE): the
+      // balance check below (read prior deductions → compare) and the deduction
+      // insert are otherwise a non-atomic read-then-write. Two concurrent applies
+      // for the SAME resident's two DIFFERENT unpaid invoices would each read the
+      // pre-deduction balance and both pass, over-drawing the deposit (the
+      // per-invoice flip at step 4 can't catch it — different invoice rows). The
+      // row lock serialises every apply (and apply-vs-settleExit) on this
+      // deposit, so the second waits and then sees the first's committed
+      // deduction and fails the balance check with a clean 409.
       const [deposit] = await tx
         .select({ id: deposits.id, amountPaise: deposits.amountPaise })
         .from(deposits)
@@ -235,7 +243,8 @@ export class DepositsService {
             eq(deposits.residentId, invoice.residentId),
             eq(deposits.status, DepositStatus.HELD),
           ),
-        );
+        )
+        .for("update");
       if (!deposit)
         throw new ConflictException(
           "No held deposit on record for this resident",
@@ -373,7 +382,12 @@ export class DepositsService {
         throw new ConflictException("Resident has already exited");
       }
 
-      // (2) Settle the deposit if one is HELD.
+      // (2) Settle the deposit if one is HELD. LOCK the row (FOR UPDATE) so this
+      // serialises against a concurrent `applyToInvoice` on the same deposit:
+      // without it, an apply could commit a fresh DEDUCTION between this read of
+      // `priorDeductions` and the refund write, over-drawing the deposit. The
+      // lock makes the apply wait (then see no HELD deposit) or makes us wait
+      // (then read the apply's deduction into `priorDeductions`).
       const [deposit] = await tx
         .select()
         .from(deposits)
@@ -382,7 +396,8 @@ export class DepositsService {
             eq(deposits.residentId, input.residentId),
             eq(deposits.status, DepositStatus.HELD),
           ),
-        );
+        )
+        .for("update");
 
       let depositPaise = 0;
       let priorDeductions = 0;

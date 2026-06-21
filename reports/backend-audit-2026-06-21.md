@@ -21,6 +21,12 @@ SQLi advisory (Medium, dependency bump), and four Lows (public branding leaks th
 UPI QR field, unbounded charge amount, JWT-in-localStorage on the static SPAs,
 and an unreachable `multer` DoS advisory).
 
+**Update (2026-06-21, same day):** the **High** (deposit over-draw race) and the
+**Medium** (`drizzle-orm` SQLi bump) have both been **fixed and verified** — see
+the ✅ notes on each finding. The suite is now **204/204 green** (a concurrency
+test was added). The remaining open items are the five Lows plus the still-open
+backlog items below.
+
 This run also added a **live dynamic layer** (the user emphasised the apps are
 running): the API on :4000 was exercised with curl — health, auth rejection,
 and the public branding read — and `pnpm audit` was run across the workspace.
@@ -28,7 +34,7 @@ The three client apps (admin, landing, mobile/resident-web) were reviewed for
 the checks that actually matter for static-export SPAs / an Expo client:
 shipped-bundle secrets, token storage, and dependency vulnerabilities.
 
-**Counts: Critical: 0 · High: 1 · Medium: 1 · Low: 5**
+**Counts: Critical: 0 · High: 1 (fixed) · Medium: 1 (fixed) · Low: 5**
 
 ---
 
@@ -37,15 +43,22 @@ shipped-bundle secrets, token storage, and dependency vulnerabilities.
 **Command:** `pnpm --filter @pg/api test` (serialized `--runInBand`; infra up +
 migrated — Postgres :5433, Redis :6379 both confirmed listening).
 
-**Result: 203 passed, 0 failed — 203 tests across 21 suites.** Including the new
-`deposit-apply-rent.e2e-spec.ts`, `charges.e2e-spec.ts`,
+**Result (initial audit): 203 passed, 0 failed — 203 tests across 21 suites.**
+Including the new `deposit-apply-rent.e2e-spec.ts`, `charges.e2e-spec.ts`,
 `transfer-auto-activate.e2e-spec.ts`, `dashboard-alerts.e2e-spec.ts`, and
 `invoice-delete.e2e-spec.ts`. The 06-17 failing `auth-password.e2e-spec.ts`
 (PwFlag tenant leak) now passes — **regression fixed / non-idempotency resolved.**
 
-**Coverage gap (drives the High below):** `deposit-apply-rent.e2e-spec.ts` has
-**no concurrency test** — no `Promise.all`/parallel apply. The over-draw race is
-therefore untested.
+**Result (after same-day fixes): 204 passed, 0 failed — 204 tests across 21
+suites.** The drizzle 0.45 bump + the deposit row-lock fix are both green, and a
+concurrent-load case was added to `deposit-apply-rent.e2e-spec.ts` (closing the
+coverage gap noted below).
+
+**Coverage gap (drove the High) — now addressed:** `deposit-apply-rent.e2e-spec.ts`
+previously had **no concurrency test**. A six-way `Promise.all` apply case was
+added; note it asserts the observable contract rather than deterministically
+reproducing the race (fast local commits rarely open the worst-case interleave —
+the FOR UPDATE lock is the real guard).
 
 ---
 
@@ -63,7 +76,19 @@ therefore untested.
 
 ## Findings
 
-### [HIGH] Deposit over-draw race in `applyToInvoice` (unguarded balance check on a money write)
+### [HIGH] Deposit over-draw race in `applyToInvoice` (unguarded balance check on a money write) — ✅ FIXED (2026-06-21)
+
+> **Resolved same day.** Added a `SELECT … FOR UPDATE` row lock on the resident's
+> deposit in both `applyToInvoice` and `settleExit`
+> (`deposits.service.ts`), so concurrent applies — and an apply racing an exit —
+> serialise on the deposit row: the second waits, re-reads the now-committed
+> deduction, and fails the balance check with a clean 409 instead of over-drawing.
+> A concurrent-load test was added (`deposit-apply-rent.e2e-spec.ts` — six
+> simultaneous applies against a one-month deposit → exactly one 201 / one
+> deduction). Full suite **204/204 green**. **Caveat:** against a fast local
+> Postgres the worst-case interleave rarely opens, so the e2e asserts the
+> observable contract rather than deterministically reproducing the race; the
+> FOR UPDATE lock is the actual guard under real contention.
 
 - **Where:** `apps/api/src/deposits/deposits.service.ts:211-291` (balance check
   at 245-251; deduction insert at 274-282; no row lock).
