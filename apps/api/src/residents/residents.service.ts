@@ -29,6 +29,7 @@ import {
   UserRole,
 } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
+import { isUniqueViolation } from "../db/pg-errors";
 import {
   allocations,
   authIdentities,
@@ -44,8 +45,6 @@ import {
 // A resident's held bed (PENDING booking) joins `beds` a SECOND time, so it
 // needs its own alias to avoid colliding with the active-allocation bed join.
 const bookedBeds = alias(beds, "booked_beds");
-
-const PG_UNIQUE_VIOLATION = "23505";
 
 // The document type that constitutes KYC today. Adding more required types
 // later means rolling the per-resident status up across all of them; for one
@@ -71,7 +70,7 @@ export class ResidentsService {
     } catch (err) {
       // Phone is unique per tenant in auth_identities — surface a clean 409
       // instead of leaking the raw DB unique violation as a 500.
-      if ((err as { code?: string }).code === PG_UNIQUE_VIOLATION) {
+      if (isUniqueViolation(err)) {
         throw new ConflictException(
           "A resident with this phone number already exists in this PG",
         );

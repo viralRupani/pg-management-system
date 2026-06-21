@@ -29,15 +29,13 @@ import {
 } from "../db/schema";
 import { istPeriod, istStartOfDayUtc } from "../common/ist-date";
 import { freeBed } from "../db/free-bed";
+import { isUniqueViolation } from "../db/pg-errors";
 import { prorateSegment } from "../rent/rent.proration";
 
 /** Drizzle transaction handle (the arg to `db.transaction(async (tx) => …)`). */
 type Tx = Parameters<
   Parameters<ReturnType<TenantContextService["db"]>["transaction"]>[0]
 >[0];
-
-/** Postgres unique_violation — raised by the active-allocation partial indexes. */
-const PG_UNIQUE_VIOLATION = "23505";
 
 /**
  * Bed allocation. `allocations` (active row = end_date IS NULL) is the source of
@@ -627,12 +625,4 @@ async function assertNoUnsettledAdjustment(
     throw new ConflictException(
       "This resident has an unsettled room-transfer adjustment; generate their next invoice before transferring again",
     );
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    (err as { code?: string }).code === PG_UNIQUE_VIOLATION
-  );
 }

@@ -16,9 +16,8 @@ import {
 } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
 import { allocations, beds, bookings, deposits, users } from "../db/schema";
+import { isUniqueViolation } from "../db/pg-errors";
 import { istStartOfDayUtc } from "../common/ist-date";
-
-const PG_UNIQUE_VIOLATION = "23505";
 
 /**
  * Future-dated bed bookings. A manager holds a bed for an incoming resident and
@@ -337,12 +336,4 @@ export class BookingsService {
     }
     return activated;
   }
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    (err as { code?: string }).code === PG_UNIQUE_VIOLATION
-  );
 }

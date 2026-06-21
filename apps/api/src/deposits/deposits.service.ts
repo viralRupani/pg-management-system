@@ -28,8 +28,7 @@ import {
   users,
 } from "../db/schema";
 import { freeBed } from "../db/free-bed";
-
-const PG_UNIQUE_VIOLATION = "23505";
+import { isUniqueViolation } from "../db/pg-errors";
 
 /** Drizzle transaction handle (the arg to `db.transaction(async (tx) => …)`). */
 type Tx = Parameters<
@@ -75,7 +74,7 @@ export class DepositsService {
         .returning({ id: deposits.id });
       return { id: row.id };
     } catch (err) {
-      if ((err as { code?: string }).code === PG_UNIQUE_VIOLATION)
+      if (isUniqueViolation(err))
         throw new ConflictException("Deposit already recorded for this resident");
       throw err;
     }
