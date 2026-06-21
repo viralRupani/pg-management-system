@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://basera.in/sitemap.xml
+Sitemap: https://baserapg.com/sitemap.xml
