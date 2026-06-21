@@ -10,6 +10,7 @@ import { MeteringService } from "../platform/metering.service";
 import { PlatformModule } from "../platform/platform.module";
 import { RentModule } from "../rent/rent.module";
 import { BookingsModule } from "../bookings/bookings.module";
+import { AllocationModule } from "../allocation/allocation.module";
 import { JobsController } from "./jobs.controller";
 import { JobsService } from "./jobs.service";
 
@@ -35,7 +36,7 @@ function redisConnection(url: string): RedisOptions {
  * JobsService owns the cross-tenant-under-RLS logic.
  */
 @Module({
-  imports: [PlatformModule, RentModule, BookingsModule],
+  imports: [PlatformModule, RentModule, BookingsModule, AllocationModule],
   controllers: [JobsController],
   providers: [
     JobsService,
@@ -69,6 +70,8 @@ export class JobsModule implements OnModuleInit, OnModuleDestroy {
             return this.jobs.markOverdueAllTenants(job.data?.period);
           case "activate-bookings":
             return this.jobs.activateBookingsAllTenants();
+          case "activate-transfers":
+            return this.jobs.activateTransfersAllTenants();
           case "rent-reminders":
             return this.jobs.sendRentReminders(job.data?.period);
           case "monthly-billing-snapshot":
@@ -101,6 +104,13 @@ export class JobsModule implements OnModuleInit, OnModuleDestroy {
       "activate-bookings",
       {},
       { repeat: { pattern: "0 1 * * *" }, removeOnComplete: true },
+    );
+    // Execute due pre-booked room transfers daily @ 01:30 — after bookings (so a
+    // bed freed by an activated booking can be claimed) and before invoicing.
+    await this.queue.add(
+      "activate-transfers",
+      {},
+      { repeat: { pattern: "30 1 * * *" }, removeOnComplete: true },
     );
     await this.queue.add(
       "rent-reminders",

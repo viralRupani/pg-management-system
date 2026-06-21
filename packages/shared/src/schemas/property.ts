@@ -98,6 +98,11 @@ export const bedSummarySchema = z.object({
   roomId: z.string().uuid(),
   label: z.string(),
   status: z.nativeEnum(BedStatus),
+  // The current occupant (the active allocation's resident, else the holder of a
+  // PENDING booking for a RESERVED bed). Null for a VACANT bed. Lets the property
+  // page reveal who's in a bed on hover + link back to that resident.
+  occupantResidentId: z.string().uuid().nullable(),
+  occupantName: z.string().nullable(),
 });
 export type BedSummary = z.infer<typeof bedSummarySchema>;
 

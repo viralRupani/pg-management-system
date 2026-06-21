@@ -61,7 +61,10 @@ describe("M5 operations (e2e)", () => {
     it("manager sees the complaint; filing resident sees it in /mine", async () => {
       const mgr = await h.req("get", "/complaints", pgA.managerToken);
       expect(mgr.status).toBe(200);
-      expect(mgr.body.some((c: { id: string }) => c.id === complaintId)).toBe(true);
+      // Manager list is paginated: { items, total, page, limit }.
+      expect(
+        mgr.body.items.some((c: { id: string }) => c.id === complaintId),
+      ).toBe(true);
 
       const mine = await h.req("get", "/complaints/mine", residentA);
       expect(mine.body.map((c: { id: string }) => c.id)).toContain(complaintId);
@@ -116,7 +119,7 @@ describe("M5 operations (e2e)", () => {
 
       // Manager list exposes the photoKey, and the photo endpoint presigns it.
       const list = await h.req("get", "/complaints", pgA.managerToken);
-      const withPhoto = list.body.find(
+      const withPhoto = list.body.items.find(
         (c: { id: string }) => c.id === filed.body.id,
       );
       expect(withPhoto.photoKey).toBe(photoKey);

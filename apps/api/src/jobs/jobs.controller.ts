@@ -39,4 +39,9 @@ export class JobsController {
   activateBookings() {
     return this.jobs.activateBookingsAllTenants();
   }
+
+  @Post("activate-transfers")
+  activateTransfers() {
+    return this.jobs.activateTransfersAllTenants();
+  }
 }

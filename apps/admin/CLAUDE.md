@@ -134,7 +134,14 @@ the sidebar. Settings page edits this live via `refreshBranding()` (no reload).
 - **Settings** — white-label editor (PG name + accent `<input type=color>` synced
   to hex, live preview; logo via presign → byte PUT → `PATCH {logoKey}`). Reads
   `useAuth().branding` (canonical). **Logo byte-PUT only works on real S3** (the
-  local stub `uploadUrl` has no server); name/accent verify fully locally.
+  local stub `uploadUrl` has no server); name/accent verify fully locally. Also a
+  **PG code (slug) editor** (`PgCodeCard`): text box → "Check availability"
+  (`branding.checkSlug` → `GET /tenants/slug-available/:slug`) → "Save"
+  (`branding.updateSlug` → `PATCH /tenants/slug`). Save is gated on a FRESH
+  successful check for the exact text AND a value ≠ the current code (editing the
+  box invalidates a prior check), so an unverified slug can't slip through; a 409
+  on the save race re-flags as taken. Changing the code doesn't sign residents
+  out (sessions key off tenant id) — they just need the new code on next login.
 
 ## Run / verify (local dev)
 ```bash

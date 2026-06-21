@@ -1,7 +1,7 @@
 "use client";
 
 import { ApiError } from "@pg/api-client";
-import { Building2, Check, Loader2, Upload } from "lucide-react";
+import { Building2, Check, KeyRound, Loader2, Upload, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   MAX_UPLOAD_BYTES,
@@ -46,6 +46,7 @@ export default function SettingsPage() {
       ) : (
         <>
           <IdentityCard onSaved={refreshBranding} />
+          <PgCodeCard onSaved={refreshBranding} />
           <LogoCard
             logoUrl={branding.logoUrl}
             name={branding.name}
@@ -208,6 +209,151 @@ function AccentPreview({ accent }: { accent: string }) {
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * PG code (tenant slug) editor — the code residents type to log in on mobile.
+ * Flow: edit → "Check availability" → (if free) "Save". Save is gated on a FRESH
+ * successful check for the current text AND a value different from the live code,
+ * so an edit after a check can't slip an unverified slug through. Changing the
+ * code does NOT log residents out (sessions key off tenant id) — they just need
+ * the new code on their next login.
+ */
+function PgCodeCard({ onSaved }: { onSaved: () => Promise<void> | void }) {
+  const { branding } = useAuth();
+  const toast = useToast();
+  const current = branding?.slug ?? "";
+  const [slug, setSlug] = useState("");
+  // null = not checked yet for the current text; the check is invalidated on edit.
+  const [available, setAvailable] = useState<boolean | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  // (Re)seed from the canonical branding whenever it changes.
+  useEffect(() => {
+    if (branding) setSlug(branding.slug);
+  }, [branding]);
+
+  const slugValid = /^[a-z0-9-]{2,40}$/.test(slug);
+  const changed = slug !== current;
+  // Save only after a fresh "available" check for THIS exact text + a real change.
+  const canSave = slugValid && changed && available === true;
+
+  const setSlugInput = (v: string) => {
+    setSlug(v.toLowerCase().replace(/[^a-z0-9-]/g, ""));
+    setAvailable(null); // editing invalidates any prior check
+    setSaved(false);
+  };
+
+  const check = async () => {
+    if (!slugValid || !changed) return;
+    setChecking(true);
+    try {
+      const { available: free } = await api.branding.checkSlug(slug);
+      setAvailable(free);
+    } catch (err) {
+      toast.error(toMessage(err, "Could not check that code."));
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const save = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      await api.branding.updateSlug(slug);
+      await onSaved(); // refreshes branding → re-seeds current
+      setAvailable(null);
+      setSaved(true);
+    } catch (err) {
+      // 409 if the code was taken between the check and save (the unique-index race).
+      setAvailable(false);
+      toast.error(toMessage(err, "Could not save the PG code."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>PG code</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4 max-w-md">
+          <p className="text-sm text-muted-foreground">
+            Residents type this code in the mobile app to log in. It must be
+            unique across all PGs. Changing it doesn&apos;t sign anyone out, but
+            residents will need the new code the next time they log in.
+          </p>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="pg-code">PG code</Label>
+            <div className="flex items-start gap-2">
+              <div className="flex-1 space-y-1.5">
+                <Input
+                  id="pg-code"
+                  value={slug}
+                  onChange={(e) => setSlugInput(e.target.value)}
+                  placeholder="sunrise-pg"
+                  className="font-mono"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Lowercase letters, digits and hyphens, 2–40 characters.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={check}
+                disabled={checking || !slugValid || !changed}
+              >
+                {checking && <Loader2 className="h-4 w-4 animate-spin" />}
+                Check availability
+              </Button>
+            </div>
+
+            {!changed ? (
+              <p className="text-xs text-muted-foreground">
+                This is your current code.
+              </p>
+            ) : available === true ? (
+              <span className="inline-flex items-center gap-1 text-sm text-success">
+                <Check className="h-4 w-4" />
+                <span className="font-mono">{slug}</span> is available
+              </span>
+            ) : available === false ? (
+              <span className="inline-flex items-center gap-1 text-sm text-danger">
+                <X className="h-4 w-4" />
+                <span className="font-mono">{slug}</span> is already taken
+              </span>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Button type="button" onClick={save} disabled={saving || !canSave}>
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <KeyRound className="h-4 w-4" />
+              )}
+              {saving ? "Saving…" : "Save PG code"}
+            </Button>
+            {saved && !changed && (
+              <span className="inline-flex items-center gap-1 text-sm text-success">
+                <Check className="h-4 w-4" />
+                Saved
+              </span>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

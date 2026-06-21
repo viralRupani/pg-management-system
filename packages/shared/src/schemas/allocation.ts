@@ -43,6 +43,22 @@ export const availableBedSchema = z.object({
 export type AvailableBed = z.infer<typeof availableBedSchema>;
 
 /**
+ * An occupied bed whose sitting resident has raised a move-out request — a
+ * "soon to free" target a manager can pre-book a transfer onto. The move is
+ * auto-executed once that resident actually exits and the bed frees.
+ */
+export const exitingBedSchema = z.object({
+  bedId: z.string().uuid(),
+  bedLabel: z.string(),
+  roomLabel: z.string(),
+  capacity: z.number().int(),
+  monthlyRentPaise: z.number().int(),
+  occupantName: z.string(),
+  exitRequestedDate: z.string().nullable(),
+});
+export type ExitingBed = z.infer<typeof exitingBedSchema>;
+
+/**
  * Room-transfer DTOs. A manager pre-books a move for a resident to a target bed
  * by a planned date (soft hold — vacancy is re-checked at execution, the bed is
  * not locked). On the move day the manager executes it: the old allocation ends

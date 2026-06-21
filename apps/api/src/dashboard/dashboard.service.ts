@@ -1,8 +1,26 @@
 import { Injectable } from "@nestjs/common";
-import { eq, sql } from "drizzle-orm";
-import type { DashboardStats } from "@pg/shared";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import {
+  ComplaintStatus,
+  DocumentStatus,
+  DocumentType,
+  PaymentStatus,
+  ResidentStatus,
+  UserRole,
+  type DashboardAlerts,
+  type DashboardStats,
+} from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
-import { beds, bookings, invoices, payments, users, rooms } from "../db/schema";
+import {
+  beds,
+  bookings,
+  complaints,
+  documents,
+  invoices,
+  payments,
+  users,
+  rooms,
+} from "../db/schema";
 
 /** Returns current period as 'YYYY-MM' in IST. */
 function currentIstPeriod(): string {
@@ -157,6 +175,101 @@ export class DashboardService {
       currentMonth,
       revenueByMonth,
       upcomingBookings: upcoming,
+    };
+  }
+
+  /**
+   * Lightweight "needs attention" counts for the manager (bell badge + dashboard
+   * alerts panel). All tenant-scoped aggregates under RLS — no fan-out over the
+   * full roster, so it stays cheap even with hundreds of residents. Kept apart
+   * from the heavier `stats()` so the bell can poll it from every page.
+   */
+  async alerts(): Promise<DashboardAlerts> {
+    const db = this.ctx.db();
+
+    const [exitRows, exitCountRow, paymentsRow, kycRow, complaintsRow] =
+      await Promise.all([
+        // Pending move-out requests — capped list for the dropdown/panel.
+        db
+          .select({
+            residentId: users.id,
+            name: users.name,
+            requestedDate: sql<string>`to_char(${users.exitRequestedDate}, 'YYYY-MM-DD')`,
+            requestedAt: users.exitRequestedAt,
+            note: users.exitRequestNote,
+          })
+          .from(users)
+          .where(
+            and(
+              eq(users.role, UserRole.RESIDENT),
+              eq(users.status, ResidentStatus.ACTIVE),
+              isNotNull(users.exitRequestedAt),
+            ),
+          )
+          .orderBy(users.exitRequestedAt)
+          .limit(10),
+
+        // Total pending move-out requests (the list above is capped at 10).
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(users)
+          .where(
+            and(
+              eq(users.role, UserRole.RESIDENT),
+              eq(users.status, ResidentStatus.ACTIVE),
+              isNotNull(users.exitRequestedAt),
+            ),
+          ),
+
+        // Payments awaiting review.
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(payments)
+          .where(eq(payments.status, PaymentStatus.SUBMITTED)),
+
+        // KYC (Aadhaar) docs uploaded and awaiting verification.
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(documents)
+          .where(
+            and(
+              eq(documents.type, DocumentType.AADHAAR),
+              eq(documents.status, DocumentStatus.PENDING),
+            ),
+          ),
+
+        // Open / in-progress complaints.
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(complaints)
+          .where(
+            inArray(complaints.status, [
+              ComplaintStatus.OPEN,
+              ComplaintStatus.IN_PROGRESS,
+            ]),
+          ),
+      ]);
+
+    const exitCount = exitCountRow[0]?.count ?? 0;
+    const paymentsToReview = paymentsRow[0]?.count ?? 0;
+    const kycToVerify = kycRow[0]?.count ?? 0;
+    const openComplaints = complaintsRow[0]?.count ?? 0;
+
+    return {
+      exitRequests: {
+        count: exitCount,
+        items: exitRows.map((r) => ({
+          residentId: r.residentId,
+          name: r.name,
+          requestedDate: r.requestedDate,
+          requestedAt: r.requestedAt!.toISOString(),
+          note: r.note,
+        })),
+      },
+      paymentsToReview,
+      kycToVerify,
+      openComplaints,
+      total: exitCount + paymentsToReview + kycToVerify + openComplaints,
     };
   }
 }

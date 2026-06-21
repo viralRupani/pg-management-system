@@ -3,8 +3,10 @@
 import {
   type AvailableBed,
   ChargeFrequency,
+  type ExitingBed,
   type DepositSummary,
   type DepositTransactionSummary,
+  type ExitRequestSummary,
   type DocumentSummary,
   EmergencyRelation,
   type ExtraChargeSummary,
@@ -21,6 +23,7 @@ import {
   ArrowRightLeft,
   BedDouble,
   ChevronDown,
+  ExternalLink,
   Eye,
   MessageSquare,
   Plus,
@@ -64,6 +67,24 @@ const kycLabel = (s: KycStatus) =>
         ? "KYC pending"
         : "KYC not started";
 
+/** Full location path for a resident's bed, e.g. "Block A · Ground · 101 · Bed A
+ * · 6-sharing". Skips any segment the backend didn't supply. */
+function bedLocationPath(r: {
+  buildingName?: string | null;
+  floorLabel?: string | null;
+  roomLabel?: string | null;
+  bedLabel: string | null;
+  roomCapacity?: number | null;
+}): string {
+  const parts: string[] = [];
+  if (r.buildingName) parts.push(r.buildingName);
+  if (r.floorLabel) parts.push(r.floorLabel);
+  if (r.roomLabel) parts.push(r.roomLabel);
+  if (r.bedLabel) parts.push(`Bed ${r.bedLabel}`);
+  if (r.roomCapacity != null) parts.push(sharingLabel(r.roomCapacity));
+  return parts.join(" · ");
+}
+
 export default function ResidentsPage() {
   return (
     <Suspense
@@ -88,6 +109,10 @@ type KycFilter = "ALL" | "PENDING" | "VERIFIED";
 
 function ResidentsList() {
   const toast = useToast();
+  // Filters can be deep-linked from the dashboard alerts bell (?kyc=,
+  // ?exitRequested=1), so seed initial state from the URL.
+  const params = useSearchParams();
+  const initialKyc = params.get("kyc");
   const [items, setItems] = useState<ResidentSummary[] | null>(null);
   const [total, setTotal] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -96,7 +121,12 @@ function ResidentsList() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("CURRENT");
-  const [kyc, setKyc] = useState<KycFilter>("ALL");
+  const [kyc, setKyc] = useState<KycFilter>(
+    initialKyc === "PENDING" || initialKyc === "VERIFIED" ? initialKyc : "ALL",
+  );
+  const [exitRequested, setExitRequested] = useState(
+    params.get("exitRequested") === "1",
+  );
   const [page, setPage] = useState(1);
 
   // Debounce free-text search so we don't hit the API on every keystroke.
@@ -108,7 +138,7 @@ function ResidentsList() {
   // A new search or filter invalidates the current page.
   useEffect(() => {
     setPage(1);
-  }, [search, status, kyc]);
+  }, [search, status, kyc, exitRequested]);
 
   const load = useCallback(async () => {
     try {
@@ -116,6 +146,7 @@ function ResidentsList() {
         q: search || undefined,
         status,
         kyc,
+        exitRequested: exitRequested || undefined,
         page,
         limit: PAGE_SIZE,
       });
@@ -126,7 +157,7 @@ function ResidentsList() {
       setLoadFailed(true);
       toast.error(toMessage(err, "Could not load residents."));
     }
-  }, [search, status, kyc, page, toast]);
+  }, [search, status, kyc, exitRequested, page, toast]);
 
   useEffect(() => {
     setItems(null);
@@ -137,7 +168,10 @@ function ResidentsList() {
   const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * PAGE_SIZE, total);
   const filtered =
-    search !== "" || status !== ResidentStatus.ACTIVE || kyc !== "ALL";
+    search !== "" ||
+    status !== ResidentStatus.ACTIVE ||
+    kyc !== "ALL" ||
+    exitRequested;
 
   return (
     <div className="space-y-6">
@@ -189,6 +223,22 @@ function ResidentsList() {
           </select>
           <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         </div>
+        <label
+          className={cn(
+            "flex h-10 cursor-pointer select-none items-center gap-2 rounded-md border px-3 text-sm",
+            exitRequested
+              ? "border-amber-300 bg-amber-50 text-amber-800"
+              : "border-input bg-card",
+          )}
+        >
+          <input
+            type="checkbox"
+            checked={exitRequested}
+            onChange={(e) => setExitRequested(e.target.checked)}
+            className="h-4 w-4 accent-amber-500"
+          />
+          Exit requested
+        </label>
       </div>
 
       <Card>
@@ -230,6 +280,9 @@ function ResidentsList() {
                             ? `${r.bookedBedLabel}${r.moveInDate ? ` · moves in ${formatDate(r.moveInDate)}` : ""}`
                             : "No bed"}
                       </span>
+                      {r.exitRequestedDate && (
+                        <Badge tone="warning">Exit requested</Badge>
+                      )}
                       <Badge tone={kycTone(r.kycStatus)}>
                         {kycLabel(r.kycStatus)}
                       </Badge>
@@ -498,6 +551,7 @@ interface DetailData {
   documents: DocumentSummary[];
   deposit: DepositSummary | null;
   ledger: DepositTransactionSummary[];
+  exitRequest: ExitRequestSummary | null;
   invoices: InvoiceSummary[];
   charges: ExtraChargeSummary[];
   transfers: TransferRequestSummary[];
@@ -513,6 +567,7 @@ function ResidentDetail({ id }: { id: string }) {
   const [depositOpen, setDepositOpen] = useState(false);
   const [chargeOpen, setChargeOpen] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
+  const [applyDepositOpen, setApplyDepositOpen] = useState(false);
   const [viewingDoc, setViewingDoc] = useState<DocumentSummary | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -531,6 +586,7 @@ function ResidentDetail({ id }: { id: string }) {
       documents: allDocs.filter((d) => d.residentId === id),
       deposit: dep.deposit,
       ledger: dep.ledger,
+      exitRequest: dep.exitRequest,
       invoices: invoiceList.items,
       charges,
       transfers: allTransfers.filter((t) => t.residentId === id),
@@ -556,6 +612,7 @@ function ResidentDetail({ id }: { id: string }) {
           documents: allDocs.filter((d) => d.residentId === id),
           deposit: dep.deposit,
           ledger: dep.ledger,
+          exitRequest: dep.exitRequest,
           invoices: invoiceList.items,
           charges,
           transfers: allTransfers.filter((t) => t.residentId === id),
@@ -657,7 +714,7 @@ function ResidentDetail({ id }: { id: string }) {
     );
   }
 
-  const { resident, documents, deposit, ledger, invoices, charges, transfers } =
+  const { resident, documents, deposit, ledger, exitRequest, invoices, charges, transfers } =
     data;
   const active = resident.status === "ACTIVE";
   const pendingTransfer = transfers.find((t) => t.status === "PENDING") ?? null;
@@ -667,6 +724,17 @@ function ResidentDetail({ id }: { id: string }) {
   const outstandingPaise = invoices
     .filter((i) => !i.deletedAt && i.status !== "PAID" && i.status !== "WAIVED")
     .reduce((sum, i) => sum + i.amountPaise, 0);
+  // Collectable invoices the held deposit could be applied to.
+  const outstandingInvoices = invoices.filter(
+    (i) => !i.deletedAt && (i.status === "PENDING" || i.status === "OVERDUE"),
+  );
+  // How much of the held deposit has already been spent (rent applied pre-exit).
+  const depositAppliedPaise = ledger
+    .filter((t) => t.type === "DEDUCTION")
+    .reduce((sum, t) => sum + t.amountPaise, 0);
+  const depositBalancePaise = deposit
+    ? deposit.amountPaise - depositAppliedPaise
+    : 0;
   const initials = resident.name
     .split(/\s+/)
     .filter(Boolean)
@@ -749,7 +817,9 @@ function ResidentDetail({ id }: { id: string }) {
                   !resident.bedLabel && "text-muted-foreground",
                 )}
               >
-                {resident.bedLabel ?? "Unallocated"}
+                {resident.bedLabel
+                  ? `${resident.roomLabel ? `${resident.roomLabel} · ` : ""}${resident.bedLabel}`
+                  : "Unallocated"}
               </p>
             </div>
             <div className="rounded-lg border border-border bg-muted/30 p-3">
@@ -865,20 +935,40 @@ function ResidentDetail({ id }: { id: string }) {
               ))}
           </CardHeader>
           <CardContent>
-            <p className="text-sm">
-              {resident.bedLabel ? (
-                <span className="font-medium">
-                  {resident.bedLabel}
-                  {resident.roomCapacity != null
-                    ? ` · ${sharingLabel(resident.roomCapacity)}`
+            {resident.bedId ? (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium">{bedLocationPath(resident)}</p>
+                <Link
+                  href={`/property?bed=${resident.bedId}`}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-brand transition-colors hover:underline"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View on property
+                </Link>
+              </div>
+            ) : resident.bookedBedId ? (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm">
+                  <span className="font-medium">
+                    Bed {resident.bookedBedLabel} held
+                  </span>
+                  {resident.moveInDate
+                    ? ` · moves in ${formatDate(resident.moveInDate)}`
                     : ""}
-                </span>
-              ) : (
-                <span className="text-muted-foreground">
-                  Not assigned to a bed.
-                </span>
-              )}
-            </p>
+                </p>
+                <Link
+                  href={`/property?bed=${resident.bookedBedId}`}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-brand transition-colors hover:underline"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View on property
+                </Link>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Not assigned to a bed.
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -937,6 +1027,17 @@ function ResidentDetail({ id }: { id: string }) {
                   Record deposit
                 </Button>
               )}
+              {active &&
+                deposit?.status === "HELD" &&
+                outstandingInvoices.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setApplyDepositOpen(true)}
+                  >
+                    Apply to rent
+                  </Button>
+                )}
               {active && (
                 <Button
                   variant="danger"
@@ -949,6 +1050,16 @@ function ResidentDetail({ id }: { id: string }) {
             </div>
           </CardHeader>
           <CardContent>
+            {exitRequest && (
+              <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <span className="mt-0.5 shrink-0">⏳</span>
+                <span>
+                  Move-out requested for{" "}
+                  <strong>{formatDate(exitRequest.requestedDate)}</strong>
+                  {exitRequest.note ? ` — "${exitRequest.note}"` : ""}
+                </span>
+              </div>
+            )}
             {deposit ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
@@ -959,6 +1070,14 @@ function ResidentDetail({ id }: { id: string }) {
                     {deposit.status.toLowerCase()}
                   </Badge>
                 </div>
+                {deposit.status === "HELD" && depositAppliedPaise > 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    {formatPaise(depositAppliedPaise)} applied ·{" "}
+                    <span className="font-medium text-foreground">
+                      {formatPaise(depositBalancePaise)} balance
+                    </span>
+                  </p>
+                )}
                 {ledger.length > 0 && (
                   <ul className="divide-y divide-border border-t border-border">
                     {ledger.map((t) => (
@@ -968,7 +1087,11 @@ function ResidentDetail({ id }: { id: string }) {
                       >
                         <span className="text-muted-foreground">
                           {t.type.toLowerCase()}
-                          {t.reason ? ` · ${t.reason}` : ""}
+                          {t.period
+                            ? ` · rent ${t.period}`
+                            : t.reason
+                              ? ` · ${t.reason}`
+                              : ""}
                         </span>
                         <span
                           className={cn(
@@ -1091,9 +1214,20 @@ function ResidentDetail({ id }: { id: string }) {
         open={exitOpen}
         residentId={id}
         deposit={deposit}
+        priorDeductionsPaise={depositAppliedPaise}
         onClose={() => setExitOpen(false)}
         onDone={async () => {
           setExitOpen(false);
+          await refresh();
+        }}
+      />
+      <ApplyDepositDialog
+        open={applyDepositOpen}
+        invoices={outstandingInvoices}
+        balancePaise={depositBalancePaise}
+        onClose={() => setApplyDepositOpen(false)}
+        onDone={async () => {
+          setApplyDepositOpen(false);
           await refresh();
         }}
       />
@@ -1220,6 +1354,7 @@ function TransferDialog({
 }) {
   const toast = useToast();
   const [beds, setBeds] = useState<AvailableBed[] | null>(null);
+  const [exiting, setExiting] = useState<ExitingBed[] | null>(null);
   const [selectedBedId, setSelectedBedId] = useState<string | null>(null);
   const [plannedDate, setPlannedDate] = useState(ymdToday());
   const [busy, setBusy] = useState(false);
@@ -1228,15 +1363,22 @@ function TransferDialog({
     if (!open) return;
     let cancelled = false;
     setBeds(null);
+    setExiting(null);
     setSelectedBedId(null);
     setPlannedDate(ymdToday());
     (async () => {
       try {
-        const list = await api.allocations.suggestions(residentId);
-        if (!cancelled) setBeds(list);
+        const [vacant, soonFree] = await Promise.all([
+          api.allocations.suggestions(residentId),
+          api.allocations.exitingBeds(),
+        ]);
+        if (cancelled) return;
+        setBeds(vacant);
+        // Exclude the resident's own bed — they can't transfer onto it.
+        setExiting(soonFree);
       } catch (err) {
         if (!cancelled)
-          toast.error(toMessage(err, "Could not load vacant beds."));
+          toast.error(toMessage(err, "Could not load beds to move into."));
       }
     })();
     return () => {
@@ -1269,43 +1411,84 @@ function TransferDialog({
       title="Transfer to another room"
       description={
         currentBedLabel
-          ? `Currently in ${currentBedLabel}. Pre-book a move — the bed stays available until you execute it on the move day.`
+          ? `Currently in ${currentBedLabel}. Pre-book a move; a vacant bed waits until you execute it, and a soon-to-free bed auto-executes once it's vacated on/after the planned date.`
           : undefined
       }
     >
       <form onSubmit={submit} className="space-y-4">
-        {beds === null ? (
+        {beds === null || exiting === null ? (
           <ListSkeleton />
-        ) : beds.length === 0 ? (
-          <EmptyRow text="No vacant beds available to move into." />
+        ) : beds.length === 0 && exiting.length === 0 ? (
+          <EmptyRow text="No vacant or soon-to-free beds to move into." />
         ) : (
-          <ul className="max-h-[45vh] divide-y divide-border overflow-y-auto">
-            {beds.map((b) => (
-              <li key={b.bedId}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedBedId(b.bedId)}
-                  className={cn(
-                    "flex w-full items-center justify-between gap-3 px-2 py-3 text-left transition-colors hover:bg-muted",
-                    selectedBedId === b.bedId && "bg-brand/10",
-                  )}
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium">
-                      {b.roomLabel} · {b.bedLabel}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatPaise(b.monthlyRentPaise)}/mo ·{" "}
-                      {sharingLabel(b.capacity)}
-                    </p>
-                  </div>
-                  {selectedBedId === b.bedId && (
-                    <Badge tone="brand">Selected</Badge>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="max-h-[45vh] space-y-3 overflow-y-auto">
+            {beds.length > 0 && (
+              <ul className="divide-y divide-border">
+                {beds.map((b) => (
+                  <li key={b.bedId}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBedId(b.bedId)}
+                      className={cn(
+                        "flex w-full items-center justify-between gap-3 px-2 py-3 text-left transition-colors hover:bg-muted",
+                        selectedBedId === b.bedId && "bg-brand/10",
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">
+                          {b.roomLabel} · {b.bedLabel}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatPaise(b.monthlyRentPaise)}/mo ·{" "}
+                          {sharingLabel(b.capacity)}
+                        </p>
+                      </div>
+                      {selectedBedId === b.bedId && (
+                        <Badge tone="brand">Selected</Badge>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {exiting.length > 0 && (
+              <div>
+                <p className="px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Soon to free — moves in when vacated
+                </p>
+                <ul className="divide-y divide-border">
+                  {exiting.map((b) => (
+                    <li key={b.bedId}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBedId(b.bedId)}
+                        className={cn(
+                          "flex w-full items-center justify-between gap-3 px-2 py-3 text-left transition-colors hover:bg-muted",
+                          selectedBedId === b.bedId && "bg-brand/10",
+                        )}
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">
+                            {b.roomLabel} · {b.bedLabel}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatPaise(b.monthlyRentPaise)}/mo ·{" "}
+                            {sharingLabel(b.capacity)} · {b.occupantName} leaving
+                            {b.exitRequestedDate
+                              ? ` ${formatDate(b.exitRequestedDate)}`
+                              : ""}
+                          </p>
+                        </div>
+                        {selectedBedId === b.bedId && (
+                          <Badge tone="brand">Selected</Badge>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         )}
         <Field label="Planned move date" htmlFor="xfer-date">
           <Input
@@ -1504,16 +1687,95 @@ interface DeductionRow {
   rupees: string;
 }
 
+function ApplyDepositDialog({
+  open,
+  invoices,
+  balancePaise,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  invoices: InvoiceSummary[];
+  balancePaise: number;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+}) {
+  const toast = useToast();
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const apply = async (invoiceId: string) => {
+    setBusyId(invoiceId);
+    try {
+      await api.deposits.applyToInvoice(invoiceId);
+      await onDone();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not apply the deposit to this invoice."));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Apply deposit to rent"
+      description="Settle a rent invoice from the held deposit. The invoice is marked paid and the deposit balance drops by that amount."
+    >
+      <div className="mb-3 flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">Deposit balance</span>
+        <span className="font-medium">{formatPaise(balancePaise)}</span>
+      </div>
+      {invoices.length === 0 ? (
+        <EmptyRow text="No unpaid invoices to settle." />
+      ) : (
+        <ul className="max-h-[60vh] divide-y divide-border overflow-y-auto">
+          {invoices.map((inv) => {
+            const insufficient = balancePaise < inv.amountPaise;
+            return (
+              <li
+                key={inv.id}
+                className="flex items-center justify-between gap-3 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{inv.period}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatPaise(inv.amountPaise)} · {inv.status.toLowerCase()}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={busyId !== null || insufficient}
+                  onClick={() => apply(inv.id)}
+                >
+                  {insufficient ? "Balance too low" : "Apply"}
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div className="mt-4 flex justify-end">
+        <Button type="button" variant="outline" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
+
 function ExitDialog({
   open,
   residentId,
   deposit,
+  priorDeductionsPaise,
   onClose,
   onDone,
 }: {
   open: boolean;
   residentId: string;
   deposit: DepositSummary | null;
+  priorDeductionsPaise: number;
   onClose: () => void;
   onDone: () => Promise<void> | void;
 }) {
@@ -1522,6 +1784,9 @@ function ExitDialog({
   const [busy, setBusy] = useState(false);
   const canDeduct = deposit?.status === "HELD";
   const heldPaise = canDeduct ? deposit.amountPaise : 0;
+  // Rent already paid from the deposit before exit isn't refundable or
+  // re-deductible — the refund and the deduction cap are over what's LEFT.
+  const availablePaise = Math.max(0, heldPaise - priorDeductionsPaise);
 
   useEffect(() => {
     if (open) setRows([]);
@@ -1531,8 +1796,8 @@ function ExitDialog({
     (sum, r) => sum + Math.round(Number(r.rupees || 0) * 100),
     0,
   );
-  const refundPaise = heldPaise - totalDeductPaise;
-  const over = totalDeductPaise > heldPaise;
+  const refundPaise = availablePaise - totalDeductPaise;
+  const over = totalDeductPaise > availablePaise;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1569,6 +1834,17 @@ function ExitDialog({
               <span className="text-muted-foreground">Deposit held</span>
               <span className="font-medium">{formatPaise(heldPaise)}</span>
             </div>
+            {priorDeductionsPaise > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">
+                  Already applied to rent
+                </span>
+                <span className="font-medium">
+                  −{formatPaise(priorDeductionsPaise)} ·{" "}
+                  {formatPaise(availablePaise)} left
+                </span>
+              </div>
+            )}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Deductions</Label>

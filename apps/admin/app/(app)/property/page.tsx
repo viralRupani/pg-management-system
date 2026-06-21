@@ -20,7 +20,9 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,7 +30,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Input, Label } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
-import { formatPaise, toMessage } from "@/lib/utils";
+import { cn, formatPaise, toMessage } from "@/lib/utils";
 
 const inputClass =
   "flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
@@ -69,14 +71,57 @@ function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
   return map;
 }
 
+/** Resolve a bed's building + floor ids from the loaded tree, so a deep-link can
+ * expand the right ancestors. Returns null if the bed isn't in the tree. */
+function findBedAncestors(
+  tree: Tree,
+  bedId: string,
+): { buildingId: string; floorId: string } | null {
+  let roomId: string | null = null;
+  for (const [rid, beds] of tree.bedsByRoom) {
+    if (beds.some((b) => b.id === bedId)) {
+      roomId = rid;
+      break;
+    }
+  }
+  if (!roomId) return null;
+  let floorId: string | null = null;
+  for (const [fid, rooms] of tree.roomsByFloor) {
+    if (rooms.some((r) => r.id === roomId)) {
+      floorId = fid;
+      break;
+    }
+  }
+  if (!floorId) return null;
+  for (const [bid, floors] of tree.floorsByBuilding) {
+    if (floors.some((f) => f.id === floorId)) {
+      return { buildingId: bid, floorId };
+    }
+  }
+  return null;
+}
+
+/** Page must be wrapped in <Suspense> because PropertyTree reads useSearchParams
+ * (the `?bed=` deep-link) — required for the static export to build. */
+export default function PropertyPage() {
+  return (
+    <Suspense fallback={<ListSkeleton />}>
+      <PropertyTree />
+    </Suspense>
+  );
+}
+
 /* The property tree is small per PG, so we load every level unfiltered and group
  * client-side rather than fetch-on-expand. Expansion is purely local state. */
-export default function PropertyPage() {
+function PropertyTree() {
   const toast = useToast();
+  // Deep-link target: /property?bed=<id> jumps to & highlights a specific bed.
+  const targetBed = useSearchParams().get("bed");
   const [tree, setTree] = useState<Tree | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [openBuildings, setOpenBuildings] = useState<Set<string>>(new Set());
   const [openFloors, setOpenFloors] = useState<Set<string>>(new Set());
+  const [highlightedBed, setHighlightedBed] = useState<string | null>(null);
 
   // Dialog targets (null = closed).
   const [addBuilding, setAddBuilding] = useState(false);
@@ -133,6 +178,32 @@ export default function PropertyPage() {
     // load is stable; expandAll only on first mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Deep-link: once the tree is loaded, expand the target bed's building + floor,
+  // then (after that paints) scroll it into view and flash a highlight ring.
+  useEffect(() => {
+    if (!tree || !targetBed) return;
+    const anc = findBedAncestors(tree, targetBed);
+    if (anc) {
+      setOpenBuildings((prev) =>
+        prev.has(anc.buildingId) ? prev : new Set(prev).add(anc.buildingId),
+      );
+      setOpenFloors((prev) =>
+        prev.has(anc.floorId) ? prev : new Set(prev).add(anc.floorId),
+      );
+    }
+    const raf = requestAnimationFrame(() => {
+      document
+        .getElementById(`bed-${targetBed}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightedBed(targetBed);
+    });
+    const clear = setTimeout(() => setHighlightedBed(null), 2500);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(clear);
+    };
+  }, [tree, targetBed]);
 
   const refresh = async () => {
     try {
@@ -261,6 +332,7 @@ export default function PropertyPage() {
                             floor={f}
                             rooms={tree.roomsByFloor.get(f.id) ?? []}
                             bedsByRoom={tree.bedsByRoom}
+                            highlightedBed={highlightedBed}
                             open={openFloors.has(f.id)}
                             onToggle={() =>
                               toggle(openFloors, setOpenFloors, f.id)
@@ -374,6 +446,7 @@ function FloorBlock({
   floor,
   rooms,
   bedsByRoom,
+  highlightedBed,
   open,
   onToggle,
   onAddRoom,
@@ -386,6 +459,7 @@ function FloorBlock({
   floor: FloorSummary;
   rooms: RoomSummary[];
   bedsByRoom: Map<string, BedSummary[]>;
+  highlightedBed: string | null;
   open: boolean;
   onToggle: () => void;
   onAddRoom: () => void;
@@ -443,6 +517,7 @@ function FloorBlock({
                 key={r.id}
                 room={r}
                 beds={bedsByRoom.get(r.id) ?? []}
+                highlightedBed={highlightedBed}
                 onAddBed={() => onAddBed(r)}
                 onEditRent={() => onEditRent(r)}
                 onDeleteRoom={() => onDeleteRoom(r)}
@@ -462,6 +537,7 @@ function FloorBlock({
 function RoomBlock({
   room,
   beds,
+  highlightedBed,
   onAddBed,
   onEditRent,
   onDeleteRoom,
@@ -470,6 +546,7 @@ function RoomBlock({
 }: {
   room: RoomSummary;
   beds: BedSummary[];
+  highlightedBed: string | null;
   onAddBed: () => void;
   onEditRent: () => void;
   onDeleteRoom: () => void;
@@ -534,9 +611,16 @@ function RoomBlock({
 
       {beds.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {beds.map((bed) =>
-            bed.status === "VACANT" ? (
-              <Badge key={bed.id} tone="success" className="gap-1 pr-1">
+          {beds.map((bed) => {
+            const highlight =
+              highlightedBed === bed.id && "ring-2 ring-brand ring-offset-1";
+            return bed.status === "VACANT" ? (
+              <Badge
+                key={bed.id}
+                id={`bed-${bed.id}`}
+                tone="success"
+                className={cn("gap-1 pr-1", highlight)}
+              >
                 {bed.label} · vacant
                 <button
                   type="button"
@@ -558,8 +642,26 @@ function RoomBlock({
                 </button>
               </Badge>
             ) : (
-              <Badge key={bed.id} tone={bedTone(bed.status)} className="gap-1 pr-1">
-                {bed.label} · {bed.status.toLowerCase()}
+              <Badge
+                key={bed.id}
+                id={`bed-${bed.id}`}
+                tone={bedTone(bed.status)}
+                className={cn("gap-1 pr-1", highlight)}
+              >
+                {bed.occupantResidentId ? (
+                  // Occupant name shows on hover (title); clicking jumps to them.
+                  <Link
+                    href={`/residents?id=${bed.occupantResidentId}`}
+                    title={bed.occupantName ?? undefined}
+                    className="hover:underline"
+                  >
+                    {bed.label} · {bed.status.toLowerCase()}
+                  </Link>
+                ) : (
+                  <span>
+                    {bed.label} · {bed.status.toLowerCase()}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() =>
@@ -571,8 +673,8 @@ function RoomBlock({
                   <Pencil className="h-3 w-3" />
                 </button>
               </Badge>
-            ),
-          )}
+            );
+          })}
         </div>
       )}
     </div>

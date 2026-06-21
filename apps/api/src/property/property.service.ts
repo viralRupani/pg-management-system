@@ -3,7 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { and, ne, eq } from "drizzle-orm";
+import { and, ne, eq, isNull } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
   type BedStatus,
   type BedSummary,
@@ -15,9 +16,23 @@ import {
   type FloorSummary,
   type OccupationType,
   type RoomSummary,
+  BookingStatus,
 } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
-import { beds, buildings, floors, rooms } from "../db/schema";
+import {
+  allocations,
+  beds,
+  bookings,
+  buildings,
+  floors,
+  rooms,
+  users,
+} from "../db/schema";
+
+// A bed's occupant comes from either its active allocation OR its PENDING
+// booking — two different `users` rows, so each needs its own alias.
+const occUser = alias(users, "occ_user");
+const bookUser = alias(users, "book_user");
 
 /**
  * CRUD over the property hierarchy (buildings -> floors -> rooms -> beds), all
@@ -254,14 +269,43 @@ export class PropertyService {
 
   async listBeds(roomId?: string): Promise<BedSummary[]> {
     const db = this.ctx.db();
-    const rows = roomId
-      ? await db.select().from(beds).where(eq(beds.roomId, roomId))
-      : await db.select().from(beds);
+    // Resolve each bed's occupant: the active allocation's resident (OCCUPIED),
+    // else the holder of a PENDING booking (RESERVED). Both are ≤1-per-bed
+    // (partial-unique active allocation + bookings_pending_bed_unique), so no
+    // fan-out. Two aliased `users` joins since they're distinct people.
+    const rows = await db
+      .select({
+        id: beds.id,
+        roomId: beds.roomId,
+        label: beds.label,
+        status: beds.status,
+        allocResidentId: allocations.residentId,
+        allocName: occUser.name,
+        bookResidentId: bookings.residentId,
+        bookName: bookUser.name,
+      })
+      .from(beds)
+      .leftJoin(
+        allocations,
+        and(eq(allocations.bedId, beds.id), isNull(allocations.endDate)),
+      )
+      .leftJoin(occUser, eq(occUser.id, allocations.residentId))
+      .leftJoin(
+        bookings,
+        and(
+          eq(bookings.bedId, beds.id),
+          eq(bookings.status, BookingStatus.PENDING),
+        ),
+      )
+      .leftJoin(bookUser, eq(bookUser.id, bookings.residentId))
+      .where(roomId ? eq(beds.roomId, roomId) : undefined);
     return rows.map((b) => ({
       id: b.id,
       roomId: b.roomId,
       label: b.label,
       status: b.status as BedStatus,
+      occupantResidentId: b.allocResidentId ?? b.bookResidentId ?? null,
+      occupantName: b.allocName ?? b.bookName ?? null,
     }));
   }
 

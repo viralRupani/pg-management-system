@@ -2,10 +2,12 @@ import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
 import {
   type LogoUploadUrlInput,
   type UpdateBrandingInput,
+  type UpdateSlugInput,
   type UpiQrUploadUrlInput,
   UserRole,
   logoUploadUrlSchema,
   updateBrandingSchema,
+  updateSlugSchema,
   upiQrUploadUrlSchema,
 } from "@pg/shared";
 import { Public, Roles } from "../common/decorators";
@@ -42,6 +44,20 @@ export class BrandingController {
     @Body(new ZodBody(updateBrandingSchema)) dto: UpdateBrandingInput,
   ) {
     return this.branding.updateOwn(dto);
+  }
+
+  /** Manager: is a PG code (slug) free to take? (Their own current code reads as free.) */
+  @Get("tenants/slug-available/:slug")
+  @Roles(UserRole.PG_MANAGER)
+  slugAvailable(@Param("slug") slug: string) {
+    return this.branding.checkSlugAvailable(slug);
+  }
+
+  /** Manager: change own PG code (slug) — the code residents use to log in. */
+  @Patch("tenants/slug")
+  @Roles(UserRole.PG_MANAGER)
+  updateSlug(@Body(new ZodBody(updateSlugSchema)) dto: UpdateSlugInput) {
+    return this.branding.updateSlug(dto.slug);
   }
 
   /** Manager: presigned URL to upload a new logo. */

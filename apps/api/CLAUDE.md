@@ -42,7 +42,12 @@ src/
                               PLATFORM_DB, gated by owner_tenants) and manager
                               add/list/deactivate (PG-scoped token, RLS context)
   branding/                   white-labeling: public by-slug read (APP_DB) +
-                              manager self-service branding/logo (BrandingService)
+                              manager self-service branding/logo + PG-code (slug)
+                              change with availability check (BrandingService).
+                              slug is globally unique (no RLS on tenants) → update
+                              pre-checks excluding self for a clean 409, unique
+                              index is the backstop; GET /tenants/slug-available/
+                              :slug, PATCH /tenants/slug
   residents/                  resident register/list/get (+ current bedLabel)
   property/                   CRUD buildings/floors/rooms/beds + edit room rent
   allocation/                 allocate/move-out/list + bed suggestions (AllocationService)

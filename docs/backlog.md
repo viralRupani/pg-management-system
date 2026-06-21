@@ -19,6 +19,10 @@ Fixed since the audit: HIGH OVERDUE-can't-settle (`e53195f`), auth rate-limiting
 - Fix: at `settleExit`, fold any unapplied `rent_adjustments` into the deposit
   settlement (or block exit while one is pending, mirroring
   `assertNoUnsettledAdjustment`). Needs a product call on exit-billing policy.
+- **Priority raised:** auto-executed transfers (`JobsService.activateTransfersAllTenants`
+  → `AllocationService.activateDueTransfers`, the soft-hold advance-reservation
+  feature) now create these deltas with no manager in the loop, so the drop fires
+  more often. The same fix covers both manual and auto transfers.
 
 ### Critical before production
 

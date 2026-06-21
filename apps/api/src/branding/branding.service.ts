@@ -1,8 +1,14 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { eq } from "drizzle-orm";
 import {
   type PaymentInfo,
   type PresignedUploadResult,
+  type SlugAvailability,
   type TenantBranding,
   type UpdateBrandingInput,
 } from "@pg/shared";
@@ -90,6 +96,43 @@ export class BrandingService {
       .db()
       .update(tenants)
       .set(patch)
+      .where(eq(tenants.id, tenantId)) // explicit: tenants has no RLS
+      .returning();
+    if (!row) throw new NotFoundException("PG not found");
+    return this.toBranding(row);
+  }
+
+  /**
+   * Manager: is this PG code (slug) free to take? Free if no PG holds it, or the
+   * holder is the caller's own PG (so re-checking your current code reads as
+   * available). Leaks strictly less than the already-public `GET /branding/:slug`.
+   */
+  async checkSlugAvailable(slug: string): Promise<SlugAvailability> {
+    const tenantId = this.ctx.currentTenantId()!;
+    const row = await this.appDb.query.tenants.findFirst({
+      where: eq(tenants.slug, slug),
+    });
+    return { available: !row || row.id === tenantId };
+  }
+
+  /**
+   * Manager: change their own PG code (slug). Pre-checks for a clean 409 (the
+   * `tenants.slug` unique index is the concurrency backstop); scopes the write to
+   * the JWT tenant id (tenants has no RLS). Existing residents keep their session
+   * but must use the new code on their next login.
+   */
+  async updateSlug(slug: string): Promise<TenantBranding> {
+    const tenantId = this.ctx.currentTenantId()!;
+    const clash = await this.appDb.query.tenants.findFirst({
+      where: eq(tenants.slug, slug),
+    });
+    if (clash && clash.id !== tenantId) {
+      throw new ConflictException(`PG code '${slug}' is already taken`);
+    }
+    const [row] = await this.ctx
+      .db()
+      .update(tenants)
+      .set({ slug })
       .where(eq(tenants.id, tenantId)) // explicit: tenants has no RLS
       .returning();
     if (!row) throw new NotFoundException("PG not found");

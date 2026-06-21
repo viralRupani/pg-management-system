@@ -1,4 +1,5 @@
 import type {
+  DashboardAlerts,
   DashboardStats,
   AllocateBedInput,
   AllocationSummary,
@@ -6,6 +7,7 @@ import type {
   AnnouncementListResult,
   AuthTokens,
   AvailableBed,
+  ExitingBed,
   BedSummary,
   BookingSummary,
   ChangePasswordInput,
@@ -33,6 +35,7 @@ import type {
   DocumentUploadUrlInput,
   ExitRequestInput,
   ExitRequestSummary,
+  ApplyDepositToInvoiceResult,
   ExitSettlementInput,
   ExpenseSummary,
   FileComplaintInput,
@@ -69,6 +72,7 @@ import type {
   RoomSummary,
   SetBudgetInput,
   SettlementResult,
+  SlugAvailability,
   SubmitDocumentInput,
   SubmitPaymentInput,
   TenantBranding,
@@ -141,6 +145,8 @@ export class PgApiClient {
   readonly dashboard = {
     /** Manager: aggregated stats for the dashboard (single round-trip). */
     stats: () => this.http.get<DashboardStats>("/dashboard/stats"),
+    /** Manager: lightweight pending-action counts (bell badge + alerts panel). */
+    alerts: () => this.http.get<DashboardAlerts>("/dashboard/alerts"),
   };
 
   /**
@@ -173,6 +179,14 @@ export class PgApiClient {
     mine: () => this.http.get<TenantBranding>("/tenants/branding"),
     update: (input: UpdateBrandingInput) =>
       this.http.patch<TenantBranding>("/tenants/branding", input),
+    /** Manager: is a PG code (slug) free? (Their own current code reads as free.) */
+    checkSlug: (slug: string) =>
+      this.http.get<SlugAvailability>(
+        `/tenants/slug-available/${encodeURIComponent(slug)}`,
+      ),
+    /** Manager: change own PG code (slug). Returns refreshed branding. */
+    updateSlug: (slug: string) =>
+      this.http.patch<TenantBranding>("/tenants/slug", { slug }),
     logoUploadUrl: (input: LogoUploadUrlInput) =>
       this.http.post<PresignedUploadResult>("/tenants/logo-url", input),
     /** Manager: presigned URL to upload a UPI QR code image. */
@@ -196,6 +210,9 @@ export class PgApiClient {
       this.http.get<AvailableBed[]>("/allocations/suggestions", {
         query: { residentId },
       }),
+    /** Occupied beds with a sitting resident who requested move-out ("soon to free"). */
+    exitingBeds: () =>
+      this.http.get<ExitingBed[]>("/allocations/exiting-beds"),
     allocate: (input: AllocateBedInput) =>
       this.http.post<AllocationSummary>("/allocations", input),
     moveOut: (residentId: string) =>
@@ -244,12 +261,19 @@ export class PgApiClient {
       this.http.get<{
         deposit: DepositSummary | null;
         ledger: DepositTransactionSummary[];
+        exitRequest: ExitRequestSummary | null;
       }>(`/deposits/resident/${residentId}`),
     record: (input: RecordDepositInput) =>
       this.http.post<{ id: string }>("/deposits", input),
     /** Settle a resident's exit: deductions + refund, frees the bed. */
     exit: (input: ExitSettlementInput) =>
       this.http.post<SettlementResult>("/deposits/exit", input),
+    /** Settle a rent invoice from the held deposit ("use my deposit for rent"). */
+    applyToInvoice: (invoiceId: string) =>
+      this.http.post<ApplyDepositToInvoiceResult>(
+        "/deposits/apply-to-invoice",
+        { invoiceId },
+      ),
   };
 
   readonly property = {

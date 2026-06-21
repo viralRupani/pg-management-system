@@ -12,4 +12,9 @@ export class DashboardController {
   stats() {
     return this.dashboard.stats();
   }
+
+  @Get("dashboard/alerts")
+  alerts() {
+    return this.dashboard.alerts();
+  }
 }

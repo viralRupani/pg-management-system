@@ -173,10 +173,17 @@ describe("Auth — change-password & forgot/reset-password", () => {
   describe("mustChangePassword JWT flag", () => {
     let ownerToken: string;
     let pg: TestPg;
+    // Owner + manager rows live OUTSIDE the harness's per-tenant cleanup (the
+    // owner is global; its PG is created via /owner/pgs, not onboardPg). Emails
+    // are globally unique in auth_identities, so reusing fixed addresses across
+    // runs 409s on re-create and then logs in against the PRIOR run's (already
+    // password-changed) credential. Suffix every email per run — same reason the
+    // slug below uses Date.now().
+    const RUN = Date.now();
 
     beforeAll(async () => {
       // Create an owner via the platform endpoint and log them in.
-      const email = `owner-pwflag@example.com`;
+      const email = `owner-pwflag-${RUN}@example.com`;
       await h.req("post", "/platform/owners", h.platformToken(), {
         name: "PwFlag Owner",
         email,
@@ -207,7 +214,7 @@ describe("Auth — change-password & forgot/reset-password", () => {
     });
 
     it("owner-created manager's first login token carries mustChangePassword:true", async () => {
-      const mgrEmail = `pwflag-manager@example.com`;
+      const mgrEmail = `pwflag-manager-${RUN}@example.com`;
 
       // Add manager via owner endpoint (PG-scoped token).
       await h.req("post", "/owner/managers", ownerToken, {
@@ -236,7 +243,7 @@ describe("Auth — change-password & forgot/reset-password", () => {
     });
 
     it("after changing password the new token has no mustChangePassword flag", async () => {
-      const mgrEmail = `pwflag-clear@example.com`;
+      const mgrEmail = `pwflag-clear-${RUN}@example.com`;
 
       await h.req("post", "/owner/managers", ownerToken, {
         name: "PwFlag Clear",

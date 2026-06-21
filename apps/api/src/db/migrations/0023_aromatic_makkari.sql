@@ -1,0 +1,2 @@
+ALTER TABLE "deposit_transactions" ADD COLUMN "invoice_id" uuid;--> statement-breakpoint
+ALTER TABLE "deposit_transactions" ADD CONSTRAINT "deposit_transactions_invoice_id_tenant_id_fk" FOREIGN KEY ("invoice_id","tenant_id") REFERENCES "public"."invoices"("id","tenant_id") ON DELETE no action ON UPDATE no action;

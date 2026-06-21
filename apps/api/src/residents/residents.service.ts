@@ -10,6 +10,7 @@ import {
   exists,
   ilike,
   inArray,
+  isNotNull,
   isNull,
   not,
   or,
@@ -33,7 +34,9 @@ import {
   authIdentities,
   beds,
   bookings,
+  buildings,
   documents,
+  floors,
   rooms,
   users,
 } from "../db/schema";
@@ -119,8 +122,9 @@ export class ResidentsService {
    * `WHERE` only touches `users` columns, so the count query needs no joins.
    */
   async list(query: ResidentListQuery): Promise<ResidentListResult> {
-    const { q, status, kyc, page, limit } = query;
+    const { q, status, kyc, exitRequested, page, limit } = query;
     const conditions = [eq(users.role, UserRole.RESIDENT)];
+    if (exitRequested) conditions.push(isNotNull(users.exitRequestedAt));
     if (status === "CURRENT") {
       conditions.push(
         inArray(users.status, [ResidentStatus.ACTIVE, ResidentStatus.UPCOMING]),
@@ -194,9 +198,15 @@ export class ResidentsService {
         emergencyContactPhone: users.emergencyContactPhone,
         status: users.status,
         bedLabel: beds.label,
+        bedId: beds.id,
         roomCapacity: rooms.capacity,
+        roomLabel: rooms.label,
+        floorLabel: floors.label,
+        buildingName: buildings.name,
         bookedBedLabel: bookedBeds.label,
+        bookedBedId: bookedBeds.id,
         moveInDate: bookings.moveInDate,
+        exitRequestedDate: users.exitRequestedDate,
         kycDocStatus: documents.status,
       })
       .from(users)
@@ -209,6 +219,10 @@ export class ResidentsService {
       )
       .leftJoin(beds, eq(beds.id, allocations.bedId))
       .leftJoin(rooms, eq(rooms.id, beds.roomId))
+      // 1:1 up the property tree (each bed has one room, floor, building) — no
+      // fan-out, like the rooms join above. Surfaces the full location path.
+      .leftJoin(floors, eq(floors.id, rooms.floorId))
+      .leftJoin(buildings, eq(buildings.id, floors.buildingId))
       // The resident's held bed, if any: the (at most one) PENDING booking and
       // its bed. One-per-resident deposit makes this 1:1, so it can't fan out.
       .leftJoin(
@@ -243,9 +257,15 @@ type ResidentRow = {
   emergencyContactPhone: string | null;
   status: string;
   bedLabel: string | null;
+  bedId: string | null;
   roomCapacity: number | null;
+  roomLabel: string | null;
+  floorLabel: string | null;
+  buildingName: string | null;
   bookedBedLabel: string | null;
+  bookedBedId: string | null;
   moveInDate: Date | null;
+  exitRequestedDate: string | null;
   kycDocStatus: string | null;
 };
 
@@ -279,9 +299,15 @@ function toSummary(r: ResidentRow): ResidentSummary {
     emergencyContactPhone: r.emergencyContactPhone,
     status: r.status as ResidentStatus,
     bedLabel: r.bedLabel,
+    bedId: r.bedId,
     roomCapacity: r.roomCapacity ?? null,
+    roomLabel: r.roomLabel,
+    floorLabel: r.floorLabel,
+    buildingName: r.buildingName,
     bookedBedLabel: r.bookedBedLabel,
+    bookedBedId: r.bookedBedId,
     moveInDate: r.moveInDate ? r.moveInDate.toISOString() : null,
+    exitRequestedDate: r.exitRequestedDate,
     kycStatus: toKycStatus(r.kycDocStatus),
   };
 }

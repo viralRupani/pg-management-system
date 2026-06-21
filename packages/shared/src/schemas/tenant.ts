@@ -63,6 +63,27 @@ export const updateBrandingSchema = z
   });
 export type UpdateBrandingInput = z.infer<typeof updateBrandingSchema>;
 
+/**
+ * Manager self-service update of the PG code (tenant slug) — the code residents
+ * type to log in from the mobile app. Globally unique; same shape as the slug at
+ * onboarding. Changing it does NOT log existing residents out (their sessions key
+ * off tenant id), but they must use the new code on their NEXT login.
+ */
+export const updateSlugSchema = z.object({
+  slug: z
+    .string()
+    .min(2)
+    .max(40)
+    .regex(/^[a-z0-9-]+$/, "Lowercase letters, digits, and hyphens only"),
+});
+export type UpdateSlugInput = z.infer<typeof updateSlugSchema>;
+
+/** Result of a PG-code availability check. */
+export const slugAvailabilitySchema = z.object({
+  available: z.boolean(),
+});
+export type SlugAvailability = z.infer<typeof slugAvailabilitySchema>;
+
 /** Manager asks for a presigned URL to upload a PG logo. */
 export const logoUploadUrlSchema = z.object({
   contentType: contentTypeField,

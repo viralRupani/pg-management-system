@@ -182,6 +182,34 @@ describe("M2 property & allocation (e2e)", () => {
     });
   });
 
+  it("surfaces the bed occupant and the resident's full location path", async () => {
+    // The occupied bed reports its resident; the vacant one stays empty.
+    const beds = await h.req(
+      "get",
+      `/property/beds?roomId=${roomId}`,
+      pgA.managerToken,
+    );
+    expect(beds.body.find((b: { id: string }) => b.id === bed1)).toMatchObject({
+      status: "OCCUPIED",
+      occupantResidentId: resident1,
+      occupantName: "Res One",
+    });
+    const vacant = beds.body.find((b: { id: string }) => b.id === bed2);
+    expect(vacant.occupantResidentId).toBeNull();
+    expect(vacant.occupantName).toBeNull();
+
+    // The resident summary carries bedId + the full path for the deep-link.
+    // (building/floor/room were renamed earlier in this suite.)
+    const r = await h.req("get", `/residents/${resident1}`, pgA.managerToken);
+    expect(r.body).toMatchObject({
+      bedId: bed1,
+      bedLabel: "A",
+      roomLabel: "101A",
+      floorLabel: "Ground",
+      buildingName: "Block A (renamed)",
+    });
+  });
+
   it("rejects a second active allocation on the same bed (409)", async () => {
     const res = await h.req("post", "/allocations", pgA.managerToken, {
       bedId: bed1,

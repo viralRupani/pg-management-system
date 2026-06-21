@@ -60,12 +60,24 @@ export const residentSummarySchema = z.object({
   status: z.nativeEnum(ResidentStatus),
   bedLabel: z.string().nullable(),
   roomCapacity: z.number().int().nullable(),
+  // The current bed's id + full location path (building → floor → room), so the
+  // detail page can show "Block A · Ground · 101 · Bed A" and deep-link straight
+  // to that bed on the property page. All null when unallocated.
+  bedId: z.string().uuid().nullable(),
+  roomLabel: z.string().nullable(),
+  floorLabel: z.string().nullable(),
+  buildingName: z.string().nullable(),
   kycStatus: z.nativeEnum(KycStatus),
   // For an UPCOMING resident the bed is held via a PENDING booking (no live
   // allocation yet), so `bedLabel` is null. These surface that held bed +
   // move-in date so the roster shows "B-12 · moves in …" instead of "No bed".
   bookedBedLabel: z.string().nullable(),
+  // The held bed's id (jump-to-bed deep-link for an UPCOMING resident).
+  bookedBedId: z.string().uuid().nullable(),
   moveInDate: z.string().nullable(), // ISO; set only while UPCOMING
+  // Set (YYYY-MM-DD) when the resident has raised a pending move-out request,
+  // null otherwise — lets the roster tag "Exit requested" without a drill-down.
+  exitRequestedDate: z.string().nullable(),
 });
 export type ResidentSummary = z.infer<typeof residentSummarySchema>;
 
@@ -87,6 +99,8 @@ export const residentListQuerySchema = z.object({
   kyc: z
     .union([z.literal("ALL"), z.literal("PENDING"), z.literal("VERIFIED")])
     .default("ALL"),
+  // When true, narrow to residents with a pending move-out request.
+  exitRequested: z.coerce.boolean().optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });

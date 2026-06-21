@@ -1,9 +1,10 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
   type AllocateBedInput,
@@ -11,6 +12,7 @@ import {
   type AvailableBed,
   BedStatus,
   type CreateTransferRequestInput,
+  type ExitingBed,
   type TransferRequestSummary,
   TransferRequestStatus,
   UserRole,
@@ -25,7 +27,7 @@ import {
   transferRequests,
   users,
 } from "../db/schema";
-import { istPeriod } from "../common/ist-date";
+import { istPeriod, istStartOfDayUtc } from "../common/ist-date";
 import { freeBed } from "../db/free-bed";
 import { prorateSegment } from "../rent/rent.proration";
 
@@ -45,6 +47,8 @@ const PG_UNIQUE_VIOLATION = "23505";
  */
 @Injectable()
 export class AllocationService {
+  private readonly logger = new Logger(AllocationService.name);
+
   constructor(private readonly ctx: TenantContextService) {}
 
   async allocate(input: AllocateBedInput): Promise<{ id: string }> {
@@ -238,6 +242,41 @@ export class AllocationService {
     return scored;
   }
 
+  /**
+   * Occupied beds whose sitting resident has a pending move-out request — the
+   * "soon to free" targets a manager can pre-book a transfer onto. The transfer
+   * auto-executes once that resident exits (daily job). All under tenant RLS.
+   */
+  async listExitingBeds(): Promise<ExitingBed[]> {
+    const rows = await this.ctx
+      .db()
+      .select({
+        bedId: beds.id,
+        bedLabel: beds.label,
+        roomLabel: rooms.label,
+        capacity: rooms.capacity,
+        monthlyRentPaise: rooms.monthlyRentPaise,
+        occupantName: users.name,
+        exitRequestedDate: users.exitRequestedDate,
+      })
+      .from(allocations)
+      .innerJoin(users, eq(users.id, allocations.residentId))
+      .innerJoin(beds, eq(beds.id, allocations.bedId))
+      .innerJoin(rooms, eq(rooms.id, beds.roomId))
+      .where(
+        and(isNull(allocations.endDate), isNotNull(users.exitRequestedAt)),
+      );
+    return rows.map((r) => ({
+      bedId: r.bedId,
+      bedLabel: r.bedLabel,
+      roomLabel: r.roomLabel,
+      capacity: r.capacity,
+      monthlyRentPaise: r.monthlyRentPaise,
+      occupantName: r.occupantName,
+      exitRequestedDate: r.exitRequestedDate,
+    }));
+  }
+
   // ---- Room transfers (pre-booked move with mid-month prorated billing) ----
 
   /**
@@ -418,6 +457,43 @@ export class AllocationService {
         throw new ConflictException("Target bed already has an allocation");
       throw err;
     }
+  }
+
+  /**
+   * Activate every due PENDING transfer whose planned IST day has arrived by
+   * executing the move — but only once the target bed is actually free. A target
+   * still OCCUPIED by a not-yet-exited resident (or an unsettled adjustment, or a
+   * raced move) is skipped and retried on the next run; `executeTransferRequest`
+   * is concurrency-safe (conditional flip + the allocation unique indexes), and a
+   * failed move rolls its own request back to PENDING. Soft hold: the bed is NOT
+   * reserved in advance, so for up to a day after the sitting resident exits the
+   * freed bed could be taken by someone else first. Called per-tenant by the
+   * daily job inside the tenant's RLS context. Returns the count moved.
+   */
+  async activateDueTransfers(): Promise<number> {
+    const today = istStartOfDayUtc(new Date()).getTime();
+    const pending = await this.ctx
+      .db()
+      .select({
+        id: transferRequests.id,
+        plannedDate: transferRequests.plannedDate,
+      })
+      .from(transferRequests)
+      .where(eq(transferRequests.status, TransferRequestStatus.PENDING));
+
+    let moved = 0;
+    for (const t of pending) {
+      if (istStartOfDayUtc(t.plannedDate).getTime() > today) continue; // not yet
+      try {
+        await this.executeTransferRequest(t.id);
+        moved++;
+      } catch {
+        // Target not free yet, an unsettled adjustment, or a raced move — leave
+        // the request PENDING and retry on the next run.
+        this.logger.debug(`Transfer ${t.id} not ready to activate; will retry`);
+      }
+    }
+    return moved;
   }
 
   /**

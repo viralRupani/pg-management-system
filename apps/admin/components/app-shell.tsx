@@ -20,9 +20,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { DashboardAlerts } from "@pg/shared";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
@@ -142,9 +144,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 Switch PG
               </Button>
             )}
-            <Button variant="ghost" size="icon" aria-label="Notifications">
-              <Bell className="h-4 w-4" />
-            </Button>
+            <NotificationBell />
             <Button variant="ghost" size="sm" onClick={() => setConfirmingLogout(true)}>
               <LogOut className="h-4 w-4" />
               Sign out
@@ -187,5 +187,169 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Dialog>
       )}
     </div>
+  );
+}
+
+/**
+ * Topbar bell: polls the manager's pending-action counts and surfaces them so an
+ * exit request (or a payment/KYC/complaint waiting on the manager) is visible
+ * from every page instead of buried in one resident's detail. Best-effort — a
+ * failed poll just leaves the badge as-is; the bell is non-critical chrome.
+ */
+function NotificationBell() {
+  const pathname = usePathname();
+  const [alerts, setAlerts] = useState<DashboardAlerts | null>(null);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const a = await api.dashboard.alerts();
+        if (!cancelled) setAlerts(a);
+      } catch {
+        // best-effort — leave the last known counts in place
+      }
+    };
+    void load();
+    const interval = setInterval(load, 60_000);
+    const onFocus = () => void load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+
+  // Close the panel on navigation.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  // Close on outside click.
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
+
+  const total = alerts?.total ?? 0;
+  const exits = alerts?.exitRequests;
+
+  return (
+    <div className="relative" ref={ref}>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={`Notifications${total > 0 ? ` (${total})` : ""}`}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Bell className="h-4 w-4" />
+        {total > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold text-white">
+            {total > 99 ? "99+" : total}
+          </span>
+        )}
+      </Button>
+
+      {open && (
+        <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-lg border border-border bg-card shadow-lg">
+          <div className="border-b border-border px-4 py-3">
+            <p className="text-sm font-semibold">Needs attention</p>
+          </div>
+          {!alerts || total === 0 ? (
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+              You&apos;re all caught up.
+            </p>
+          ) : (
+            <div className="max-h-96 overflow-y-auto">
+              {exits && exits.count > 0 && (
+                <div className="border-b border-border py-1">
+                  <Link
+                    href="/residents?exitRequested=1"
+                    className="flex items-center justify-between px-4 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                  >
+                    <span>Move-out requests</span>
+                    <span>{exits.count}</span>
+                  </Link>
+                  {exits.items.map((r) => (
+                    <Link
+                      key={r.residentId}
+                      href={`/residents?id=${r.residentId}`}
+                      className="flex items-center justify-between gap-3 px-4 py-2 text-sm transition-colors hover:bg-muted"
+                    >
+                      <span className="min-w-0 truncate font-medium">
+                        {r.name}
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {r.requestedDate}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+              <AlertRow
+                show={!!alerts.paymentsToReview}
+                href="/rent"
+                icon={CreditCard}
+                label="Payments to review"
+                count={alerts.paymentsToReview}
+              />
+              <AlertRow
+                show={!!alerts.kycToVerify}
+                href="/residents?kyc=PENDING"
+                icon={ShieldCheck}
+                label="KYC to verify"
+                count={alerts.kycToVerify}
+              />
+              <AlertRow
+                show={!!alerts.openComplaints}
+                href="/complaints"
+                icon={ClipboardList}
+                label="Open complaints"
+                count={alerts.openComplaints}
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AlertRow({
+  show,
+  href,
+  icon: Icon,
+  label,
+  count,
+}: {
+  show: boolean;
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  count: number;
+}) {
+  if (!show) return null;
+  return (
+    <Link
+      href={href}
+      className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-muted"
+    >
+      <span className="flex items-center gap-2">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        {label}
+      </span>
+      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-semibold">
+        {count}
+      </span>
+    </Link>
   );
 }

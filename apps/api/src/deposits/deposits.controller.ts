@@ -1,10 +1,12 @@
 import { Body, Controller, Get, Param, Post } from "@nestjs/common";
 import {
+  type ApplyDepositToInvoiceInput,
   type ExitRequestInput,
   type ExitSettlementInput,
   type JwtPayload,
   type RecordDepositInput,
   UserRole,
+  applyDepositToInvoiceSchema,
   exitRequestSchema,
   exitSettlementSchema,
   recordDepositSchema,
@@ -59,5 +61,15 @@ export class DepositsController {
     @Body(new ZodBody(exitSettlementSchema)) dto: ExitSettlementInput,
   ) {
     return this.deposits.settleExit(dto, user.sub);
+  }
+
+  @Post("apply-to-invoice")
+  @Roles(UserRole.PG_MANAGER)
+  applyToInvoice(
+    @CurrentUser() user: JwtPayload,
+    @Body(new ZodBody(applyDepositToInvoiceSchema))
+    dto: ApplyDepositToInvoiceInput,
+  ) {
+    return this.deposits.applyToInvoice(dto.invoiceId, user.sub);
   }
 }

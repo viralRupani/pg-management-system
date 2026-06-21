@@ -2,6 +2,7 @@
 
 import {
   type ComplaintSummary,
+  type DashboardAlerts,
   type DashboardStats,
   type PaymentSummary,
 } from "@pg/shared";
@@ -10,6 +11,7 @@ import {
   BedDouble,
   CalendarCheck,
   CreditCard,
+  DoorOpen,
   TrendingUp,
   UsersRound,
 } from "lucide-react";
@@ -27,6 +29,7 @@ import { formatDate, formatPaise, toMessage } from "@/lib/utils";
 
 interface DashboardData {
   stats: DashboardStats;
+  alerts: DashboardAlerts;
   pendingPayments: PaymentSummary[];
   complaints: ComplaintSummary[];
 }
@@ -41,13 +44,20 @@ export default function DashboardPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [stats, pendingPayments, complaintsResult] = await Promise.all([
-          api.dashboard.stats(),
-          api.payments.list("SUBMITTED"),
-          api.complaints.list({ status: "ALL", limit: 100 }),
-        ]);
+        const [stats, alerts, pendingPayments, complaintsResult] =
+          await Promise.all([
+            api.dashboard.stats(),
+            api.dashboard.alerts(),
+            api.payments.list("SUBMITTED"),
+            api.complaints.list({ status: "ALL", limit: 100 }),
+          ]);
         if (cancelled) return;
-        setData({ stats, pendingPayments, complaints: complaintsResult.items });
+        setData({
+          stats,
+          alerts,
+          pendingPayments,
+          complaints: complaintsResult.items,
+        });
       } catch (err) {
         if (cancelled) return;
         setLoadFailed(true);
@@ -172,8 +182,12 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Row 3 — 3 panels */}
-      <div className="grid gap-4 lg:grid-cols-3">
+      {/* Row 3 — attention panels */}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MoveOutRequestsPanel
+          loading={loading}
+          exitRequests={data?.alerts.exitRequests ?? { count: 0, items: [] }}
+        />
         <UpcomingMoveInsPanel
           loading={loading}
           bookings={data?.stats.upcomingBookings ?? []}
@@ -189,6 +203,63 @@ export default function DashboardPage() {
         />
       </div>
     </div>
+  );
+}
+
+function MoveOutRequestsPanel({
+  loading,
+  exitRequests,
+}: {
+  loading: boolean;
+  exitRequests: DashboardAlerts["exitRequests"];
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <DoorOpen className="h-4 w-4" />
+          Move-out requests
+          {exitRequests.count > 0 && (
+            <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-semibold text-white">
+              {exitRequests.count}
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <PanelSkeleton />
+        ) : exitRequests.items.length === 0 ? (
+          <EmptyRow text="No move-out requests." />
+        ) : (
+          <ul className="divide-y divide-border">
+            {exitRequests.items.slice(0, 5).map((r) => (
+              <li key={r.residentId}>
+                <Link
+                  href={`/residents?id=${r.residentId}`}
+                  className="-mx-2 flex items-center justify-between gap-3 rounded-md px-2 py-3 transition-colors hover:bg-muted"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{r.name}</p>
+                    {r.note && (
+                      <p className="truncate text-xs text-muted-foreground">
+                        {r.note}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-medium text-foreground">
+                      {formatDate(r.requestedDate)}
+                    </p>
+                    <Badge tone="warning">Requested</Badge>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

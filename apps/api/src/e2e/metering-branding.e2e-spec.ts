@@ -188,4 +188,65 @@ describe("M6 metering & branding (e2e)", () => {
       expect(res.status).toBe(403);
     });
   });
+
+  // PG code (slug) self-service: residents type this to log in. Runs LAST so the
+  // slug change below doesn't perturb the branding reads above.
+  describe("PG code (slug) update", () => {
+    it("availability: another PG's code is taken, own + fresh codes are free", async () => {
+      const taken = await h.req(
+        "get",
+        `/tenants/slug-available/${pgB.slug}`,
+        pgA.managerToken,
+      );
+      expect(taken.body).toEqual({ available: false });
+
+      const own = await h.req(
+        "get",
+        `/tenants/slug-available/${pgA.slug}`,
+        pgA.managerToken,
+      );
+      expect(own.body).toEqual({ available: true });
+
+      const fresh = await h.req(
+        "get",
+        "/tenants/slug-available/totally-unused-code-xyz",
+        pgA.managerToken,
+      );
+      expect(fresh.body).toEqual({ available: true });
+    });
+
+    it("rejects taking another PG's code (409)", async () => {
+      const res = await h.req("patch", "/tenants/slug", pgA.managerToken, {
+        slug: pgB.slug,
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it("rejects an invalid code (400)", async () => {
+      const res = await h.req("patch", "/tenants/slug", pgA.managerToken, {
+        slug: "Bad Code!",
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("changes the code; the new slug resolves and the old 404s", async () => {
+      const oldSlug = pgA.slug;
+      const newSlug = `${oldSlug}-renamed`;
+
+      const patch = await h.req("patch", "/tenants/slug", pgA.managerToken, {
+        slug: newSlug,
+      });
+      expect(patch.status).toBe(200);
+      expect(patch.body.slug).toBe(newSlug);
+
+      const pubNew = await h.req("get", `/branding/${newSlug}`);
+      expect(pubNew.status).toBe(200);
+      expect(pubNew.body.slug).toBe(newSlug);
+
+      const pubOld = await h.req("get", `/branding/${oldSlug}`);
+      expect(pubOld.status).toBe(404);
+
+      pgA.slug = newSlug; // keep the harness in sync for teardown/reads
+    });
+  });
 });

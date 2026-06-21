@@ -22,6 +22,25 @@ export const exitSettlementSchema = z.object({
 });
 export type ExitSettlementInput = z.infer<typeof exitSettlementSchema>;
 
+/** Manager applies the held deposit to a rent invoice ("use my deposit for rent"). */
+export const applyDepositToInvoiceSchema = z.object({
+  invoiceId: z.string().uuid(),
+});
+export type ApplyDepositToInvoiceInput = z.infer<
+  typeof applyDepositToInvoiceSchema
+>;
+
+/** Result of settling a rent invoice from the deposit. */
+export const applyDepositToInvoiceResultSchema = z.object({
+  invoiceId: z.string().uuid(),
+  period: z.string(),
+  amountPaise: z.number().int(),
+  depositBalancePaise: z.number().int(), // remaining held balance after this
+});
+export type ApplyDepositToInvoiceResult = z.infer<
+  typeof applyDepositToInvoiceResultSchema
+>;
+
 /** Resident requests their own move-out: a preferred date + optional note. */
 export const exitRequestSchema = z.object({
   requestedDate: z.string().date(), // 'YYYY-MM-DD'
@@ -51,6 +70,9 @@ export const depositTransactionSchema = z.object({
   type: z.nativeEnum(DepositTxnType),
   reason: z.string().nullable(),
   amountPaise: z.number().int(),
+  // Set when this deduction settled a rent invoice (with that invoice's period).
+  invoiceId: z.string().uuid().nullable(),
+  period: z.string().nullable(),
   createdAt: z.string(),
 });
 export type DepositTransactionSummary = z.infer<
@@ -59,8 +81,10 @@ export type DepositTransactionSummary = z.infer<
 
 /** The computed result of an exit settlement. */
 export const settlementResultSchema = z.object({
-  depositPaise: z.number().int(),
-  totalDeductionsPaise: z.number().int(),
+  depositPaise: z.number().int(), // original held amount
+  priorDeductionsPaise: z.number().int(), // deductions already applied pre-exit
+  availablePaise: z.number().int(), // held − prior deductions (cap for exit deductions)
+  totalDeductionsPaise: z.number().int(), // deductions recorded at this exit
   refundPaise: z.number().int(),
   exited: z.boolean(),
   bedFreed: z.boolean(),
