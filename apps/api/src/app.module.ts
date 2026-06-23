@@ -10,6 +10,7 @@ import { ResidentsModule } from "./residents/residents.module";
 import { PropertyModule } from "./property/property.module";
 import { AllocationModule } from "./allocation/allocation.module";
 import { BookingsModule } from "./bookings/bookings.module";
+import { ShortStaysModule } from "./short-stays/short-stays.module";
 import { StorageModule } from "./storage/storage.module";
 import { RentModule } from "./rent/rent.module";
 import { ChargesModule } from "./charges/charges.module";
@@ -45,6 +46,7 @@ class HealthController {
     PropertyModule,
     AllocationModule,
     BookingsModule,
+    ShortStaysModule,
     StorageModule,
     RentModule,
     ChargesModule,

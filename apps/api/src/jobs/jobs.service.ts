@@ -7,6 +7,7 @@ import { RentService } from "../rent/rent.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { BookingsService } from "../bookings/bookings.service";
 import { AllocationService } from "../allocation/allocation.service";
+import { ShortStaysService } from "../short-stays/short-stays.service";
 import { invoices } from "../db/schema";
 
 export interface BatchResult {
@@ -33,7 +34,15 @@ export class JobsService {
     private readonly notifications: NotificationsService,
     private readonly bookings: BookingsService,
     private readonly allocation: AllocationService,
+    private readonly shortStays: ShortStaysService,
   ) {}
+
+  /** Complete all ACTIVE short stays whose check-out date has passed in every active tenant. */
+  async completeShortStaysAllTenants(): Promise<BatchResult> {
+    return this.forEachTenant("complete short stays", () =>
+      this.shortStays.completeExpired(),
+    );
+  }
 
   /** Activate every due future-dated booking in every active tenant. */
   async activateBookingsAllTenants(): Promise<BatchResult> {

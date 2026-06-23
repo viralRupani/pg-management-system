@@ -11,6 +11,7 @@ import { PlatformModule } from "../platform/platform.module";
 import { RentModule } from "../rent/rent.module";
 import { BookingsModule } from "../bookings/bookings.module";
 import { AllocationModule } from "../allocation/allocation.module";
+import { ShortStaysModule } from "../short-stays/short-stays.module";
 import { JobsController } from "./jobs.controller";
 import { JobsService } from "./jobs.service";
 
@@ -36,7 +37,7 @@ function redisConnection(url: string): RedisOptions {
  * JobsService owns the cross-tenant-under-RLS logic.
  */
 @Module({
-  imports: [PlatformModule, RentModule, BookingsModule, AllocationModule],
+  imports: [PlatformModule, RentModule, BookingsModule, AllocationModule, ShortStaysModule],
   controllers: [JobsController],
   providers: [
     JobsService,
@@ -68,6 +69,8 @@ export class JobsModule implements OnModuleInit, OnModuleDestroy {
             return this.jobs.generateInvoicesAllTenants(job.data?.period);
           case "mark-overdue":
             return this.jobs.markOverdueAllTenants(job.data?.period);
+          case "complete-short-stays":
+            return this.jobs.completeShortStaysAllTenants();
           case "activate-bookings":
             return this.jobs.activateBookingsAllTenants();
           case "activate-transfers":
@@ -96,6 +99,14 @@ export class JobsModule implements OnModuleInit, OnModuleDestroy {
       "mark-overdue",
       {},
       { repeat: { pattern: "0 8 * * *" }, removeOnComplete: true },
+    );
+    // Complete expired short stays daily @ 00:30 — before activate-bookings
+    // (01:00) so that TRANSIENT beds are swept back to RESERVED in time for
+    // bookings to activate on the same run.
+    await this.queue.add(
+      "complete-short-stays",
+      {},
+      { repeat: { pattern: "30 0 * * *" }, removeOnComplete: true },
     );
     // Activate due future-dated bookings daily @ 01:00 — before monthly invoice
     // generation (02:00 on the 1st), so a resident moving in on the 1st gets

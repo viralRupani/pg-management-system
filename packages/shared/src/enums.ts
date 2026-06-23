@@ -56,8 +56,19 @@ export const BedStatus = {
   VACANT: "VACANT",
   OCCUPIED: "OCCUPIED",
   RESERVED: "RESERVED",
+  // A RESERVED bed currently hosting a transient short-stay guest.
+  // The underlying booking is still PENDING; the bed reverts to RESERVED on checkout.
+  TRANSIENT: "TRANSIENT",
 } as const;
 export type BedStatus = (typeof BedStatus)[keyof typeof BedStatus];
+
+export const ShortStayStatus = {
+  ACTIVE: "ACTIVE",
+  COMPLETED: "COMPLETED",
+  CANCELLED: "CANCELLED",
+} as const;
+export type ShortStayStatus =
+  (typeof ShortStayStatus)[keyof typeof ShortStayStatus];
 
 export const InvoiceStatus = {
   PENDING: "PENDING",

@@ -35,6 +35,11 @@ export class JobsController {
     return this.jobs.sendRentReminders(dto.period);
   }
 
+  @Post("complete-short-stays")
+  completeShortStays() {
+    return this.jobs.completeShortStaysAllTenants();
+  }
+
   @Post("activate-bookings")
   activateBookings() {
     return this.jobs.activateBookingsAllTenants();

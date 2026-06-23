@@ -83,6 +83,8 @@ import type {
   UpdateMenuConfigInput,
   UpiQrUploadUrlInput,
   UpsertMenuSlotInput,
+  CreateShortStayInput,
+  ShortStaySummary,
 } from "@pg/shared";
 import { Http } from "./http";
 import type { ClientConfig } from "./types";
@@ -244,6 +246,16 @@ export class PgApiClient {
     create: (input: CreateBookingInput) =>
       this.http.post<{ id: string }>("/bookings", input),
     cancel: (id: string) => this.http.post(`/bookings/${id}/cancel`),
+  };
+
+  readonly shortStays = {
+    list: () => this.http.get<ShortStaySummary[]>("/short-stays"),
+    create: (input: CreateShortStayInput) =>
+      this.http.post<{ id: string }>("/short-stays", input),
+    complete: (id: string) =>
+      this.http.post<{ completed: boolean }>(`/short-stays/${id}/complete`),
+    cancel: (id: string) =>
+      this.http.post<{ cancelled: boolean }>(`/short-stays/${id}/cancel`),
   };
 
   readonly documents = {

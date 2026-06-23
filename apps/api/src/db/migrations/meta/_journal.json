@@ -183,6 +183,13 @@
       "when": 1782211312059,
       "tag": "0025_messy_anthem",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1782220715485,
+      "tag": "0026_stale_kate_bishop",
+      "breakpoints": true
     }
   ]
 }

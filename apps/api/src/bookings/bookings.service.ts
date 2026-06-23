@@ -12,10 +12,11 @@ import {
   type CreateBookingInput,
   DepositStatus,
   ResidentStatus,
+  ShortStayStatus,
   UserRole,
 } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
-import { allocations, beds, bookings, deposits, users } from "../db/schema";
+import { allocations, beds, bookings, deposits, shortStays, users } from "../db/schema";
 import { isUniqueViolation } from "../db/pg-errors";
 import { istStartOfDayUtc } from "../common/ist-date";
 
@@ -222,6 +223,22 @@ export class BookingsService {
         );
       }
 
+      // Guard: reject if an active short stay is using the bed reserved for this booking.
+      const [activeShortStay] = await tx
+        .select({ id: shortStays.id })
+        .from(shortStays)
+        .where(
+          and(
+            eq(shortStays.bookingId, id),
+            eq(shortStays.status, ShortStayStatus.ACTIVE),
+          ),
+        );
+      if (activeShortStay) {
+        throw new ConflictException(
+          "Complete or cancel the active short stay before cancelling this booking",
+        );
+      }
+
       const { residentId, bedId, depositId } = cancelled[0];
       await tx
         .update(beds)
@@ -283,7 +300,12 @@ export class BookingsService {
             .select({ status: beds.status })
             .from(beds)
             .where(eq(beds.id, b.bedId));
-          if (!bed || bed.status === BedStatus.OCCUPIED) return false;
+          if (
+            !bed ||
+            bed.status === BedStatus.OCCUPIED ||
+            bed.status === BedStatus.TRANSIENT
+          )
+            return false;
 
           const flipped = await tx
             .update(bookings)
