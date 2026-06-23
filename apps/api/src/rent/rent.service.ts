@@ -36,7 +36,7 @@ import {
   assertAllowedType,
 } from "../storage/storage.module";
 import { istPeriod, istStartOfDayUtc } from "../common/ist-date";
-import { prorateRent } from "./rent.proration";
+import { prorateSegment } from "./rent.proration";
 
 /**
  * The rent loop. RLS isolates tenants; it does NOT isolate residents within a
@@ -53,15 +53,20 @@ export class RentService {
 
   /**
    * Generate one PENDING invoice per active (currently bed-allocated) resident
-   * for the period, priced from the resident's current room rent and PRORATED
-   * for the join month (see `prorateRent`): a resident who joined mid-period is
-   * billed only join-day..month-end; one whose `startDate` is after the period
-   * is skipped entirely. Optionally scoped to `input.residentIds` (empty/omitted
-   * = everyone). Idempotent: ON CONFLICT (resident_id, period) DO NOTHING, so
-   * re-runs add only the missing ones. Used by both the manager endpoint and the
-   * monthly job. Any queued, unapplied `rent_adjustments` for a resident (e.g. a
-   * mid-month room-transfer delta) are folded into their new invoice here and
-   * marked applied exactly once.
+   * for the period. The amount is the SUM of every allocation SEGMENT that
+   * resident occupied during the month (see `prorateSegment`): a resident who
+   * stayed put has one open segment (full month, or join-day..month-end for the
+   * join month); a resident who transferred rooms mid-month has the old room
+   * (start..moveDay) plus the new room (moveDay..month-end), so a re-generated
+   * invoice prices the WHOLE month correctly rather than just the post-move
+   * remainder. A resident whose active allocation begins in a LATER month is
+   * skipped entirely (no invoice). Optionally scoped to `input.residentIds`
+   * (empty/omitted = everyone). Idempotent: residents who already have a live
+   * (non-voided) invoice this period are skipped, so re-runs add only the
+   * missing ones. Used by both the manager endpoint and the monthly job. Any
+   * queued, unapplied `rent_adjustments` for a resident (e.g. a mid-month
+   * room-transfer delta against an already-billed invoice) are folded into their
+   * new invoice here and marked applied exactly once.
    */
   async generateMonthly(
     input: GenerateInvoicesInput,
@@ -80,15 +85,15 @@ export class RentService {
       ? input.residentIds
       : undefined;
 
+    // Billable = residents with an ACTIVE (open) allocation right now. (A fully
+    // moved-out resident has no open allocation and is not billed.) We also keep
+    // each one's active-allocation start to decide billability for the join month.
     const actives = await db
       .select({
         residentId: allocations.residentId,
-        rent: rooms.monthlyRentPaise,
         startDate: allocations.startDate,
       })
       .from(allocations)
-      .innerJoin(beds, eq(beds.id, allocations.bedId))
-      .innerJoin(rooms, eq(rooms.id, beds.roomId))
       .where(
         onlyResidents
           ? and(
@@ -97,31 +102,87 @@ export class RentService {
             )
           : isNull(allocations.endDate),
       );
+    const activeStartByResident = new Map(
+      actives.map((a) => [a.residentId, a.startDate]),
+    );
+    const billableIds = [...activeStartByResident.keys()];
+    if (billableIds.length === 0) return { generated: 0, period };
 
-    // Price each row, dropping residents who joined after the period (null).
-    const rows = actives.flatMap((a) => {
-      const amountPaise = prorateRent(a.rent, a.startDate, period);
-      return amountPaise === null
-        ? []
-        : [
-            {
-              tenantId,
-              residentId: a.residentId,
-              period,
-              amountPaise,
-              dueDate,
-              status: InvoiceStatus.PENDING,
-            },
-          ];
+    // Every allocation segment for the billable residents (old + active). A
+    // mid-month transfer leaves an ENDED old segment plus the active new one;
+    // summing their prorated portions bills the whole month. Non-overlapping
+    // segments contribute 0 (prorateSegment handles it), so no date filter here.
+    const segs = await db
+      .select({
+        residentId: allocations.residentId,
+        rent: rooms.monthlyRentPaise,
+        startDate: allocations.startDate,
+        endDate: allocations.endDate,
+      })
+      .from(allocations)
+      .innerJoin(beds, eq(beds.id, allocations.bedId))
+      .innerJoin(rooms, eq(rooms.id, beds.roomId))
+      .where(inArray(allocations.residentId, billableIds));
+    const segsByResident = new Map<
+      string,
+      { rent: number; startDate: Date; endDate: Date | null }[]
+    >();
+    for (const s of segs) {
+      const list = segsByResident.get(s.residentId);
+      if (list) list.push(s);
+      else segsByResident.set(s.residentId, [s]);
+    }
+
+    const rows = billableIds.flatMap((residentId) => {
+      // Active allocation begins in a LATER month than the period → not yet
+      // billable (matches the old prorateRent null for a future joiner/booking).
+      if (istPeriod(activeStartByResident.get(residentId)!) > period) return [];
+      const amountPaise = (segsByResident.get(residentId) ?? []).reduce(
+        (sum, s) => sum + prorateSegment(s.rent, s.startDate, s.endDate, period),
+        0,
+      );
+      if (amountPaise <= 0) return []; // no occupied days this period
+      return [
+        {
+          tenantId,
+          residentId,
+          period,
+          amountPaise,
+          dueDate,
+          status: InvoiceStatus.PENDING,
+        },
+      ];
     });
 
     if (rows.length === 0) return { generated: 0, period };
 
     return db.transaction(async (tx) => {
+      // Skip residents who already have a live (non-voided) invoice this period.
+      // This replaces ON CONFLICT DO NOTHING, which cannot reference a partial
+      // unique index. A voided invoice (deleted_at IS NOT NULL) is excluded from
+      // the index, so those residents ARE eligible for a fresh invoice here.
+      const existingActive = await tx
+        .select({ residentId: invoices.residentId })
+        .from(invoices)
+        .where(
+          and(
+            inArray(
+              invoices.residentId,
+              rows.map((r) => r.residentId),
+            ),
+            eq(invoices.period, period),
+            isNull(invoices.deletedAt),
+          ),
+        );
+      const billedSet = new Set(existingActive.map((r) => r.residentId));
+      const newRows = rows.filter((r) => !billedSet.has(r.residentId));
+
+      if (newRows.length === 0) return { generated: 0, period };
+
       const inserted = await tx
         .insert(invoices)
-        .values(rows)
-        .onConflictDoNothing({ target: [invoices.residentId, invoices.period] })
+        .values(newRows)
+        .onConflictDoNothing() // safety net for concurrent requests
         .returning({
           id: invoices.id,
           residentId: invoices.residentId,
@@ -281,6 +342,7 @@ export class RentService {
             amountPaise: newTotal,
             description: `Credit carried forward from ${period}`,
             source: "CARRY_FORWARD",
+            period,
           });
         }
       }
@@ -441,7 +503,11 @@ export class RentService {
         deletedByUserId: managerId, // actor from JWT sub
       })
       .where(and(eq(invoices.id, invoiceId), isNull(invoices.deletedAt)))
-      .returning({ deletedAt: invoices.deletedAt });
+      .returning({
+        deletedAt: invoices.deletedAt,
+        residentId: invoices.residentId,
+        period: invoices.period,
+      });
     if (voided.length !== 1) {
       const [exists] = await this.ctx
         .db()
@@ -451,6 +517,37 @@ export class RentService {
       if (!exists) throw new NotFoundException("Invoice not found");
       throw new ConflictException("Invoice is already deleted");
     }
+    const { residentId, period } = voided[0];
+
+    const db = this.ctx.db();
+    // Release resources so a re-generated invoice prices the month from scratch:
+    // hard-delete line items (no independent audit value), and un-mark charges
+    // and adjustments that were consumed by this now-voided invoice.
+    await db.delete(invoiceCharges).where(eq(invoiceCharges.invoiceId, invoiceId));
+    await db
+      .update(extraCharges)
+      .set({ appliedToInvoiceId: null, appliedAt: null })
+      .where(eq(extraCharges.appliedToInvoiceId, invoiceId));
+    await db
+      .update(rentAdjustments)
+      .set({ appliedToInvoiceId: null, appliedAt: null })
+      .where(eq(rentAdjustments.appliedToInvoiceId, invoiceId));
+    // Drop any still-PENDING transfer delta for THIS resident + month: re-generation
+    // re-prices the whole month segment-aware (old room + new room), so keeping the
+    // delta — which reconciled the now-voided full-old-room invoice — would
+    // double-count. Scoped to TRANSFER + this period so real carry-forward credits
+    // and other months are untouched.
+    await db
+      .delete(rentAdjustments)
+      .where(
+        and(
+          eq(rentAdjustments.residentId, residentId),
+          eq(rentAdjustments.period, period),
+          eq(rentAdjustments.source, "TRANSFER"),
+          isNull(rentAdjustments.appliedToInvoiceId),
+        ),
+      );
+
     return { deletedAt: voided[0].deletedAt!.toISOString() };
   }
 

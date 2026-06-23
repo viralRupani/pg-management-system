@@ -577,15 +577,20 @@ export class AllocationService {
       .select({ amountPaise: invoices.amountPaise })
       .from(invoices)
       .where(
-        and(eq(invoices.residentId, residentId), eq(invoices.period, period)),
+        and(
+          eq(invoices.residentId, residentId),
+          eq(invoices.period, period),
+          isNull(invoices.deletedAt), // a voided invoice is not a billed baseline
+        ),
       );
-    // What the transfer month was (or will be) billed: the existing full-old-room
-    // invoice if already generated, else the new-room remainder the generator
-    // will emit for the now-active new allocation.
-    const billed = existingInvoice
-      ? existingInvoice.amountPaise
-      : newPortion;
-    const delta = correctTotal - billed;
+    // If the transfer month already has a LIVE invoice (billed full old-room on
+    // the 1st, possibly PAID), we can't change it — queue the delta to reconcile
+    // it on the next invoice. If there's no live invoice yet (not generated, or
+    // voided to be re-generated), generation is segment-aware and will price the
+    // whole month (old room + new room) itself, so no adjustment is needed.
+    const delta = existingInvoice
+      ? correctTotal - existingInvoice.amountPaise
+      : 0;
 
     if (delta !== 0) {
       await tx.insert(rentAdjustments).values({
@@ -594,6 +599,7 @@ export class AllocationService {
         amountPaise: delta,
         description: `Room transfer mid-${period} (prorated split)`,
         source: "TRANSFER",
+        period,
       });
     }
 

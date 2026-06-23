@@ -34,6 +34,11 @@ export const rentAdjustments = pgTable(
     amountPaise: integer("amount_paise").notNull(), // SIGNED — may be negative
     description: text("description").notNull(),
     source: text("source").notNull().default("TRANSFER"),
+    // The billing month this correction belongs to ('YYYY-MM'). Lets a void of
+    // that month's invoice drop the still-pending delta so re-generation (which
+    // re-prices the month segment-aware) doesn't double-count. Nullable: legacy
+    // rows have none.
+    period: text("period"),
     appliedToInvoiceId: uuid("applied_to_invoice_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

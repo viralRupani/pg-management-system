@@ -169,6 +169,20 @@
       "when": 1781978492750,
       "tag": "0023_aromatic_makkari",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1782209581283,
+      "tag": "0024_concerned_stardust",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1782211312059,
+      "tag": "0025_messy_anthem",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   foreignKey,
   integer,
@@ -5,6 +6,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { tenants } from "./tenants";
@@ -12,10 +14,12 @@ import { users } from "./users";
 
 /**
  * A monthly rent invoice for one resident. `period` is the billing month as
- * 'YYYY-MM' text (project-wide convention) so `unique(resident_id, period)` makes
- * monthly generation idempotent (re-runs ON CONFLICT DO NOTHING). Amount is
- * integer paise. Composite FK to users(id, tenant_id) keeps the resident in
- * tenant; `unique(id, tenant_id)` is the composite-FK target for payments.
+ * 'YYYY-MM' text (project-wide convention). A partial unique index on
+ * `(resident_id, period) WHERE deleted_at IS NULL` enforces at most one live
+ * invoice per resident per month while allowing re-generation after a void.
+ * Amount is integer paise. Composite FK to users(id, tenant_id) keeps the
+ * resident in tenant; `unique(id, tenant_id)` is the composite-FK target for
+ * payments.
  */
 export const invoices = pgTable(
   "invoices",
@@ -51,10 +55,11 @@ export const invoices = pgTable(
       name: "invoices_deleted_by_user_id_tenant_id_fk",
     }),
     idTenant: unique("invoices_id_tenant_id_unique").on(t.id, t.tenantId),
-    residentPeriod: unique("invoices_resident_id_period_unique").on(
-      t.residentId,
-      t.period,
-    ),
+    // Partial: only one LIVE invoice per resident per period. Soft-deleted
+    // (voided) invoices are excluded so a manager can re-generate after voiding.
+    residentPeriodActive: uniqueIndex("invoices_resident_id_period_active_unique")
+      .on(t.residentId, t.period)
+      .where(sql`deleted_at IS NULL`),
   }),
 );
 

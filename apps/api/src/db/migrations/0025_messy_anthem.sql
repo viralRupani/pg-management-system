@@ -1,0 +1,1 @@
+ALTER TABLE "rent_adjustments" ADD COLUMN "period" text;

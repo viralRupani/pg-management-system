@@ -1,0 +1,2 @@
+ALTER TABLE "invoices" DROP CONSTRAINT "invoices_resident_id_period_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "invoices_resident_id_period_active_unique" ON "invoices" USING btree ("resident_id","period") WHERE deleted_at IS NULL;

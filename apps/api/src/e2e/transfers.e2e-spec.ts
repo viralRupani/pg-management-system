@@ -331,3 +331,153 @@ describe("Room transfer credit carry-forward (e2e)", () => {
     expect(august.status).toBe("PENDING");
   });
 });
+
+/**
+ * Transfer + void + re-generate in the SAME month. A resident's UNPAID
+ * transfer-month invoice can be voided and re-generated so the whole month is
+ * re-priced as the old-room days + new-room days split (not just the post-move
+ * remainder, and with no double-counted transfer delta). Also covers a transfer
+ * done BEFORE the month is generated: the first generation already prices the
+ * split. June has 30 days; rents divide by 30 for exact integers.
+ */
+describe("Room transfer same-month re-generation (e2e)", () => {
+  let h: Harness;
+  let pg: TestPg;
+  const RENT_OLD = 700000; // ₹7000
+  const RENT_NEW = 800000; // ₹8000
+  // Move on June 22: old days 1..21 (21) @7000/30 + new days 22..30 (9) @8000/30
+  //   = 490000 + 240000 = 730000.
+  const SPLIT_TOTAL = 730000;
+
+  let resA: string;
+  let oldBedA: string;
+  let newBedA: string;
+  let resB: string;
+  let oldBedB: string;
+  let newBedB: string;
+
+  beforeAll(async () => {
+    h = await createHarness();
+    pg = await h.onboardPg("xfer-regen");
+    const mgr = pg.managerToken;
+
+    const buildingId = await newId(
+      await h.req("post", "/property/buildings", mgr, { name: "Block Z" }),
+    );
+    const floorId = await newId(
+      await h.req("post", "/property/floors", mgr, { buildingId, label: "G" }),
+    );
+    const mkRoom = async (label: string, rent: number) =>
+      newId(
+        await h.req("post", "/property/rooms", mgr, {
+          floorId,
+          label,
+          capacity: 1,
+          monthlyRentPaise: rent,
+        }),
+      );
+    const mkBed = async (roomId: string, label: string) =>
+      newId(await h.req("post", "/property/beds", mgr, { roomId, label }));
+
+    oldBedA = await mkBed(await mkRoom("OA", RENT_OLD), "OA1");
+    newBedA = await mkBed(await mkRoom("NA", RENT_NEW), "NA1");
+    oldBedB = await mkBed(await mkRoom("OB", RENT_OLD), "OB1");
+    newBedB = await mkBed(await mkRoom("NB", RENT_NEW), "NB1");
+
+    resA = await h.registerResident(mgr, { name: "Regen A", phone: randomPhone() });
+    resB = await h.registerResident(mgr, { name: "PreGen B", phone: randomPhone() });
+    await h.req("post", "/allocations", mgr, {
+      bedId: oldBedA,
+      residentId: resA,
+      startDate: "2026-06-01",
+    });
+    await h.req("post", "/allocations", mgr, {
+      bedId: oldBedB,
+      residentId: resB,
+      startDate: "2026-06-01",
+    });
+  }, 30000);
+
+  afterAll(async () => {
+    await h?.close();
+  });
+
+  async function transfer(resident: string, toBedId: string): Promise<void> {
+    const reqId = await newId(
+      await h.req("post", "/allocations/transfers", pg.managerToken, {
+        residentId: resident,
+        toBedId,
+        plannedDate: "2026-06-22",
+      }),
+    );
+    const exec = await h.req(
+      "post",
+      `/allocations/transfers/${reqId}/execute`,
+      pg.managerToken,
+      { moveDate: "2026-06-22" },
+    );
+    expect(exec.status).toBe(201);
+  }
+
+  function juneOf(items: { residentId: string; period: string }[], r: string) {
+    return items.find((i) => i.residentId === r && i.period === "2026-06");
+  }
+
+  it("void + re-generate re-prices the unpaid transfer month as the full split", async () => {
+    const mgr = pg.managerToken;
+
+    // Full-month old-room invoice, unpaid.
+    await h.req("post", "/invoices/generate", mgr, {
+      period: "2026-06",
+      residentIds: [resA],
+    });
+    let all = await h.req("get", "/invoices?limit=100", mgr);
+    const june = juneOf(all.body.items, resA)!;
+    expect(june.amountPaise).toBe(RENT_OLD);
+
+    // Move mid-month, then void the unpaid invoice and re-generate.
+    await transfer(resA, newBedA);
+    const del = await h.req("post", `/invoices/${june.id}/delete`, mgr, {
+      reason: "Re-pricing after mid-month room change",
+    });
+    expect(del.status).toBe(201);
+
+    const regen = await h.req("post", "/invoices/generate", mgr, {
+      period: "2026-06",
+      residentIds: [resA],
+    });
+    expect(regen.body.generated).toBe(1);
+
+    all = await h.req("get", "/invoices?limit=100", mgr);
+    const live = all.body.items.find(
+      (i: { residentId: string; period: string; deletedAt: string | null }) =>
+        i.residentId === resA && i.period === "2026-06" && i.deletedAt === null,
+    );
+    // Full split — NOT just the ₹2400 new-room remainder, and NOT 730000 + a
+    // stale +30000 transfer delta.
+    expect(live.amountPaise).toBe(SPLIT_TOTAL);
+
+    // Idempotent: a second generate adds nothing.
+    const again = await h.req("post", "/invoices/generate", mgr, {
+      period: "2026-06",
+      residentIds: [resA],
+    });
+    expect(again.body.generated).toBe(0);
+  });
+
+  it("a transfer BEFORE generation prices the first invoice as the full split", async () => {
+    const mgr = pg.managerToken;
+
+    // Move first, generate after — no invoice existed at transfer time.
+    await transfer(resB, newBedB);
+    const gen = await h.req("post", "/invoices/generate", mgr, {
+      period: "2026-06",
+      residentIds: [resB],
+    });
+    expect(gen.body.generated).toBe(1);
+
+    const all = await h.req("get", "/invoices?limit=100", mgr);
+    const june = juneOf(all.body.items, resB)!;
+    expect(june.amountPaise).toBe(SPLIT_TOTAL);
+  });
+});
