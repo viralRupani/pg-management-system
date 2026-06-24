@@ -3,6 +3,7 @@
 import type {
   BedSummary,
   BookingSummary,
+  ExitingBed,
   ResidentSummary,
   RoomSummary,
 } from "@pg/shared";
@@ -51,6 +52,7 @@ export default function BookingsPage() {
   const [residents, setResidents] = useState<ResidentSummary[]>([]);
   const [beds, setBeds] = useState<BedSummary[]>([]);
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
+  const [exitingBeds, setExitingBeds] = useState<ExitingBed[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -63,17 +65,19 @@ export default function BookingsPage() {
     }
   }, [toast]);
 
-  // Pickers: residents not currently housed + non-reserved beds.
+  // Pickers: residents not currently housed + vacant/leaving-soon beds.
   const loadOptions = useCallback(async () => {
     try {
-      const [allResidents, bedList, roomList] = await Promise.all([
+      const [allResidents, bedList, roomList, exitingList] = await Promise.all([
         fetchAllActiveResidents(),
         api.property.beds(),
         api.property.rooms(),
+        api.allocations.exitingBeds(),
       ]);
       setResidents(allResidents.filter((r) => !r.bedLabel));
       setBeds(bedList);
       setRooms(roomList);
+      setExitingBeds(exitingList);
     } catch (err) {
       toast.error(toMessage(err, "Could not load booking options."));
     }
@@ -176,6 +180,7 @@ export default function BookingsPage() {
         residents={residents}
         beds={beds}
         rooms={rooms}
+        exitingBeds={exitingBeds}
         onCreated={async () => {
           setCreating(false);
           await load();
@@ -191,6 +196,7 @@ function CreateBookingDialog({
   residents,
   beds,
   rooms,
+  exitingBeds,
   onCreated,
 }: {
   open: boolean;
@@ -198,6 +204,7 @@ function CreateBookingDialog({
   residents: ResidentSummary[];
   beds: BedSummary[];
   rooms: RoomSummary[];
+  exitingBeds: ExitingBed[];
   onCreated: () => Promise<void>;
 }) {
   const toast = useToast();
@@ -210,8 +217,12 @@ function CreateBookingDialog({
   const today = ymd(new Date());
   const roomLabel = (roomId: string) =>
     rooms.find((r) => r.id === roomId)?.label ?? "—";
-  // A held bed (RESERVED) is already booked; offer vacant + occupied beds only.
-  const bookableBeds = beds.filter((b) => b.status !== "RESERVED");
+  // Offer vacant beds + occupied beds whose sitting resident requested move-out
+  // ("leaving soon"). A held bed (RESERVED) is already booked and never exiting.
+  const exitingById = new Map(exitingBeds.map((e) => [e.bedId, e]));
+  const bookableBeds = beds.filter(
+    (b) => b.status === "VACANT" || exitingById.has(b.id),
+  );
 
   useEffect(() => {
     if (!open) {
@@ -282,12 +293,17 @@ function CreateBookingDialog({
             onChange={(e) => setBedId(e.target.value)}
           >
             <option value="">Select a bed…</option>
-            {bookableBeds.map((b) => (
-              <option key={b.id} value={b.id}>
-                Room {roomLabel(b.roomId)} · Bed {b.label}
-                {b.status === "OCCUPIED" ? " (occupied — leaving soon)" : ""}
-              </option>
-            ))}
+            {bookableBeds.map((b) => {
+              const exit = exitingById.get(b.id);
+              return (
+                <option key={b.id} value={b.id}>
+                  Room {roomLabel(b.roomId)} · Bed {b.label}
+                  {exit
+                    ? ` (leaving soon${exit.exitRequestedDate ? ` — moves out ${formatDate(exit.exitRequestedDate)}` : ""})`
+                    : ""}
+                </option>
+              );
+            })}
           </select>
         </div>
 
