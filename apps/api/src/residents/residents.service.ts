@@ -46,6 +46,10 @@ import {
 // needs its own alias to avoid colliding with the active-allocation bed join.
 const bookedBeds = alias(beds, "booked_beds");
 
+// The manager/owner who registered the resident is another `users` row, so the
+// self-join needs its own alias to resolve their name.
+const creator = alias(users, "creator");
+
 // The document type that constitutes KYC today. Adding more required types
 // later means rolling the per-resident status up across all of them; for one
 // type the resident's KYC status is just that document's status.
@@ -61,12 +65,15 @@ const KYC_REQUIRED_DOC_TYPE = DocumentType.AADHAAR;
 export class ResidentsService {
   constructor(private readonly ctx: TenantContextService) {}
 
-  async register(input: RegisterResidentInput): Promise<{ id: string }> {
+  async register(
+    input: RegisterResidentInput,
+    createdByUserId?: string,
+  ): Promise<{ id: string }> {
     const tenantId = this.ctx.currentTenantId()!;
     const db = this.ctx.db();
 
     try {
-      return await this.insertResident(db, tenantId, input);
+      return await this.insertResident(db, tenantId, input, createdByUserId);
     } catch (err) {
       // Phone is unique per tenant in auth_identities — surface a clean 409
       // instead of leaking the raw DB unique violation as a 500.
@@ -83,12 +90,14 @@ export class ResidentsService {
     db: ReturnType<TenantContextService["db"]>,
     tenantId: string,
     input: RegisterResidentInput,
+    createdByUserId?: string,
   ): Promise<{ id: string }> {
     return db.transaction(async (tx) => {
       const [resident] = await tx
         .insert(users)
         .values({
           tenantId, // from context, not from input
+          createdByUserId: createdByUserId ?? null, // actor from JWT, not body
           role: UserRole.RESIDENT,
           name: input.name,
           phone: input.phone,
@@ -224,6 +233,8 @@ export class ResidentsService {
         shortStayCheckOutDate: users.shortStayCheckOutDate,
         shortStayPerDayChargePaise: users.shortStayPerDayChargePaise,
         kycDocStatus: documents.status,
+        createdByName: creator.name,
+        createdAt: users.createdAt,
       })
       .from(users)
       .leftJoin(
@@ -257,6 +268,15 @@ export class ResidentsService {
           eq(documents.residentId, users.id),
           eq(documents.type, KYC_REQUIRED_DOC_TYPE),
         ),
+      )
+      // The registering manager/owner (1:1, may be null for seeded rows) — only
+      // their display name is needed for the "Added by" provenance line.
+      .leftJoin(
+        creator,
+        and(
+          eq(creator.id, users.createdByUserId),
+          eq(creator.tenantId, users.tenantId),
+        ),
       );
   }
 }
@@ -287,6 +307,8 @@ type ResidentRow = {
   shortStayCheckOutDate: string | null;
   shortStayPerDayChargePaise: number | null;
   kycDocStatus: string | null;
+  createdByName: string | null;
+  createdAt: Date;
 };
 
 /**
@@ -352,5 +374,7 @@ function toSummary(r: ResidentRow): ResidentSummary {
           r.shortStayPerDayChargePaise
         : null,
     kycStatus: toKycStatus(r.kycDocStatus),
+    createdByName: r.createdByName,
+    createdAt: r.createdAt.toISOString(),
   };
 }

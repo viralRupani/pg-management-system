@@ -197,6 +197,13 @@
       "when": 1782320779350,
       "tag": "0027_soft_bushwacker",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1782330024378,
+      "tag": "0028_late_marvel_boy",
+      "breakpoints": true
     }
   ]
 }

@@ -1081,6 +1081,17 @@ function ResidentDetail({ id }: { id: string }) {
               </div>
             </div>
           </div>
+
+          {/* Provenance — de-emphasized, kept out of the identity block so it
+              doesn't crowd the at-a-glance info but is still on record. */}
+          <div className="flex items-center gap-1.5 border-t border-border pt-3 text-xs text-muted-foreground">
+            <UserPlus className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              {resident.createdByName
+                ? `Added by ${resident.createdByName} on ${formatDate(resident.createdAt)}`
+                : `Added on ${formatDate(resident.createdAt)}`}
+            </span>
+          </div>
         </CardContent>
       </Card>
 

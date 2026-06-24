@@ -197,7 +197,12 @@ describe("M2 property & allocation (e2e)", () => {
       age: 30,
       emergencyContactName: "Ramesh Sharma",
       emergencyContactRelation: "FATHER",
+      // Provenance: registered by the onboarded manager (named "Manager"),
+      // captured from the JWT actor, with a registration timestamp.
+      createdByName: "Manager",
     });
+    expect(typeof got.body.createdAt).toBe("string");
+    expect(Number.isNaN(Date.parse(got.body.createdAt))).toBe(false);
   });
 
   it("rejects a duplicate phone within the PG with 409 (not a 500)", async () => {

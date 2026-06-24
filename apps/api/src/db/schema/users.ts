@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   integer,
   pgTable,
   text,
@@ -63,10 +64,25 @@ export const users = pgTable("users", {
   // actor FKs (reviewedBy/recordedBy/…) that RESTRICT on delete stay intact.
   deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
 
+  // Provenance: the manager (or PG owner) user row that registered this
+  // resident, captured from the JWT `sub` at register time. Null for residents
+  // created outside the register flow (seeds) or before this was tracked. FK is
+  // to `users` (not `auth_identities`) so the name still resolves after the
+  // manager is soft-deactivated (row kept, credential removed).
+  createdByUserId: uuid("created_by_user_id"),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
 }, (t) => ({
+  // Self-referential composite FK carrying tenant_id — the creator is another
+  // `users` row in the same tenant; the tenant column keeps it in-tenant (FK
+  // checks bypass RLS).
+  createdByFk: foreignKey({
+    columns: [t.createdByUserId, t.tenantId],
+    foreignColumns: [t.id, t.tenantId],
+    name: "users_created_by_user_id_tenant_id_fk",
+  }),
   // Composite-unique target so child tables (e.g. allocations.residentId) can
   // reference (id, tenant_id) and make cross-tenant references unrepresentable.
   // FK/unique checks bypass RLS, so tenant scoping must be enforced in the FK.

@@ -145,6 +145,11 @@ export const residentSummarySchema = z.object({
   // Computed days × per-day for display; null for non-short-stay residents or
   // when the dates/charge aren't both set.
   shortStayTotalPaise: z.number().int().nullable(),
+  // Registration provenance: who added this resident and when. `createdByName`
+  // is the manager/owner who registered them (null for seeded/legacy rows);
+  // `createdAt` is the registration timestamp (ISO) — distinct from joinDate.
+  createdByName: z.string().nullable(),
+  createdAt: z.string(),
 });
 export type ResidentSummary = z.infer<typeof residentSummarySchema>;
 

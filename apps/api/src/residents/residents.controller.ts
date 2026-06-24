@@ -2,11 +2,12 @@ import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import {
   registerResidentSchema,
   residentListQuerySchema,
+  type JwtPayload,
   type RegisterResidentInput,
   type ResidentListQuery,
   UserRole,
 } from "@pg/shared";
-import { Roles } from "../common/decorators";
+import { CurrentUser, Roles } from "../common/decorators";
 import { ZodBody, ZodQuery } from "../common/zod-validation.pipe";
 import { ResidentsService } from "./residents.service";
 
@@ -18,8 +19,10 @@ export class ResidentsController {
   @Post()
   register(
     @Body(new ZodBody(registerResidentSchema)) dto: RegisterResidentInput,
+    @CurrentUser() user: JwtPayload,
   ) {
-    return this.residents.register(dto);
+    // Provenance comes from the JWT actor, never the request body.
+    return this.residents.register(dto, user.sub);
   }
 
   @Get()
