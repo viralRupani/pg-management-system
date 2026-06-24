@@ -41,6 +41,11 @@ export default function PgsPage() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
 
+  // Owner chooser has no active PG yet, so there's no PG name to show.
+  useEffect(() => {
+    document.title = "Your PGs · Basera";
+  }, []);
+
   // Guard: only signed-in owners belong here.
   useEffect(() => {
     if (loading) return;

@@ -54,7 +54,7 @@ export default function LoginPage() {
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand text-brand-foreground">
             <Building2 className="h-6 w-6" />
           </div>
-          <h1 className="text-xl font-semibold">PG Manager</h1>
+          <h1 className="text-xl font-semibold">Basera</h1>
           <p className="text-sm text-muted-foreground">
             Sign in to your dashboard
           </p>

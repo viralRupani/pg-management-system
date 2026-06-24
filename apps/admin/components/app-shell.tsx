@@ -61,9 +61,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { branding, logout, isOwner, exitPg } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const pgName = branding?.name ?? "PG Manager";
+  const pgName = branding?.name ?? "Basera";
   const nav = NAV.filter((item) => !item.ownerOnly || isOwner);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
+
+  // Reflect the current PG's name in the browser tab. Keyed on `pathname` too:
+  // App Router can reset document.title to the root metadata on client-side
+  // navigation, and AppShell doesn't remount, so re-assert it on every route.
+  useEffect(() => {
+    if (branding?.name) document.title = `${branding.name} · Basera`;
+  }, [branding?.name, pathname]);
 
   function switchPg() {
     exitPg();

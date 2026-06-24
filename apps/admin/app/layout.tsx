@@ -4,8 +4,8 @@ import { AuthProvider } from "@/lib/auth";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PG Manager",
-  description: "Manage your paying-guest hostel — residents, rent, and more.",
+  title: "Basera",
+  description: "Basera — PG management software. Residents, rent, and more.",
 };
 
 // Inline script run synchronously before paint — reads the cached accent color
