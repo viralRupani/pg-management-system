@@ -17,13 +17,26 @@ export const registerResidentSchema = z
     name: z.string().min(2).max(120),
     phone: indianPhone,
     email: z.string().email().optional(),
-    age: z.number().int().min(15).max(120),
+    // Required for long-term residents; optional for short-stay guests (a
+    // lightweight guest record only needs name + phone). See superRefine.
+    age: z.number().int().min(15).max(120).optional(),
     occupationType: z.nativeEnum(OccupationType).default(OccupationType.OTHER),
     nativePlace: z.string().max(120).optional(),
     emergencyContactName: z.string().min(2).max(120).optional(),
     emergencyContactRelation: z.nativeEnum(EmergencyRelation).optional(),
     emergencyContactPhone: indianPhone.optional(),
     joinDate: z.string().date().optional(), // ISO date; defaults to today server-side
+    // Planned move-in (long-term) / check-in (short stay) date, captured at
+    // registration so the bed-assign dialog can pre-fill and filter beds. The
+    // assign step turns a future date into a booking, a today/past date into a
+    // live allocation.
+    expectedMoveInDate: z.string().date().optional(),
+    // Short-stay guest: a transient occupant who pays a per-day charge upfront
+    // and is never invoiced or metered (kept out of `allocations`). When true,
+    // checkOut + per-day charge are required.
+    isShortStay: z.boolean().default(false),
+    shortStayCheckOutDate: z.string().date().optional(),
+    shortStayPerDayChargePaise: z.number().int().min(0).optional(),
   })
   .superRefine((d, ctx) => {
     const fields = [
@@ -43,6 +56,49 @@ export const registerResidentSchema = z
           });
         }
       }
+    }
+
+    if (d.isShortStay) {
+      // A short stay needs check-in (move-in), check-out, and a per-day charge.
+      if (!d.expectedMoveInDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["expectedMoveInDate"],
+          message: "Check-in date is required for a short stay",
+        });
+      }
+      if (!d.shortStayCheckOutDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["shortStayCheckOutDate"],
+          message: "Check-out date is required for a short stay",
+        });
+      }
+      if (
+        d.expectedMoveInDate &&
+        d.shortStayCheckOutDate &&
+        d.shortStayCheckOutDate <= d.expectedMoveInDate
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["shortStayCheckOutDate"],
+          message: "Check-out date must be after the check-in date",
+        });
+      }
+      if (d.shortStayPerDayChargePaise == null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["shortStayPerDayChargePaise"],
+          message: "Per-day charge is required for a short stay",
+        });
+      }
+    } else if (d.age == null) {
+      // Long-term residents must give an age (DB CHECK enforces it too).
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["age"],
+        message: "Age is required",
+      });
     }
   });
 export type RegisterResidentInput = z.infer<typeof registerResidentSchema>;
@@ -78,6 +134,17 @@ export const residentSummarySchema = z.object({
   // Set (YYYY-MM-DD) when the resident has raised a pending move-out request,
   // null otherwise — lets the roster tag "Exit requested" without a drill-down.
   exitRequestedDate: z.string().nullable(),
+  // Planned move-in / check-in captured at registration (before a bed is
+  // assigned). YYYY-MM-DD, null once not relevant.
+  expectedMoveInDate: z.string().nullable(),
+  // Short-stay guest marker + terms. A short-stay guest is rent- and
+  // metering-exempt and pays `shortStayTotalPaise` (days × per-day) upfront.
+  isShortStay: z.boolean(),
+  shortStayCheckOutDate: z.string().nullable(), // YYYY-MM-DD
+  shortStayPerDayChargePaise: z.number().int().nullable(),
+  // Computed days × per-day for display; null for non-short-stay residents or
+  // when the dates/charge aren't both set.
+  shortStayTotalPaise: z.number().int().nullable(),
 });
 export type ResidentSummary = z.infer<typeof residentSummarySchema>;
 

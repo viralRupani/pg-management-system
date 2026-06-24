@@ -46,6 +46,11 @@ export class AllocationController {
     return this.allocation.listExitingBeds();
   }
 
+  @Get("eligible-beds")
+  eligibleBeds(@Query("residentId") residentId: string) {
+    return this.allocation.listEligibleBeds(residentId);
+  }
+
   // ---- Room transfers (pre-booked move) ----
 
   @Post("transfers")

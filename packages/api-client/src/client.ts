@@ -7,6 +7,7 @@ import type {
   AnnouncementListResult,
   AuthTokens,
   AvailableBed,
+  EligibleBed,
   ExitingBed,
   BedSummary,
   BookingSummary,
@@ -215,6 +216,15 @@ export class PgApiClient {
     /** Occupied beds with a sitting resident who requested move-out ("soon to free"). */
     exitingBeds: () =>
       this.http.get<ExitingBed[]>("/allocations/exiting-beds"),
+    /**
+     * Beds the manager can assign to one resident from their profile: vacant +
+     * leaving-soon (long-term) or vacant + reserved-free-after-checkout (short
+     * stay). Each row is tagged with the reason it qualifies.
+     */
+    eligibleBeds: (residentId: string) =>
+      this.http.get<EligibleBed[]>("/allocations/eligible-beds", {
+        query: { residentId },
+      }),
     allocate: (input: AllocateBedInput) =>
       this.http.post<AllocationSummary>("/allocations", input),
     moveOut: (residentId: string) =>
@@ -248,8 +258,14 @@ export class PgApiClient {
     cancel: (id: string) => this.http.post(`/bookings/${id}/cancel`),
   };
 
+  /**
+   * Short-stay guests: a transient occupant (a resident with `isShortStay`)
+   * holds a vacant or reserved bed for a per-day fee paid upfront. Never
+   * invoiced or metered. Created/cancelled from the residents page + profile.
+   */
   readonly shortStays = {
     list: () => this.http.get<ShortStaySummary[]>("/short-stays"),
+    /** Assign a short-stay guest to a bed; terms come from the resident record. */
     create: (input: CreateShortStayInput) =>
       this.http.post<{ id: string }>("/short-stays", input),
     complete: (id: string) =>

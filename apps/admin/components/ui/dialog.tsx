@@ -15,6 +15,7 @@ export function Dialog({
   description,
   className,
   children,
+  footer,
 }: {
   open: boolean;
   onClose: () => void;
@@ -22,6 +23,12 @@ export function Dialog({
   description?: string;
   className?: string;
   children: React.ReactNode;
+  /**
+   * Optional pinned action bar. Rendered in its own non-scrolling region below
+   * the (scrollable) body, so the header AND footer stay put while only the body
+   * scrolls. Pass the action buttons; the wrapper handles the border + layout.
+   */
+  footer?: React.ReactNode;
 }) {
   React.useEffect(() => {
     if (!open) return;
@@ -49,12 +56,14 @@ export function Dialog({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "w-full max-w-lg rounded-lg border border-border bg-card text-card-foreground shadow-lg",
+          // Flex column + capped height so a tall form scrolls its body instead
+          // of overflowing the viewport; the header stays pinned.
+          "flex max-h-[90vh] w-full max-w-lg flex-col rounded-lg border border-border bg-card text-card-foreground shadow-lg",
           className,
         )}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3 p-5 pb-3">
+        <div className="flex shrink-0 items-start justify-between gap-3 p-5 pb-3">
           <div>
             <h2 className="text-base font-semibold tracking-tight">{title}</h2>
             {description && (
@@ -72,7 +81,12 @@ export function Dialog({
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="p-5 pt-0">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 pt-0">{children}</div>
+        {footer && (
+          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-5 py-3">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );

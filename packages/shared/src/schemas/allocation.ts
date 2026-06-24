@@ -59,6 +59,28 @@ export const exitingBedSchema = z.object({
 export type ExitingBed = z.infer<typeof exitingBedSchema>;
 
 /**
+ * A bed the manager may assign to a given resident from their profile, with the
+ * reason it qualifies. The set depends on the resident:
+ *  - VACANT: free now.
+ *  - LEAVING_SOON: occupied, but the sitting resident has requested a move-out
+ *    on/before this resident's planned move-in (a future booking target).
+ *  - RESERVED_FREE_AFTER: held by a future booking whose move-in is after this
+ *    short-stay guest's check-out, so the guest can occupy it in the interim.
+ * `freesOnDate` is the date the bed is expected to free (null for VACANT, or an
+ * unspecified exit date).
+ */
+export const eligibleBedSchema = z.object({
+  bedId: z.string().uuid(),
+  bedLabel: z.string(),
+  roomLabel: z.string(),
+  monthlyRentPaise: z.number().int(),
+  kind: z.enum(["VACANT", "LEAVING_SOON", "RESERVED_FREE_AFTER"]),
+  freesOnDate: z.string().nullable(),
+  occupantName: z.string().nullable(),
+});
+export type EligibleBed = z.infer<typeof eligibleBedSchema>;
+
+/**
  * Room-transfer DTOs. A manager pre-books a move for a resident to a target bed
  * by a planned date (soft hold — vacancy is re-checked at execution, the bed is
  * not locked). On the move day the manager executes it: the old allocation ends

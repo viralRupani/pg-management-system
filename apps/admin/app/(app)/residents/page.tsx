@@ -2,7 +2,9 @@
 
 import {
   type AvailableBed,
+  type BookingSummary,
   ChargeFrequency,
+  type EligibleBed,
   type ExitingBed,
   type DepositSummary,
   type DepositTransactionSummary,
@@ -15,6 +17,7 @@ import {
   OccupationType,
   type ResidentSummary,
   ResidentStatus,
+  type ShortStaySummary,
   type TransferRequestSummary,
   sharingLabel,
 } from "@pg/shared";
@@ -278,8 +281,11 @@ function ResidentsList() {
                           ? `${r.bedLabel}${r.roomCapacity != null ? ` · ${sharingLabel(r.roomCapacity)}` : ""}`
                           : r.status === "UPCOMING" && r.bookedBedLabel
                             ? `${r.bookedBedLabel}${r.moveInDate ? ` · moves in ${formatDate(r.moveInDate)}` : ""}`
-                            : "No bed"}
+                            : r.isShortStay && r.shortStayCheckOutDate
+                              ? `until ${formatDate(r.shortStayCheckOutDate)}`
+                              : "No bed"}
                       </span>
+                      {r.isShortStay && <Badge tone="brand">Short stay</Badge>}
                       {r.exitRequestedDate && (
                         <Badge tone="warning">Exit requested</Badge>
                       )}
@@ -361,6 +367,11 @@ function RegisterDialog({
   const [ecName, setEcName] = useState("");
   const [ecRelation, setEcRelation] = useState<EmergencyRelation | "">("");
   const [ecPhone, setEcPhone] = useState("");
+  // Move-in / check-in + short-stay terms.
+  const [isShortStay, setIsShortStay] = useState(false);
+  const [moveInDate, setMoveInDate] = useState("");
+  const [checkOutDate, setCheckOutDate] = useState("");
+  const [perDayRupees, setPerDayRupees] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -374,6 +385,10 @@ function RegisterDialog({
       setEcName("");
       setEcRelation("");
       setEcPhone("");
+      setIsShortStay(false);
+      setMoveInDate(ymdToday());
+      setCheckOutDate("");
+      setPerDayRupees("");
     }
   }, [open]);
 
@@ -381,23 +396,45 @@ function RegisterDialog({
   // other two become required (HTML5 + the server's Zod refine both enforce it).
   const ecTouched = Boolean(ecName.trim() || ecRelation || ecPhone.trim());
 
+  // Live total for a short stay: whole days × per-day charge.
+  const stayDays =
+    isShortStay && moveInDate && checkOutDate && checkOutDate > moveInDate
+      ? daysBetween(moveInDate, checkOutDate)
+      : 0;
+  const stayTotalPaise = stayDays * Math.round(Number(perDayRupees || 0) * 100);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     try {
-      const created = await api.residents.register({
-        name: name.trim(),
-        phone: phone.trim(),
-        email: email.trim() || undefined,
-        age: Number(age),
-        occupationType,
-        nativePlace: nativePlace.trim() || undefined,
-        emergencyContactName: ecTouched ? ecName.trim() : undefined,
-        emergencyContactRelation: ecTouched
-          ? (ecRelation as EmergencyRelation)
-          : undefined,
-        emergencyContactPhone: ecTouched ? ecPhone.trim() : undefined,
-      });
+      const created = await api.residents.register(
+        isShortStay
+          ? {
+              name: name.trim(),
+              phone: phone.trim(),
+              email: email.trim() || undefined,
+              occupationType: OccupationType.OTHER,
+              isShortStay: true,
+              expectedMoveInDate: moveInDate,
+              shortStayCheckOutDate: checkOutDate,
+              shortStayPerDayChargePaise: Math.round(Number(perDayRupees) * 100),
+            }
+          : {
+              name: name.trim(),
+              phone: phone.trim(),
+              email: email.trim() || undefined,
+              isShortStay: false,
+              age: Number(age),
+              occupationType,
+              nativePlace: nativePlace.trim() || undefined,
+              expectedMoveInDate: moveInDate || undefined,
+              emergencyContactName: ecTouched ? ecName.trim() : undefined,
+              emergencyContactRelation: ecTouched
+                ? (ecRelation as EmergencyRelation)
+                : undefined,
+              emergencyContactPhone: ecTouched ? ecPhone.trim() : undefined,
+            },
+      );
       await onDone();
       router.push(`/residents?id=${created.id}`);
     } catch (err) {
@@ -412,9 +449,24 @@ function RegisterDialog({
       open={open}
       onClose={onClose}
       title="Register resident"
-      description="Add a new resident to your PG. You can assign a bed afterwards."
+      description="Add a new resident to your PG, then assign a bed from their profile."
+      className="max-w-2xl"
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form="register-resident-form" disabled={busy}>
+            {busy ? "Registering…" : "Register"}
+          </Button>
+        </>
+      }
     >
-      <form onSubmit={submit} className="space-y-4">
+      <form
+        id="register-resident-form"
+        onSubmit={submit}
+        className="space-y-4"
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Full name" htmlFor="r-name">
             <Input
@@ -445,103 +497,183 @@ function RegisterDialog({
               onChange={(e) => setEmail(e.target.value)}
             />
           </Field>
-          <Field label="Age" htmlFor="r-age">
+          <Field label="Move-in date" htmlFor="r-movein">
             <Input
-              id="r-age"
-              type="number"
-              min={15}
-              max={120}
-              value={age}
-              onChange={(e) => setAge(e.target.value)}
-              required
-            />
-          </Field>
-          <Field label="Occupation" htmlFor="r-occ">
-            <select
-              id="r-occ"
-              value={occupationType}
-              onChange={(e) =>
-                setOccupationType(e.target.value as OccupationType)
-              }
-              className={inputClass}
-            >
-              {Object.values(OccupationType).map((o) => (
-                <option key={o} value={o}>
-                  {o.charAt(0) + o.slice(1).toLowerCase()}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Native place (optional)" htmlFor="r-native">
-            <Input
-              id="r-native"
-              value={nativePlace}
-              onChange={(e) => setNativePlace(e.target.value)}
+              id="r-movein"
+              type="date"
+              value={moveInDate}
+              onChange={(e) => setMoveInDate(e.target.value)}
+              required={isShortStay}
             />
           </Field>
         </div>
 
-        <div className="space-y-1 border-t border-border pt-4">
-          <p className="text-sm font-medium">Emergency contact (optional)</p>
-          <p className="text-xs text-muted-foreground">
-            Someone to reach if the resident can&apos;t be contacted. Fill all
-            three or leave them blank.
-          </p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Contact name" htmlFor="r-ec-name">
-            <Input
-              id="r-ec-name"
-              value={ecName}
-              onChange={(e) => setEcName(e.target.value)}
-              required={ecTouched}
-              minLength={2}
-              placeholder="e.g. Ramesh Sharma"
-            />
-          </Field>
-          <Field label="Relation" htmlFor="r-ec-rel">
-            <select
-              id="r-ec-rel"
-              value={ecRelation}
-              onChange={(e) =>
-                setEcRelation(e.target.value as EmergencyRelation | "")
-              }
-              required={ecTouched}
-              className={inputClass}
-            >
-              <option value="">Select relation…</option>
-              {Object.values(EmergencyRelation).map((r) => (
-                <option key={r} value={r}>
-                  {r.charAt(0) + r.slice(1).toLowerCase()}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Contact phone" htmlFor="r-ec-phone">
-            <Input
-              id="r-ec-phone"
-              value={ecPhone}
-              onChange={(e) => setEcPhone(e.target.value)}
-              required={ecTouched}
-              inputMode="tel"
-              pattern="(\+91)?[6-9]\d{9}"
-              title="A valid 10-digit Indian mobile number, optionally prefixed with +91"
-              placeholder="9876543210"
-            />
-          </Field>
-        </div>
+        {/* Stay type */}
+        <label
+          className={cn(
+            "flex cursor-pointer select-none items-center gap-3 rounded-md border px-3 py-2.5 text-sm",
+            isShortStay
+              ? "border-brand/40 bg-brand/5"
+              : "border-input bg-card",
+          )}
+        >
+          <input
+            type="checkbox"
+            checked={isShortStay}
+            onChange={(e) => setIsShortStay(e.target.checked)}
+            className="h-4 w-4 accent-brand"
+          />
+          <span>
+            <span className="font-medium">Short stay (per-day guest)</span>
+            <span className="block text-xs text-muted-foreground">
+              Pays a per-day charge upfront. Never invoiced or counted in billing.
+            </span>
+          </span>
+        </label>
 
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={busy}>
-            {busy ? "Registering…" : "Register"}
-          </Button>
-        </div>
+        {isShortStay ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Check-out date" htmlFor="r-checkout">
+              <Input
+                id="r-checkout"
+                type="date"
+                value={checkOutDate}
+                min={moveInDate || undefined}
+                onChange={(e) => setCheckOutDate(e.target.value)}
+                required
+              />
+            </Field>
+            <Field label="Per-day charge (₹)" htmlFor="r-perday">
+              <Input
+                id="r-perday"
+                type="number"
+                min={0}
+                step="1"
+                value={perDayRupees}
+                onChange={(e) => setPerDayRupees(e.target.value)}
+                required
+                placeholder="e.g. 500"
+              />
+            </Field>
+            <div className="sm:col-span-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+              {stayDays > 0 && perDayRupees ? (
+                <span>
+                  <span className="font-medium">{stayDays}</span> day
+                  {stayDays === 1 ? "" : "s"} ×{" "}
+                  {formatPaise(Math.round(Number(perDayRupees) * 100))} ={" "}
+                  <span className="font-semibold">
+                    {formatPaise(stayTotalPaise)}
+                  </span>{" "}
+                  upfront
+                </span>
+              ) : (
+                <span className="text-muted-foreground">
+                  Enter check-out and per-day charge to see the total.
+                </span>
+              )}
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Age" htmlFor="r-age">
+                <Input
+                  id="r-age"
+                  type="number"
+                  min={15}
+                  max={120}
+                  value={age}
+                  onChange={(e) => setAge(e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="Occupation" htmlFor="r-occ">
+                <select
+                  id="r-occ"
+                  value={occupationType}
+                  onChange={(e) =>
+                    setOccupationType(e.target.value as OccupationType)
+                  }
+                  className={inputClass}
+                >
+                  {Object.values(OccupationType).map((o) => (
+                    <option key={o} value={o}>
+                      {o.charAt(0) + o.slice(1).toLowerCase()}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Native place (optional)" htmlFor="r-native">
+                <Input
+                  id="r-native"
+                  value={nativePlace}
+                  onChange={(e) => setNativePlace(e.target.value)}
+                />
+              </Field>
+            </div>
+
+            <div className="space-y-1 border-t border-border pt-4">
+              <p className="text-sm font-medium">Emergency contact (optional)</p>
+              <p className="text-xs text-muted-foreground">
+                Someone to reach if the resident can&apos;t be contacted. Fill all
+                three or leave them blank.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Contact name" htmlFor="r-ec-name">
+                <Input
+                  id="r-ec-name"
+                  value={ecName}
+                  onChange={(e) => setEcName(e.target.value)}
+                  required={ecTouched}
+                  minLength={2}
+                  placeholder="e.g. Ramesh Sharma"
+                />
+              </Field>
+              <Field label="Relation" htmlFor="r-ec-rel">
+                <select
+                  id="r-ec-rel"
+                  value={ecRelation}
+                  onChange={(e) =>
+                    setEcRelation(e.target.value as EmergencyRelation | "")
+                  }
+                  required={ecTouched}
+                  className={inputClass}
+                >
+                  <option value="">Select relation…</option>
+                  {Object.values(EmergencyRelation).map((r) => (
+                    <option key={r} value={r}>
+                      {r.charAt(0) + r.slice(1).toLowerCase()}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Contact phone" htmlFor="r-ec-phone">
+                <Input
+                  id="r-ec-phone"
+                  value={ecPhone}
+                  onChange={(e) => setEcPhone(e.target.value)}
+                  required={ecTouched}
+                  inputMode="tel"
+                  pattern="(\+91)?[6-9]\d{9}"
+                  title="A valid 10-digit Indian mobile number, optionally prefixed with +91"
+                  placeholder="9876543210"
+                />
+              </Field>
+            </div>
+          </>
+        )}
       </form>
     </Dialog>
   );
+}
+
+/** Whole-day count between two YYYY-MM-DD dates (check-out − check-in). */
+function daysBetween(from: string, to: string): number {
+  const a = Date.parse(`${from}T00:00:00Z`);
+  const b = Date.parse(`${to}T00:00:00Z`);
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
+  return Math.max(0, Math.round((b - a) / 86_400_000));
 }
 
 /* ---------------------------------------------------------------- detail --- */
@@ -555,6 +687,10 @@ interface DetailData {
   invoices: InvoiceSummary[];
   charges: ExtraChargeSummary[];
   transfers: TransferRequestSummary[];
+  // The resident's pending future booking (UPCOMING) and active short stay, if
+  // any — surfaced so the profile can cancel/complete them directly.
+  booking: BookingSummary | null;
+  shortStay: ShortStaySummary | null;
 }
 
 function ResidentDetail({ id }: { id: string }) {
@@ -572,15 +708,25 @@ function ResidentDetail({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [resident, allDocs, dep, invoiceList, charges, allTransfers] =
-      await Promise.all([
-        api.residents.get(id),
-        api.documents.list(),
-        api.deposits.byResident(id),
-        api.invoices.list({ residentId: id, limit: 100 }),
-        api.charges.list(id),
-        api.allocations.transfers.list(),
-      ]);
+    const [
+      resident,
+      allDocs,
+      dep,
+      invoiceList,
+      charges,
+      allTransfers,
+      allBookings,
+      allShortStays,
+    ] = await Promise.all([
+      api.residents.get(id),
+      api.documents.list(),
+      api.deposits.byResident(id),
+      api.invoices.list({ residentId: id, limit: 100 }),
+      api.charges.list(id),
+      api.allocations.transfers.list(),
+      api.bookings.list(),
+      api.shortStays.list(),
+    ]);
     setData({
       resident,
       documents: allDocs.filter((d) => d.residentId === id),
@@ -590,6 +736,14 @@ function ResidentDetail({ id }: { id: string }) {
       invoices: invoiceList.items,
       charges,
       transfers: allTransfers.filter((t) => t.residentId === id),
+      booking:
+        allBookings.find(
+          (b) => b.residentId === id && b.status === "PENDING",
+        ) ?? null,
+      shortStay:
+        allShortStays.find(
+          (s) => s.residentId === id && s.status === "ACTIVE",
+        ) ?? null,
     });
   }, [id]);
 
@@ -597,15 +751,25 @@ function ResidentDetail({ id }: { id: string }) {
     let cancelled = false;
     (async () => {
       try {
-        const [resident, allDocs, dep, invoiceList, charges, allTransfers] =
-          await Promise.all([
-            api.residents.get(id),
-            api.documents.list(),
-            api.deposits.byResident(id),
-            api.invoices.list({ residentId: id, limit: 100 }),
-            api.charges.list(id),
-            api.allocations.transfers.list(),
-          ]);
+        const [
+          resident,
+          allDocs,
+          dep,
+          invoiceList,
+          charges,
+          allTransfers,
+          allBookings,
+          allShortStays,
+        ] = await Promise.all([
+          api.residents.get(id),
+          api.documents.list(),
+          api.deposits.byResident(id),
+          api.invoices.list({ residentId: id, limit: 100 }),
+          api.charges.list(id),
+          api.allocations.transfers.list(),
+          api.bookings.list(),
+          api.shortStays.list(),
+        ]);
         if (cancelled) return;
         setData({
           resident,
@@ -616,6 +780,14 @@ function ResidentDetail({ id }: { id: string }) {
           invoices: invoiceList.items,
           charges,
           transfers: allTransfers.filter((t) => t.residentId === id),
+          booking:
+            allBookings.find(
+              (b) => b.residentId === id && b.status === "PENDING",
+            ) ?? null,
+          shortStay:
+            allShortStays.find(
+              (s) => s.residentId === id && s.status === "ACTIVE",
+            ) ?? null,
         });
       } catch (err) {
         if (!cancelled)
@@ -683,6 +855,42 @@ function ResidentDetail({ id }: { id: string }) {
     }
   };
 
+  const cancelBooking = async (bookingId: string) => {
+    setBusy(true);
+    try {
+      await api.bookings.cancel(bookingId);
+      await load();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not cancel the booking."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const completeShortStay = async (stayId: string) => {
+    setBusy(true);
+    try {
+      await api.shortStays.complete(stayId);
+      await load();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not complete the short stay."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancelShortStay = async (stayId: string) => {
+    setBusy(true);
+    try {
+      await api.shortStays.cancel(stayId);
+      await load();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not cancel the short stay."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleApproveDoc = async (docId: string) => {
     await api.documents.verify(docId);
     await load();
@@ -714,9 +922,20 @@ function ResidentDetail({ id }: { id: string }) {
     );
   }
 
-  const { resident, documents, deposit, ledger, exitRequest, invoices, charges, transfers } =
-    data;
+  const {
+    resident,
+    documents,
+    deposit,
+    ledger,
+    exitRequest,
+    invoices,
+    charges,
+    transfers,
+    booking,
+    shortStay,
+  } = data;
   const active = resident.status === "ACTIVE";
+  const isShortStay = resident.isShortStay;
   const pendingTransfer = transfers.find((t) => t.status === "PENDING") ?? null;
   // What the resident still owes — every non-voided invoice that isn't PAID or
   // WAIVED (covers UNPAID + OVERDUE). Drives the summary tile; the full list
@@ -904,8 +1123,36 @@ function ResidentDetail({ id }: { id: string }) {
         {/* Allocation */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Bed allocation</CardTitle>
-            {active &&
+            <CardTitle>{isShortStay ? "Short stay" : "Bed allocation"}</CardTitle>
+            {isShortStay ? (
+              shortStay ? (
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => completeShortStay(shortStay.id)}
+                  >
+                    Check out
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => cancelShortStay(shortStay.id)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                active && (
+                  <Button size="sm" onClick={() => setAllocating(true)}>
+                    <BedDouble className="h-4 w-4" />
+                    Assign bed
+                  </Button>
+                )
+              )
+            ) : (
+              active &&
               (resident.bedLabel ? (
                 <div className="flex gap-2">
                   {!pendingTransfer && (
@@ -932,10 +1179,55 @@ function ResidentDetail({ id }: { id: string }) {
                   <BedDouble className="h-4 w-4" />
                   Allocate to bed
                 </Button>
-              ))}
+              ))
+            )}
+            {!isShortStay && resident.status === "UPCOMING" && booking && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                onClick={() => cancelBooking(booking.id)}
+              >
+                Cancel booking
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
-            {resident.bedId ? (
+            {isShortStay ? (
+              shortStay ? (
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium">
+                      Bed {shortStay.bedLabel}
+                    </p>
+                    <Link
+                      href={`/property?bed=${shortStay.bedId}`}
+                      className="inline-flex items-center gap-1.5 text-sm font-medium text-brand transition-colors hover:underline"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      View on property
+                    </Link>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDate(shortStay.checkInDate)} →{" "}
+                    {formatDate(shortStay.checkOutDate)} ·{" "}
+                    {formatPaise(shortStay.feePaise)} paid upfront
+                  </p>
+                </div>
+              ) : resident.status === "EXITED" ? (
+                <p className="text-sm text-muted-foreground">
+                  Stay completed.
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Checking out {formatDate(resident.shortStayCheckOutDate ?? "")}
+                  {resident.shortStayTotalPaise != null
+                    ? ` · ${formatPaise(resident.shortStayTotalPaise)} upfront`
+                    : ""}
+                  . Not assigned to a bed yet.
+                </p>
+              )
+            ) : resident.bedId ? (
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-medium">{bedLocationPath(resident)}</p>
                 <Link
@@ -966,7 +1258,9 @@ function ResidentDetail({ id }: { id: string }) {
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Not assigned to a bed.
+                {resident.expectedMoveInDate
+                  ? `Planned move-in ${formatDate(resident.expectedMoveInDate)}. Not assigned to a bed.`
+                  : "Not assigned to a bed."}
               </p>
             )}
           </CardContent>
@@ -1175,7 +1469,7 @@ function ResidentDetail({ id }: { id: string }) {
 
       <AllocateDialog
         open={allocating}
-        residentId={id}
+        resident={resident}
         onClose={() => setAllocating(false)}
         onDone={async () => {
           setAllocating(false);
@@ -1241,48 +1535,97 @@ function ResidentDetail({ id }: { id: string }) {
   );
 }
 
+const ELIGIBLE_KIND_LABEL: Record<EligibleBed["kind"], string> = {
+  VACANT: "Available now",
+  LEAVING_SOON: "Leaving soon",
+  RESERVED_FREE_AFTER: "Reserved — free after this stay",
+};
+
+/**
+ * Unified bed-assign dialog driven from a resident's profile. The eligible-bed
+ * set + the action both depend on the resident:
+ *  - Short-stay guest → `shortStays.create` (terms come from the resident).
+ *  - Long-term, vacant bed, move-in today/past → `allocations.allocate` (live now).
+ *  - Long-term, future move-in or a soon-to-free bed → `bookings.create`
+ *    (reserve + hold deposit; a daily job turns it into an allocation on move-in).
+ */
 function AllocateDialog({
   open,
-  residentId,
+  resident,
   onClose,
   onDone,
 }: {
   open: boolean;
-  residentId: string;
+  resident: ResidentSummary;
   onClose: () => void;
   onDone: () => Promise<void> | void;
 }) {
   const toast = useToast();
-  const [beds, setBeds] = useState<AvailableBed[] | null>(null);
-  const [busyBed, setBusyBed] = useState<string | null>(null);
+  const residentId = resident.id;
+  const isShortStay = resident.isShortStay;
+  const [beds, setBeds] = useState<EligibleBed[] | null>(null);
+  const [selectedBedId, setSelectedBedId] = useState<string | null>(null);
+  const [moveInDate, setMoveInDate] = useState(
+    resident.expectedMoveInDate ?? ymdToday(),
+  );
+  const [depositRupees, setDepositRupees] = useState("");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setBeds(null);
+    setSelectedBedId(null);
+    setMoveInDate(resident.expectedMoveInDate ?? ymdToday());
+    setDepositRupees("");
     (async () => {
       try {
-        const list = await api.allocations.suggestions(residentId);
+        const list = await api.allocations.eligibleBeds(residentId);
         if (!cancelled) setBeds(list);
       } catch (err) {
         if (!cancelled)
-          toast.error(toMessage(err, "Could not load vacant beds."));
+          toast.error(toMessage(err, "Could not load available beds."));
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [open, residentId, toast]);
+  }, [open, residentId, resident.expectedMoveInDate, toast]);
 
-  const pick = async (bedId: string) => {
-    setBusyBed(bedId);
+  const selectedBed = beds?.find((b) => b.bedId === selectedBedId) ?? null;
+  // A long-term placement becomes a live allocation only on a vacant bed with a
+  // move-in that's today or earlier; otherwise it's a future booking.
+  const willBook =
+    !isShortStay &&
+    !!selectedBed &&
+    (selectedBed.kind !== "VACANT" || moveInDate > ymdToday());
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBedId) return;
+    setBusy(true);
     try {
-      await api.allocations.allocate({ bedId, residentId });
+      if (isShortStay) {
+        await api.shortStays.create({ residentId, bedId: selectedBedId });
+      } else if (willBook) {
+        await api.bookings.create({
+          residentId,
+          bedId: selectedBedId,
+          moveInDate,
+          depositAmountPaise: Math.round(Number(depositRupees || 0) * 100),
+        });
+      } else {
+        await api.allocations.allocate({
+          bedId: selectedBedId,
+          residentId,
+          startDate: moveInDate,
+        });
+      }
       await onDone();
     } catch (err) {
-      toast.error(toMessage(err, "Could not allocate the bed."));
+      toast.error(toMessage(err, "Could not assign the bed."));
     } finally {
-      setBusyBed(null);
+      setBusy(false);
     }
   };
 
@@ -1290,43 +1633,101 @@ function AllocateDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      title="Allocate to a bed"
-      description="Vacant beds, ranked by fit. Pick one to assign this resident."
+      title={isShortStay ? "Assign a bed for the stay" : "Assign to a bed"}
+      description={
+        isShortStay
+          ? "Vacant beds, plus beds reserved for a future move-in that starts after this guest checks out."
+          : "Vacant beds now, plus beds whose resident is leaving before the move-in date."
+      }
     >
-      {beds === null ? (
-        <ListSkeleton />
-      ) : beds.length === 0 ? (
-        <EmptyRow text="No vacant beds available." />
-      ) : (
-        <ul className="max-h-[60vh] divide-y divide-border overflow-y-auto">
-          {beds.map((b) => (
-            <li
-              key={b.bedId}
-              className="flex flex-wrap items-center justify-between gap-3 py-3"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium">
-                  {b.roomLabel} · {b.bedLabel}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {formatPaise(b.monthlyRentPaise)}/mo ·{" "}
-                  {sharingLabel(b.capacity)}
-                  {b.matchReasons.length > 0
-                    ? ` · ${b.matchReasons.join(", ")}`
-                    : ""}
-                </p>
-              </div>
-              <Button
-                size="sm"
-                disabled={busyBed === b.bedId}
-                onClick={() => pick(b.bedId)}
-              >
-                Assign
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <form onSubmit={submit} className="space-y-4">
+        {!isShortStay && (
+          <Field label="Move-in date" htmlFor="alloc-movein">
+            <Input
+              id="alloc-movein"
+              type="date"
+              value={moveInDate}
+              onChange={(e) => setMoveInDate(e.target.value)}
+              required
+            />
+          </Field>
+        )}
+
+        {beds === null ? (
+          <ListSkeleton />
+        ) : beds.length === 0 ? (
+          <EmptyRow text="No available beds for this resident." />
+        ) : (
+          <ul className="max-h-[45vh] divide-y divide-border overflow-y-auto">
+            {beds.map((b) => (
+              <li key={b.bedId}>
+                <button
+                  type="button"
+                  onClick={() => setSelectedBedId(b.bedId)}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-3 px-2 py-3 text-left transition-colors hover:bg-muted",
+                    selectedBedId === b.bedId && "bg-brand/10",
+                  )}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {b.roomLabel} · {b.bedLabel}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatPaise(b.monthlyRentPaise)}/mo ·{" "}
+                      {ELIGIBLE_KIND_LABEL[b.kind]}
+                      {b.occupantName ? ` · ${b.occupantName}` : ""}
+                      {b.freesOnDate ? ` · frees ${formatDate(b.freesOnDate)}` : ""}
+                    </p>
+                  </div>
+                  {selectedBedId === b.bedId && <Badge tone="brand">Selected</Badge>}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {willBook && (
+          <Field label="Deposit to hold (₹)" htmlFor="alloc-deposit">
+            <Input
+              id="alloc-deposit"
+              type="number"
+              min={0}
+              step="1"
+              value={depositRupees}
+              onChange={(e) => setDepositRupees(e.target.value)}
+              required
+              placeholder="e.g. 10000"
+            />
+          </Field>
+        )}
+
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            {!selectedBed
+              ? ""
+              : isShortStay
+                ? "Holds the bed for this guest until check-out."
+                : willBook
+                  ? "Reserves the bed; becomes a live allocation on the move-in date."
+                  : "Assigns the resident to this bed now."}
+          </p>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={busy || !selectedBedId}>
+              {busy
+                ? "Saving…"
+                : isShortStay
+                  ? "Assign bed"
+                  : willBook
+                    ? "Reserve bed"
+                    : "Assign now"}
+            </Button>
+          </div>
+        </div>
+      </form>
     </Dialog>
   );
 }

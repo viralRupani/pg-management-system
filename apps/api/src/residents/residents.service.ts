@@ -93,7 +93,7 @@ export class ResidentsService {
           name: input.name,
           phone: input.phone,
           email: input.email ?? null,
-          age: input.age,
+          age: input.age ?? null,
           occupationType: input.occupationType,
           nativePlace: input.nativePlace ?? null,
           emergencyContactName: input.emergencyContactName ?? null,
@@ -101,15 +101,28 @@ export class ResidentsService {
           emergencyContactPhone: input.emergencyContactPhone ?? null,
           status: ResidentStatus.ACTIVE,
           joinDate: input.joinDate ? new Date(input.joinDate) : new Date(),
+          expectedMoveInDate: input.expectedMoveInDate ?? null,
+          isShortStay: input.isShortStay,
+          shortStayCheckOutDate: input.isShortStay
+            ? (input.shortStayCheckOutDate ?? null)
+            : null,
+          shortStayPerDayChargePaise: input.isShortStay
+            ? (input.shortStayPerDayChargePaise ?? null)
+            : null,
         })
         .returning();
 
-      await tx.insert(authIdentities).values({
-        tenantId,
-        role: UserRole.RESIDENT,
-        userId: resident.id,
-        phone: input.phone,
-      });
+      // Long-term residents log into the mobile app via phone OTP, so they get
+      // an auth identity. Short-stay guests are lightweight (no app login), so
+      // we skip it — their phone is still free to reuse for a later real stay.
+      if (!input.isShortStay) {
+        await tx.insert(authIdentities).values({
+          tenantId,
+          role: UserRole.RESIDENT,
+          userId: resident.id,
+          phone: input.phone,
+        });
+      }
 
       return { id: resident.id };
     });
@@ -206,6 +219,10 @@ export class ResidentsService {
         bookedBedId: bookedBeds.id,
         moveInDate: bookings.moveInDate,
         exitRequestedDate: users.exitRequestedDate,
+        expectedMoveInDate: users.expectedMoveInDate,
+        isShortStay: users.isShortStay,
+        shortStayCheckOutDate: users.shortStayCheckOutDate,
+        shortStayPerDayChargePaise: users.shortStayPerDayChargePaise,
         kycDocStatus: documents.status,
       })
       .from(users)
@@ -265,8 +282,23 @@ type ResidentRow = {
   bookedBedId: string | null;
   moveInDate: Date | null;
   exitRequestedDate: string | null;
+  expectedMoveInDate: string | null;
+  isShortStay: boolean;
+  shortStayCheckOutDate: string | null;
+  shortStayPerDayChargePaise: number | null;
   kycDocStatus: string | null;
 };
+
+/**
+ * Whole-day count between two YYYY-MM-DD dates (check-out − check-in). A 3-night
+ * stay (e.g. 25th → 28th) is 3 days × the per-day charge.
+ */
+function dayspan(checkIn: string, checkOut: string): number {
+  const a = Date.parse(`${checkIn}T00:00:00Z`);
+  const b = Date.parse(`${checkOut}T00:00:00Z`);
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
+  return Math.max(0, Math.round((b - a) / 86_400_000));
+}
 
 // No required document on file → KYC not started; otherwise the resident's KYC
 // status is the required document's own review state (values line up 1:1).
@@ -307,6 +339,18 @@ function toSummary(r: ResidentRow): ResidentSummary {
     bookedBedId: r.bookedBedId,
     moveInDate: r.moveInDate ? r.moveInDate.toISOString() : null,
     exitRequestedDate: r.exitRequestedDate,
+    expectedMoveInDate: r.expectedMoveInDate,
+    isShortStay: r.isShortStay,
+    shortStayCheckOutDate: r.shortStayCheckOutDate,
+    shortStayPerDayChargePaise: r.shortStayPerDayChargePaise,
+    shortStayTotalPaise:
+      r.isShortStay &&
+      r.expectedMoveInDate &&
+      r.shortStayCheckOutDate &&
+      r.shortStayPerDayChargePaise != null
+        ? dayspan(r.expectedMoveInDate, r.shortStayCheckOutDate) *
+          r.shortStayPerDayChargePaise
+        : null,
     kycStatus: toKycStatus(r.kycDocStatus),
   };
 }

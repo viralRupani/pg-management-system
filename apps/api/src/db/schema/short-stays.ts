@@ -21,8 +21,11 @@ import { users } from "./users";
  * activate on schedule. The bed is set to TRANSIENT while the stay is ACTIVE
  * and returns to RESERVED on completion/cancellation via freeBed().
  *
- * No resident account is created; guest identity is stored inline.
- * Billing is a simple flat fee — no invoice/payment cycle.
+ * The guest is a lightweight resident row (`users.isShortStay`); this row holds
+ * the bed occupancy + upfront per-day terms. A stay can sit on a plain VACANT
+ * bed (bookingId null) or on a bed RESERVED for a future booking (bookingId set,
+ * checkOut strictly < booking.moveInDate). Billing is a simple upfront total —
+ * never invoiced, never metered.
  */
 export const shortStays = pgTable(
   "short_stays",
@@ -32,10 +35,15 @@ export const shortStays = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
     bedId: uuid("bed_id").notNull(),
-    bookingId: uuid("booking_id").notNull(),
+    // The guest resident this stay belongs to.
+    residentId: uuid("resident_id").notNull(),
+    // The future booking holding the bed, when the guest occupies a RESERVED
+    // bed in the interim; null when the bed was simply VACANT.
+    bookingId: uuid("booking_id"),
     guestName: text("guest_name").notNull(),
     guestPhone: text("guest_phone"),
-    feePaise: integer("fee_paise").notNull().default(0),
+    perDayChargePaise: integer("per_day_charge_paise").notNull().default(0),
+    feePaise: integer("fee_paise").notNull().default(0), // total = days × per-day
     checkInDate: text("check_in_date").notNull(), // YYYY-MM-DD (IST)
     checkOutDate: text("check_out_date").notNull(), // YYYY-MM-DD (IST), strictly < booking.moveInDate
     status: text("status").notNull().default("ACTIVE"), // ShortStayStatus
@@ -51,6 +59,11 @@ export const shortStays = pgTable(
       columns: [t.bedId, t.tenantId],
       foreignColumns: [beds.id, beds.tenantId],
       name: "short_stays_bed_id_tenant_id_fk",
+    }).onDelete("cascade"),
+    residentFk: foreignKey({
+      columns: [t.residentId, t.tenantId],
+      foreignColumns: [users.id, users.tenantId],
+      name: "short_stays_resident_id_tenant_id_fk",
     }).onDelete("cascade"),
     bookingFk: foreignKey({
       columns: [t.bookingId, t.tenantId],

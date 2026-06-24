@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   date,
   integer,
@@ -37,6 +38,19 @@ export const users = pgTable("users", {
   status: text("status").notNull().default("ACTIVE"), // ResidentStatus
   joinDate: timestamp("join_date", { withTimezone: true }),
 
+  // Planned move-in (long-term) / check-in (short stay) date captured at
+  // registration, before a bed is assigned. Used to pre-fill + filter the
+  // bed-assign dialog. YYYY-MM-DD.
+  expectedMoveInDate: date("expected_move_in_date"),
+
+  // Short-stay guest: a transient occupant who pays a per-day charge upfront and
+  // is never invoiced or metered (never gets an `allocations` row — bed
+  // occupancy is tracked via `short_stays` + TRANSIENT bed status). When true,
+  // checkOut + per-day charge are set.
+  isShortStay: boolean("is_short_stay").notNull().default(false),
+  shortStayCheckOutDate: date("short_stay_check_out_date"), // YYYY-MM-DD
+  shortStayPerDayChargePaise: integer("short_stay_per_day_charge_paise"),
+
   // Resident-initiated move-out request (manager-driven exit is separate; see
   // DepositsService.settleExit). null = no request pending; all three are set
   // together when the resident raises a request.
@@ -59,9 +73,10 @@ export const users = pgTable("users", {
   idTenant: unique("users_id_tenant_id_unique").on(t.id, t.tenantId),
   // `users` is shared by managers + residents; managers legitimately have a
   // null age, so age is mandatory only for residents (not a column NOT NULL).
+  // Short-stay guests are lightweight (name + phone only), so they're exempt too.
   residentAgeRequired: check(
     "users_resident_age_required",
-    sql`${t.role} <> 'RESIDENT' OR ${t.age} IS NOT NULL`,
+    sql`${t.role} <> 'RESIDENT' OR ${t.age} IS NOT NULL OR ${t.isShortStay}`,
   ),
   // The emergency contact is optional but all-or-nothing: all three columns
   // null, or all three set.

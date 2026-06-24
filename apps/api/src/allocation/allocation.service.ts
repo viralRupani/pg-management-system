@@ -11,7 +11,9 @@ import {
   type AllocationSummary,
   type AvailableBed,
   BedStatus,
+  BookingStatus,
   type CreateTransferRequestInput,
+  type EligibleBed,
   type ExitingBed,
   type TransferRequestSummary,
   TransferRequestStatus,
@@ -21,13 +23,14 @@ import { TenantContextService } from "../db/tenant-context";
 import {
   allocations,
   beds,
+  bookings,
   invoices,
   rentAdjustments,
   rooms,
   transferRequests,
   users,
 } from "../db/schema";
-import { istPeriod, istStartOfDayUtc } from "../common/ist-date";
+import { istParts, istPeriod, istStartOfDayUtc } from "../common/ist-date";
 import { freeBed } from "../db/free-bed";
 import { isUniqueViolation } from "../db/pg-errors";
 import { prorateSegment } from "../rent/rent.proration";
@@ -273,6 +276,111 @@ export class AllocationService {
       occupantName: r.occupantName,
       exitRequestedDate: r.exitRequestedDate,
     }));
+  }
+
+  /**
+   * Beds a manager may assign to one resident from their profile — the unified
+   * placement list that the bed-assign dialog renders. The set depends on the
+   * resident:
+   *  - Long-term: VACANT beds now, plus OCCUPIED beds whose sitting resident has
+   *    requested a move-out on/before this resident's planned move-in (a future
+   *    booking target). A future move-in onto a "leaving soon" bed becomes a
+   *    booking; a today/past move-in onto a vacant bed becomes a live allocation.
+   *  - Short stay: VACANT beds, plus beds RESERVED for a future booking whose
+   *    move-in is strictly after this guest's check-out (so the guest vacates
+   *    before the incoming resident arrives — the short-stay invariant).
+   */
+  async listEligibleBeds(residentId: string): Promise<EligibleBed[]> {
+    const db = this.ctx.db();
+    const [resident] = await db
+      .select({
+        isShortStay: users.isShortStay,
+        expectedMoveInDate: users.expectedMoveInDate,
+        shortStayCheckOutDate: users.shortStayCheckOutDate,
+      })
+      .from(users)
+      .where(and(eq(users.id, residentId), eq(users.role, UserRole.RESIDENT)));
+    if (!resident) throw new NotFoundException("Resident not found");
+
+    const vacant = await db
+      .select({
+        bedId: beds.id,
+        bedLabel: beds.label,
+        roomLabel: rooms.label,
+        monthlyRentPaise: rooms.monthlyRentPaise,
+      })
+      .from(beds)
+      .innerJoin(rooms, eq(rooms.id, beds.roomId))
+      .where(eq(beds.status, BedStatus.VACANT));
+
+    const result: EligibleBed[] = vacant.map((v) => ({
+      bedId: v.bedId,
+      bedLabel: v.bedLabel,
+      roomLabel: v.roomLabel,
+      monthlyRentPaise: v.monthlyRentPaise,
+      kind: "VACANT",
+      freesOnDate: null,
+      occupantName: null,
+    }));
+
+    if (resident.isShortStay) {
+      // RESERVED beds whose pending booking starts strictly after this guest's
+      // check-out — the guest can hold the bed in the interim.
+      const checkOut = resident.shortStayCheckOutDate;
+      const reserved = await db
+        .select({
+          bedId: beds.id,
+          bedLabel: beds.label,
+          roomLabel: rooms.label,
+          monthlyRentPaise: rooms.monthlyRentPaise,
+          moveInDate: bookings.moveInDate,
+          occupantName: users.name,
+        })
+        .from(beds)
+        .innerJoin(rooms, eq(rooms.id, beds.roomId))
+        .innerJoin(
+          bookings,
+          and(
+            eq(bookings.bedId, beds.id),
+            eq(bookings.status, BookingStatus.PENDING),
+          ),
+        )
+        .innerJoin(users, eq(users.id, bookings.residentId))
+        .where(eq(beds.status, BedStatus.RESERVED));
+      for (const r of reserved) {
+        const moveInStr = istDateString(r.moveInDate);
+        if (checkOut && moveInStr <= checkOut) continue; // guest must leave first
+        result.push({
+          bedId: r.bedId,
+          bedLabel: r.bedLabel,
+          roomLabel: r.roomLabel,
+          monthlyRentPaise: r.monthlyRentPaise,
+          kind: "RESERVED_FREE_AFTER",
+          freesOnDate: moveInStr,
+          occupantName: r.occupantName,
+        });
+      }
+    } else {
+      // OCCUPIED beds whose resident is leaving on/before the planned move-in
+      // (an unspecified exit date is included — the manager decides).
+      const moveIn = resident.expectedMoveInDate;
+      const exiting = await this.listExitingBeds();
+      for (const e of exiting) {
+        if (moveIn && e.exitRequestedDate && e.exitRequestedDate > moveIn)
+          continue;
+        result.push({
+          bedId: e.bedId,
+          bedLabel: e.bedLabel,
+          roomLabel: e.roomLabel,
+          monthlyRentPaise: e.monthlyRentPaise,
+          kind: "LEAVING_SOON",
+          freesOnDate: e.exitRequestedDate,
+          occupantName: e.occupantName,
+        });
+      }
+    }
+
+    return result;
   }
 
   // ---- Room transfers (pre-booked move with mid-month prorated billing) ----
@@ -605,6 +713,12 @@ export class AllocationService {
 
     return { id: newAlloc.id };
   }
+}
+
+/** A stored instant's IST calendar date as a 'YYYY-MM-DD' string. */
+function istDateString(d: Date): string {
+  const { year, month, day } = istParts(d);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 /**
