@@ -79,12 +79,20 @@ export const roomSummarySchema = z.object({
 });
 export type RoomSummary = z.infer<typeof roomSummarySchema>;
 
-/** Rename a room (pure relabel — no side effects, no guard). Rent edits go
- * through updateRoomRentSchema; this only touches the label. */
-export const renameRoomSchema = z.object({
-  label: z.string().min(1).max(60),
-});
-export type RenameRoomInput = z.infer<typeof renameRoomSchema>;
+/** Update a room's editable settings (label, capacity, occupation preference).
+ * Partial — only provided keys are written; all are side-effect-free relabels.
+ * Rent edits still go through updateRoomRentSchema. `occupationPreference: null`
+ * clears the preference; omitting the key leaves it unchanged. */
+export const updateRoomSchema = z
+  .object({
+    label: z.string().min(1).max(60).optional(),
+    capacity: z.number().int().min(1).max(20).optional(),
+    occupationPreference: z.nativeEnum(OccupationType).nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, {
+    message: "Provide at least one field to update.",
+  });
+export type UpdateRoomInput = z.infer<typeof updateRoomSchema>;
 
 // --- Beds ---
 export const createBedSchema = z.object({

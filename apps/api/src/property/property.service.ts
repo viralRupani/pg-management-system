@@ -16,6 +16,7 @@ import {
   type FloorSummary,
   type OccupationType,
   type RoomSummary,
+  type UpdateRoomInput,
   BookingStatus,
 } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
@@ -136,9 +137,22 @@ export class PropertyService {
 
   // --- Beds ---
   async createBed(input: CreateBedInput): Promise<{ id: string }> {
-    await this.assertExists(rooms, input.roomId, "Room");
-    const [row] = await this.ctx
-      .db()
+    const db = this.ctx.db();
+    const [room] = await db
+      .select({ capacity: rooms.capacity })
+      .from(rooms)
+      .where(eq(rooms.id, input.roomId));
+    if (!room) throw new NotFoundException("Room not found");
+    // A room holds at most `capacity` beds. Raise the capacity first to add more.
+    const existing = await db
+      .select({ id: beds.id })
+      .from(beds)
+      .where(eq(beds.roomId, input.roomId));
+    if (existing.length >= room.capacity)
+      throw new ConflictException(
+        `Room is at capacity (${room.capacity} bed${room.capacity === 1 ? "" : "s"}). Raise the capacity to add more.`,
+      );
+    const [row] = await db
       .insert(beds)
       .values({
         tenantId: this.ctx.currentTenantId()!,
@@ -228,12 +242,37 @@ export class PropertyService {
     return { id: row.id };
   }
 
-  /** Rename a room (relabel only; rent edits go through updateRoomRent). */
-  async renameRoom(id: string, label: string): Promise<{ id: string }> {
-    const [row] = await this.ctx
-      .db()
+  /** Update a room's editable settings — label, capacity and occupation
+   * preference. Partial: only the keys present in `input` are written (the Zod
+   * schema guarantees at least one). Pure relabel/retag, no side effects; rent
+   * edits go through updateRoomRent. `occupationPreference: null` clears it. */
+  async updateRoom(
+    id: string,
+    input: UpdateRoomInput,
+  ): Promise<{ id: string }> {
+    const db = this.ctx.db();
+    const patch: Partial<typeof rooms.$inferInsert> = {};
+    if (input.label !== undefined) patch.label = input.label;
+    if (input.capacity !== undefined) patch.capacity = input.capacity;
+    if (input.occupationPreference !== undefined) {
+      patch.occupationPreference = input.occupationPreference;
+    }
+    // Capacity is the cap on beds: it can never drop below the beds that already
+    // exist. To shrink a room, the manager deletes beds first — and deleteBed
+    // only frees a VACANT bed, so occupied/reserved beds block the shrink.
+    if (input.capacity !== undefined) {
+      const existing = await db
+        .select({ id: beds.id })
+        .from(beds)
+        .where(eq(beds.roomId, id));
+      if (input.capacity < existing.length)
+        throw new ConflictException(
+          `Cannot set capacity to ${input.capacity}: the room has ${existing.length} bed${existing.length === 1 ? "" : "s"}. Delete free beds first.`,
+        );
+    }
+    const [row] = await db
       .update(rooms)
-      .set({ label })
+      .set(patch)
       .where(eq(rooms.id, id))
       .returning({ id: rooms.id });
     if (!row) throw new NotFoundException("Room not found");

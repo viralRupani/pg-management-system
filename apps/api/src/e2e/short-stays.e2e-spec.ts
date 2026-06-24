@@ -83,7 +83,9 @@ describe("short-term stays (e2e)", () => {
       await h.req("post", "/property/rooms", mgr, {
         floorId,
         label: "101",
-        capacity: 4,
+        // Several tests add ad-hoc beds to this room (A/B/C + G1/G2/H/L/R/P),
+        // so the capacity must clear the bed-count ceiling enforced by createBed.
+        capacity: 12,
         monthlyRentPaise: 500000,
       }),
     );

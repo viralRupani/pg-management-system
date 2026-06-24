@@ -89,6 +89,58 @@ describe("M2 property & allocation (e2e)", () => {
     expect(beds.body.find((b: { id: string }) => b.id === bed2).label).toBe("B2");
   });
 
+  it("edits a room's capacity and occupation preference (partial, clearable)", async () => {
+    const mgr = pgA.managerToken;
+    // Set capacity + occupation in one PATCH.
+    expect(
+      (await h.req("patch", `/property/rooms/${roomId}`, mgr, { capacity: 5, occupationPreference: "STUDENT" })).status,
+    ).toBe(200);
+    let rooms = await h.req("get", "/property/rooms", mgr);
+    let room = rooms.body.find((r: { id: string }) => r.id === roomId);
+    expect(room.capacity).toBe(5);
+    expect(room.occupationPreference).toBe("STUDENT");
+
+    // null clears the preference; an omitted capacity is left untouched.
+    expect(
+      (await h.req("patch", `/property/rooms/${roomId}`, mgr, { occupationPreference: null })).status,
+    ).toBe(200);
+    rooms = await h.req("get", "/property/rooms", mgr);
+    room = rooms.body.find((r: { id: string }) => r.id === roomId);
+    expect(room.occupationPreference).toBeNull();
+    expect(room.capacity).toBe(5);
+
+    // An empty body (no fields) is rejected.
+    expect((await h.req("patch", `/property/rooms/${roomId}`, mgr, {})).status).toBe(400);
+
+    // Capacity can't drop below the beds that already exist (room has 2 beds:
+    // bed1 + bed2) — the manager must delete free beds first. 409, capacity kept.
+    expect(
+      (await h.req("patch", `/property/rooms/${roomId}`, mgr, { capacity: 1 })).status,
+    ).toBe(409);
+    rooms = await h.req("get", "/property/rooms", mgr);
+    room = rooms.body.find((r: { id: string }) => r.id === roomId);
+    expect(room.capacity).toBe(5);
+  });
+
+  it("caps beds at the room's capacity", async () => {
+    const mgr = pgA.managerToken;
+    const capRoom = await id(
+      await h.req("post", "/property/rooms", mgr, {
+        floorId,
+        label: "cap-2",
+        capacity: 2,
+        monthlyRentPaise: 500000,
+      }),
+    );
+    expect((await h.req("post", "/property/beds", mgr, { roomId: capRoom, label: "A" })).status).toBe(201);
+    expect((await h.req("post", "/property/beds", mgr, { roomId: capRoom, label: "B" })).status).toBe(201);
+    // Third bed exceeds the capacity of 2 → 409.
+    expect((await h.req("post", "/property/beds", mgr, { roomId: capRoom, label: "C" })).status).toBe(409);
+    // Raise the capacity, then the bed fits.
+    expect((await h.req("patch", `/property/rooms/${capRoom}`, mgr, { capacity: 3 })).status).toBe(200);
+    expect((await h.req("post", "/property/beds", mgr, { roomId: capRoom, label: "C" })).status).toBe(201);
+  });
+
   it("rejects an empty rename (400) and a cross-tenant rename (404)", async () => {
     expect(
       (await h.req("patch", `/property/rooms/${roomId}`, pgA.managerToken, { label: "" })).status,

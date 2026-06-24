@@ -29,6 +29,7 @@ import type {
   CreateManagerInput,
   CreateOwnerPgInput,
   CreateRoomInput,
+  UpdateRoomInput,
   DepositSummary,
   ComplaintPhotoUrlInput,
   DepositTransactionSummary,
@@ -334,8 +335,9 @@ export class PgApiClient {
       this.http.patch<{ id: string }>(`/property/buildings/${id}`, { name }),
     renameFloor: (id: string, label: string) =>
       this.http.patch<{ id: string }>(`/property/floors/${id}`, { label }),
-    renameRoom: (id: string, label: string) =>
-      this.http.patch<{ id: string }>(`/property/rooms/${id}`, { label }),
+    /** Edit a room's label, capacity and/or occupation preference (partial). */
+    updateRoom: (id: string, input: UpdateRoomInput) =>
+      this.http.patch<{ id: string }>(`/property/rooms/${id}`, input),
     renameBed: (id: string, label: string) =>
       this.http.patch<{ id: string }>(`/property/beds/${id}`, { label }),
     deleteBuilding: (id: string) =>

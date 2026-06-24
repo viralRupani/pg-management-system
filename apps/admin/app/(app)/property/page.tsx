@@ -50,15 +50,16 @@ interface Tree {
 type RenameTarget =
   | { kind: "building"; id: string; label: string }
   | { kind: "floor"; id: string; label: string }
-  | { kind: "room"; id: string; label: string }
   | { kind: "bed"; id: string; label: string };
 
 const renameCopy: Record<RenameTarget["kind"], { title: string; field: string }> = {
   building: { title: "Rename building", field: "Building name" },
   floor: { title: "Rename floor", field: "Floor label" },
-  room: { title: "Rename room", field: "Room label" },
   bed: { title: "Rename bed", field: "Bed label" },
 };
+
+/** Proper-case an OccupationType enum value ("STUDENT" → "Student"). */
+const occLabel = (o: OccupationType) => o.charAt(0) + o.slice(1).toLowerCase();
 
 function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
   const map = new Map<string, T[]>();
@@ -129,6 +130,7 @@ function PropertyTree() {
   const [addRoomFor, setAddRoomFor] = useState<FloorSummary | null>(null);
   const [addBedFor, setAddBedFor] = useState<RoomSummary | null>(null);
   const [editRentFor, setEditRentFor] = useState<RoomSummary | null>(null);
+  const [editRoomFor, setEditRoomFor] = useState<RoomSummary | null>(null);
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null);
   const [deleteBuildingTarget, setDeleteBuildingTarget] =
     useState<BuildingSummary | null>(null);
@@ -340,6 +342,7 @@ function PropertyTree() {
                             onAddRoom={() => setAddRoomFor(f)}
                             onAddBed={setAddBedFor}
                             onEditRent={setEditRentFor}
+                            onEditRoom={setEditRoomFor}
                             onDeleteRoom={setDeleteRoomTarget}
                             onDeleteBed={setDeleteBedTarget}
                             onRename={setRenameTarget}
@@ -392,6 +395,17 @@ function PropertyTree() {
         onClose={() => setEditRentFor(null)}
         onDone={async () => {
           setEditRentFor(null);
+          await refresh();
+        }}
+      />
+      <EditRoomDialog
+        room={editRoomFor}
+        bedCount={
+          editRoomFor ? (tree?.bedsByRoom.get(editRoomFor.id)?.length ?? 0) : 0
+        }
+        onClose={() => setEditRoomFor(null)}
+        onDone={async () => {
+          setEditRoomFor(null);
           await refresh();
         }}
       />
@@ -452,6 +466,7 @@ function FloorBlock({
   onAddRoom,
   onAddBed,
   onEditRent,
+  onEditRoom,
   onDeleteRoom,
   onDeleteBed,
   onRename,
@@ -465,6 +480,7 @@ function FloorBlock({
   onAddRoom: () => void;
   onAddBed: (room: RoomSummary) => void;
   onEditRent: (room: RoomSummary) => void;
+  onEditRoom: (room: RoomSummary) => void;
   onDeleteRoom: (room: RoomSummary) => void;
   onDeleteBed: (bed: BedSummary) => void;
   onRename: (target: RenameTarget) => void;
@@ -520,6 +536,7 @@ function FloorBlock({
                 highlightedBed={highlightedBed}
                 onAddBed={() => onAddBed(r)}
                 onEditRent={() => onEditRent(r)}
+                onEditRoom={() => onEditRoom(r)}
                 onDeleteRoom={() => onDeleteRoom(r)}
                 onDeleteBed={onDeleteBed}
                 onRename={onRename}
@@ -540,6 +557,7 @@ function RoomBlock({
   highlightedBed,
   onAddBed,
   onEditRent,
+  onEditRoom,
   onDeleteRoom,
   onDeleteBed,
   onRename,
@@ -549,6 +567,7 @@ function RoomBlock({
   highlightedBed: string | null;
   onAddBed: () => void;
   onEditRent: () => void;
+  onEditRoom: () => void;
   onDeleteRoom: () => void;
   onDeleteBed: (bed: BedSummary) => void;
   onRename: (target: RenameTarget) => void;
@@ -559,12 +578,16 @@ function RoomBlock({
         <div className="flex min-w-0 items-center gap-2">
           <DoorOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{room.label}</p>
+            <div className="flex items-center gap-2">
+              <p className="truncate text-sm font-medium">{room.label}</p>
+              {room.occupationPreference && (
+                <Badge tone="neutral" className="shrink-0">
+                  {occLabel(room.occupationPreference)}
+                </Badge>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
               cap {room.capacity} · {sharingLabel(room.capacity)}
-              {room.occupationPreference
-                ? ` · ${room.occupationPreference.toLowerCase()}`
-                : ""}
             </p>
           </div>
         </div>
@@ -577,17 +600,25 @@ function RoomBlock({
           >
             {formatPaise(room.monthlyRentPaise)}/mo
           </button>
-          <Button variant="outline" size="sm" onClick={onAddBed}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onAddBed}
+            disabled={beds.length >= room.capacity}
+            title={
+              beds.length >= room.capacity
+                ? `Room is at capacity (${room.capacity}). Raise the capacity to add more beds.`
+                : "Add a bed"
+            }
+          >
             <BedDouble className="h-4 w-4" />
             Bed
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            onClick={() =>
-              onRename({ kind: "room", id: room.id, label: room.label })
-            }
-            title="Rename room"
+            onClick={onEditRoom}
+            title="Edit room (label, capacity, occupation)"
             className="text-muted-foreground hover:text-brand"
           >
             <Pencil className="h-4 w-4" />
@@ -928,7 +959,7 @@ function AddRoomDialog({
               <option value="">No preference</option>
               {Object.values(OccupationType).map((o) => (
                 <option key={o} value={o}>
-                  {o.charAt(0) + o.slice(1).toLowerCase()}
+                  {occLabel(o)}
                 </option>
               ))}
             </select>
@@ -1061,6 +1092,112 @@ function EditRentDialog({
   );
 }
 
+function EditRoomDialog({
+  room,
+  bedCount,
+  onClose,
+  onDone,
+}: {
+  room: RoomSummary | null;
+  bedCount: number;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+}) {
+  const toast = useToast();
+  const [label, setLabel] = useState("");
+  const [capacity, setCapacity] = useState("1");
+  const [occupationPreference, setOccupationPreference] = useState<
+    OccupationType | ""
+  >("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (room) {
+      setLabel(room.label);
+      setCapacity(String(room.capacity));
+      setOccupationPreference(room.occupationPreference ?? "");
+    }
+  }, [room]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!room) return;
+    setBusy(true);
+    try {
+      await api.property.updateRoom(room.id, {
+        label: label.trim(),
+        capacity: Number(capacity),
+        // null clears the preference; the dialog always sends it.
+        occupationPreference: occupationPreference || null,
+      });
+      await onDone();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not update the room."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={room !== null}
+      onClose={onClose}
+      title="Edit room"
+      description={room ? `Room ${room.label}.` : undefined}
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Label" htmlFor="ed-label">
+            <Input
+              id="ed-label"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              required
+              minLength={1}
+            />
+          </Field>
+          <Field label="Capacity (beds)" htmlFor="ed-cap">
+            <Input
+              id="ed-cap"
+              type="number"
+              min={Math.max(1, bedCount)}
+              max={20}
+              value={capacity}
+              onChange={(e) => setCapacity(e.target.value)}
+              required
+            />
+          </Field>
+          <Field label="Occupation preference (optional)" htmlFor="ed-occ">
+            <select
+              id="ed-occ"
+              value={occupationPreference}
+              onChange={(e) =>
+                setOccupationPreference(e.target.value as OccupationType | "")
+              }
+              className={inputClass}
+            >
+              <option value="">No preference</option>
+              {Object.values(OccupationType).map((o) => (
+                <option key={o} value={o}>
+                  {occLabel(o)}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {bedCount > 0
+            ? `Capacity can't go below the ${bedCount} bed${bedCount === 1 ? "" : "s"} already in this room — delete free beds first to shrink it. `
+            : ""}
+          Occupation preference ranks matching residents higher in bed
+          suggestions.
+        </p>
+        <DialogActions busy={busy} onClose={onClose} submitLabel="Save room" />
+      </form>
+    </Dialog>
+  );
+}
+
 function RenameDialog({
   target,
   onClose,
@@ -1090,9 +1227,6 @@ function RenameDialog({
           break;
         case "floor":
           await api.property.renameFloor(target.id, next);
-          break;
-        case "room":
-          await api.property.renameRoom(target.id, next);
           break;
         case "bed":
           await api.property.renameBed(target.id, next);

@@ -16,7 +16,7 @@ import {
   type RenameBedInput,
   type RenameBuildingInput,
   type RenameFloorInput,
-  type RenameRoomInput,
+  type UpdateRoomInput,
   type UpdateRoomRentInput,
   UserRole,
   createBedSchema,
@@ -26,7 +26,7 @@ import {
   renameBedSchema,
   renameBuildingSchema,
   renameFloorSchema,
-  renameRoomSchema,
+  updateRoomSchema,
   updateRoomRentSchema,
 } from "@pg/shared";
 import { Roles } from "../common/decorators";
@@ -105,11 +105,11 @@ export class PropertyController {
   }
 
   @Patch("rooms/:id")
-  renameRoom(
+  updateRoom(
     @Param("id") id: string,
-    @Body(new ZodBody(renameRoomSchema)) dto: RenameRoomInput,
+    @Body(new ZodBody(updateRoomSchema)) dto: UpdateRoomInput,
   ) {
-    return this.property.renameRoom(id, dto.label);
+    return this.property.updateRoom(id, dto);
   }
 
   @Patch("beds/:id")
