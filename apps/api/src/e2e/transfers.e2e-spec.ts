@@ -419,7 +419,7 @@ describe("Room transfer same-month re-generation (e2e)", () => {
     expect(exec.status).toBe(201);
   }
 
-  function juneOf(items: { residentId: string; period: string }[], r: string) {
+  function juneOf(items: { residentId: string; period: string; id: string; amountPaise: number; deletedAt: string | null }[], r: string) {
     return items.find((i) => i.residentId === r && i.period === "2026-06");
   }
 
