@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TransferRequestStatus } from "../enums";
+import { OccupationType, TransferRequestStatus } from "../enums";
 
 /**
  * Allocation DTOs. A manager allocates a resident to a bed; the system records
@@ -50,8 +50,10 @@ export type AvailableBed = z.infer<typeof availableBedSchema>;
 export const exitingBedSchema = z.object({
   bedId: z.string().uuid(),
   bedLabel: z.string(),
+  roomId: z.string().uuid(),
   roomLabel: z.string(),
   capacity: z.number().int(),
+  occupationPreference: z.nativeEnum(OccupationType).nullable(),
   monthlyRentPaise: z.number().int(),
   occupantName: z.string(),
   exitRequestedDate: z.string().nullable(),
@@ -73,6 +75,9 @@ export const eligibleBedSchema = z.object({
   bedId: z.string().uuid(),
   bedLabel: z.string(),
   roomLabel: z.string(),
+  capacity: z.number().int(),
+  occupationPreference: z.nativeEnum(OccupationType).nullable(),
+  bedsRemaining: z.number().int(),
   monthlyRentPaise: z.number().int(),
   kind: z.enum(["VACANT", "LEAVING_SOON", "RESERVED_FREE_AFTER"]),
   freesOnDate: z.string().nullable(),

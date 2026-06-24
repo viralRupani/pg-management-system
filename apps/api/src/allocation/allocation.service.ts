@@ -15,6 +15,7 @@ import {
   type CreateTransferRequestInput,
   type EligibleBed,
   type ExitingBed,
+  type OccupationType,
   type TransferRequestSummary,
   TransferRequestStatus,
   UserRole,
@@ -254,8 +255,10 @@ export class AllocationService {
       .select({
         bedId: beds.id,
         bedLabel: beds.label,
+        roomId: rooms.id,
         roomLabel: rooms.label,
         capacity: rooms.capacity,
+        occupationPreference: rooms.occupationPreference,
         monthlyRentPaise: rooms.monthlyRentPaise,
         occupantName: users.name,
         exitRequestedDate: users.exitRequestedDate,
@@ -270,8 +273,10 @@ export class AllocationService {
     return rows.map((r) => ({
       bedId: r.bedId,
       bedLabel: r.bedLabel,
+      roomId: r.roomId,
       roomLabel: r.roomLabel,
       capacity: r.capacity,
+      occupationPreference: r.occupationPreference as OccupationType | null,
       monthlyRentPaise: r.monthlyRentPaise,
       occupantName: r.occupantName,
       exitRequestedDate: r.exitRequestedDate,
@@ -306,17 +311,29 @@ export class AllocationService {
       .select({
         bedId: beds.id,
         bedLabel: beds.label,
+        roomId: rooms.id,
         roomLabel: rooms.label,
+        capacity: rooms.capacity,
+        occupationPreference: rooms.occupationPreference,
         monthlyRentPaise: rooms.monthlyRentPaise,
       })
       .from(beds)
       .innerJoin(rooms, eq(rooms.id, beds.roomId))
       .where(eq(beds.status, BedStatus.VACANT));
 
+    // The vacant query enumerates every VACANT bed in the tenant, so a per-room
+    // tally of those rows is exactly each room's remaining-bed count.
+    const vacantByRoom = new Map<string, number>();
+    for (const v of vacant)
+      vacantByRoom.set(v.roomId, (vacantByRoom.get(v.roomId) ?? 0) + 1);
+
     const result: EligibleBed[] = vacant.map((v) => ({
       bedId: v.bedId,
       bedLabel: v.bedLabel,
       roomLabel: v.roomLabel,
+      capacity: v.capacity,
+      occupationPreference: v.occupationPreference as OccupationType | null,
+      bedsRemaining: vacantByRoom.get(v.roomId) ?? 0,
       monthlyRentPaise: v.monthlyRentPaise,
       kind: "VACANT",
       freesOnDate: null,
@@ -331,7 +348,10 @@ export class AllocationService {
         .select({
           bedId: beds.id,
           bedLabel: beds.label,
+          roomId: rooms.id,
           roomLabel: rooms.label,
+          capacity: rooms.capacity,
+          occupationPreference: rooms.occupationPreference,
           monthlyRentPaise: rooms.monthlyRentPaise,
           moveInDate: bookings.moveInDate,
           occupantName: users.name,
@@ -354,6 +374,9 @@ export class AllocationService {
           bedId: r.bedId,
           bedLabel: r.bedLabel,
           roomLabel: r.roomLabel,
+          capacity: r.capacity,
+          occupationPreference: r.occupationPreference as OccupationType | null,
+          bedsRemaining: vacantByRoom.get(r.roomId) ?? 0,
           monthlyRentPaise: r.monthlyRentPaise,
           kind: "RESERVED_FREE_AFTER",
           freesOnDate: moveInStr,
@@ -372,6 +395,9 @@ export class AllocationService {
           bedId: e.bedId,
           bedLabel: e.bedLabel,
           roomLabel: e.roomLabel,
+          capacity: e.capacity,
+          occupationPreference: e.occupationPreference,
+          bedsRemaining: vacantByRoom.get(e.roomId) ?? 0,
           monthlyRentPaise: e.monthlyRentPaise,
           kind: "LEAVING_SOON",
           freesOnDate: e.exitRequestedDate,

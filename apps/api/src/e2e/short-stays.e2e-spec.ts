@@ -188,6 +188,17 @@ describe("short-term stays (e2e)", () => {
     expect(
       res.body.some((b: { kind: string }) => b.kind === "VACANT"),
     ).toBe(true);
+
+    // Every eligible bed carries the room-fit fields the assign dialog filters
+    // and sorts on: the room's occupation preference, sharing capacity, and the
+    // count of beds still free in that room.
+    const vacantRow = res.body.find(
+      (b: { kind: string }) => b.kind === "VACANT",
+    );
+    expect(typeof vacantRow.capacity).toBe("number");
+    expect("occupationPreference" in vacantRow).toBe(true);
+    expect(typeof vacantRow.bedsRemaining).toBe("number");
+    expect(vacantRow.bedsRemaining).toBeGreaterThanOrEqual(1);
   });
 
   // ── assign on a VACANT bed ─────────────────────────────────────────────────

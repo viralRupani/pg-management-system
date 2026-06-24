@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1565,10 +1565,14 @@ function AllocateDialog({
   const isShortStay = resident.isShortStay;
   const [beds, setBeds] = useState<EligibleBed[] | null>(null);
   const [selectedBedId, setSelectedBedId] = useState<string | null>(null);
+  // "ALL" shows every eligible bed; a specific type filters by the room's
+  // occupation preference (a room with no preference shows only under "OTHER").
+  const [occFilter, setOccFilter] = useState<OccupationType | "ALL">(
+    resident.occupationType,
+  );
   const [moveInDate, setMoveInDate] = useState(
     resident.expectedMoveInDate ?? ymdToday(),
   );
-  const [depositRupees, setDepositRupees] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -1576,8 +1580,8 @@ function AllocateDialog({
     let cancelled = false;
     setBeds(null);
     setSelectedBedId(null);
+    setOccFilter(resident.occupationType);
     setMoveInDate(resident.expectedMoveInDate ?? ymdToday());
-    setDepositRupees("");
     (async () => {
       try {
         const list = await api.allocations.eligibleBeds(residentId);
@@ -1590,7 +1594,36 @@ function AllocateDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, residentId, resident.expectedMoveInDate, toast]);
+  }, [
+    open,
+    residentId,
+    resident.expectedMoveInDate,
+    resident.occupationType,
+    toast,
+  ]);
+
+  // Filter by the room's occupation preference (null pref → "OTHER" only; "ALL"
+  // → everything), then order so nearly-full rooms come first to fill rooms up
+  // faster: VACANT beds first, then ascending beds-remaining, then room/bed.
+  const visibleBeds = useMemo(() => {
+    if (!beds) return [];
+    const filtered =
+      occFilter === "ALL"
+        ? beds
+        : beds.filter((b) =>
+            occFilter === OccupationType.OTHER
+              ? b.occupationPreference === OccupationType.OTHER ||
+                b.occupationPreference === null
+              : b.occupationPreference === occFilter,
+          );
+    return [...filtered].sort(
+      (a, b) =>
+        Number(b.kind === "VACANT") - Number(a.kind === "VACANT") ||
+        a.bedsRemaining - b.bedsRemaining ||
+        a.roomLabel.localeCompare(b.roomLabel) ||
+        a.bedLabel.localeCompare(b.bedLabel),
+    );
+  }, [beds, occFilter]);
 
   const selectedBed = beds?.find((b) => b.bedId === selectedBedId) ?? null;
   // A long-term placement becomes a live allocation only on a vacant bed with a
@@ -1608,11 +1641,12 @@ function AllocateDialog({
       if (isShortStay) {
         await api.shortStays.create({ residentId, bedId: selectedBedId });
       } else if (willBook) {
+        // The deposit is held later from the resident UI, not captured here.
         await api.bookings.create({
           residentId,
           bedId: selectedBedId,
           moveInDate,
-          depositAmountPaise: Math.round(Number(depositRupees || 0) * 100),
+          depositAmountPaise: 0,
         });
       } else {
         await api.allocations.allocate({
@@ -1653,13 +1687,34 @@ function AllocateDialog({
           </Field>
         )}
 
+        <Field label="Suited for" htmlFor="alloc-occ">
+          <select
+            id="alloc-occ"
+            value={occFilter}
+            onChange={(e) => {
+              setOccFilter(e.target.value as OccupationType | "ALL");
+              setSelectedBedId(null);
+            }}
+            className={inputClass}
+          >
+            <option value="ALL">All beds</option>
+            {Object.values(OccupationType).map((o) => (
+              <option key={o} value={o}>
+                {o.charAt(0) + o.slice(1).toLowerCase()}
+              </option>
+            ))}
+          </select>
+        </Field>
+
         {beds === null ? (
           <ListSkeleton />
         ) : beds.length === 0 ? (
           <EmptyRow text="No available beds for this resident." />
+        ) : visibleBeds.length === 0 ? (
+          <EmptyRow text="No beds match this filter — choose “All beds” to see every option." />
         ) : (
           <ul className="max-h-[45vh] divide-y divide-border overflow-y-auto">
-            {beds.map((b) => (
+            {visibleBeds.map((b) => (
               <li key={b.bedId}>
                 <button
                   type="button"
@@ -1674,8 +1729,8 @@ function AllocateDialog({
                       {b.roomLabel} · {b.bedLabel}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {formatPaise(b.monthlyRentPaise)}/mo ·{" "}
-                      {ELIGIBLE_KIND_LABEL[b.kind]}
+                      {formatPaise(b.monthlyRentPaise)}/mo · {sharingLabel(b.capacity)} ·{" "}
+                      {b.bedsRemaining} left · {ELIGIBLE_KIND_LABEL[b.kind]}
                       {b.occupantName ? ` · ${b.occupantName}` : ""}
                       {b.freesOnDate ? ` · frees ${formatDate(b.freesOnDate)}` : ""}
                     </p>
@@ -1685,21 +1740,6 @@ function AllocateDialog({
               </li>
             ))}
           </ul>
-        )}
-
-        {willBook && (
-          <Field label="Deposit to hold (₹)" htmlFor="alloc-deposit">
-            <Input
-              id="alloc-deposit"
-              type="number"
-              min={0}
-              step="1"
-              value={depositRupees}
-              onChange={(e) => setDepositRupees(e.target.value)}
-              required
-              placeholder="e.g. 10000"
-            />
-          </Field>
         )}
 
         <div className="flex items-center justify-between gap-2">
