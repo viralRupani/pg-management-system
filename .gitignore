@@ -32,3 +32,6 @@ apps/mobile/.expo-shared/
 
 # postgres/redis volumes (if mounted locally)
 infra/data/
+
+
+todo.txt
