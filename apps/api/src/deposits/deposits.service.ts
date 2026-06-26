@@ -17,6 +17,7 @@ import {
   type RecordDepositInput,
   ResidentStatus,
   type SettlementResult,
+  type UpdateDepositAmountInput,
   UserRole,
 } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
@@ -78,6 +79,75 @@ export class DepositsService {
         throw new ConflictException("Deposit already recorded for this resident");
       throw err;
     }
+  }
+
+  /**
+   * Manager: set a resident's held deposit to a new amount (e.g. top it up on a
+   * transfer to a pricier room so it still covers a month's rent). Creates the
+   * deposit if none exists yet. Locks the row (FOR UPDATE) so a concurrent
+   * `applyToInvoice`/`settleExit` can't read a stale balance, and rejects a new
+   * amount below what's already been deducted (which would drive `available`
+   * negative). The held base changes without a ledger entry — the settle
+   * invariant `held = Σdeductions + refund` still holds.
+   */
+  async updateAmount(
+    input: UpdateDepositAmountInput,
+  ): Promise<{ amountPaise: number }> {
+    const tenantId = this.ctx.currentTenantId()!;
+    const db = this.ctx.db();
+
+    return db.transaction(async (tx) => {
+      const [resident] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(
+          and(
+            eq(users.id, input.residentId),
+            eq(users.role, UserRole.RESIDENT),
+          ),
+        );
+      if (!resident) throw new NotFoundException("Resident not found");
+
+      const [deposit] = await tx
+        .select({
+          id: deposits.id,
+          status: deposits.status,
+        })
+        .from(deposits)
+        .where(eq(deposits.residentId, input.residentId))
+        .for("update");
+
+      // Create-if-missing: a resident registered without a deposit can have one
+      // recorded here (the transfer flow may be the first time it's set).
+      if (!deposit) {
+        await tx.insert(deposits).values({
+          tenantId,
+          residentId: input.residentId,
+          amountPaise: input.amountPaise,
+          status: DepositStatus.HELD,
+        });
+        return { amountPaise: input.amountPaise };
+      }
+
+      if (deposit.status !== DepositStatus.HELD)
+        throw new ConflictException(
+          "Deposit is already settled and can't be changed",
+        );
+
+      // Can't drop the held base below what's already been spent — that would
+      // make the available balance (held − deductions) negative.
+      const prior = await this.sumDeductions(tx, deposit.id);
+      if (input.amountPaise < prior)
+        throw new ConflictException(
+          "New deposit can't be below the amount already applied to rent",
+        );
+
+      await tx
+        .update(deposits)
+        .set({ amountPaise: input.amountPaise })
+        .where(eq(deposits.id, deposit.id));
+      return { amountPaise: input.amountPaise };
+    });
   }
 
   /** Manager: all deposits in the tenant. */

@@ -8,6 +8,19 @@ export const recordDepositSchema = z.object({
 });
 export type RecordDepositInput = z.infer<typeof recordDepositSchema>;
 
+/**
+ * Manager adjusts a resident's held deposit amount (e.g. on a room transfer to a
+ * pricier room, top it up so it still covers a month's rent). Creates the deposit
+ * if none exists yet. Never below what's already been deducted.
+ */
+export const updateDepositAmountSchema = z.object({
+  residentId: z.string().uuid(),
+  amountPaise: z.number().int().min(0),
+});
+export type UpdateDepositAmountInput = z.infer<
+  typeof updateDepositAmountSchema
+>;
+
 /** One deduction line-item in an exit settlement. */
 export const deductionSchema = z.object({
   reason: z.string().min(1).max(200),

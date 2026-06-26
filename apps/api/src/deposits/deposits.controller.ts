@@ -1,15 +1,17 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
 import {
   type ApplyDepositToInvoiceInput,
   type ExitRequestInput,
   type ExitSettlementInput,
   type JwtPayload,
   type RecordDepositInput,
+  type UpdateDepositAmountInput,
   UserRole,
   applyDepositToInvoiceSchema,
   exitRequestSchema,
   exitSettlementSchema,
   recordDepositSchema,
+  updateDepositAmountSchema,
 } from "@pg/shared";
 import { CurrentUser, Roles } from "../common/decorators";
 import { ZodBody } from "../common/zod-validation.pipe";
@@ -40,6 +42,14 @@ export class DepositsController {
   @Roles(UserRole.PG_MANAGER)
   record(@Body(new ZodBody(recordDepositSchema)) dto: RecordDepositInput) {
     return this.deposits.record(dto);
+  }
+
+  @Patch("amount")
+  @Roles(UserRole.PG_MANAGER)
+  updateAmount(
+    @Body(new ZodBody(updateDepositAmountSchema)) dto: UpdateDepositAmountInput,
+  ) {
+    return this.deposits.updateAmount(dto);
   }
 
   @Get()

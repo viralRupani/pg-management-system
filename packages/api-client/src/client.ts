@@ -80,6 +80,7 @@ import type {
   TenantBranding,
   UpdateBrandingInput,
   UpdateComplaintStatusInput,
+  UpdateDepositAmountInput,
   MenuConfig,
   MenuSlotSummary,
   UpdateMenuConfigInput,
@@ -294,6 +295,9 @@ export class PgApiClient {
       }>(`/deposits/resident/${residentId}`),
     record: (input: RecordDepositInput) =>
       this.http.post<{ id: string }>("/deposits", input),
+    /** Set a resident's held deposit to a new amount (creates one if missing). */
+    updateAmount: (input: UpdateDepositAmountInput) =>
+      this.http.patch<{ amountPaise: number }>("/deposits/amount", input),
     /** Settle a resident's exit: deductions + refund, frees the bed. */
     exit: (input: ExitSettlementInput) =>
       this.http.post<SettlementResult>("/deposits/exit", input),

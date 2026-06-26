@@ -700,6 +700,11 @@ function ResidentDetail({ id }: { id: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [allocating, setAllocating] = useState(false);
   const [transferring, setTransferring] = useState(false);
+  // After a transfer is booked, prompt to adjust the deposit to the new room.
+  const [transferDeposit, setTransferDeposit] = useState<{
+    bedRentPaise: number;
+    bedLabel: string;
+  } | null>(null);
   const [depositOpen, setDepositOpen] = useState(false);
   const [chargeOpen, setChargeOpen] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
@@ -1492,8 +1497,23 @@ function ResidentDetail({ id }: { id: string }) {
         residentId={id}
         currentBedLabel={resident.bedLabel}
         onClose={() => setTransferring(false)}
-        onDone={async () => {
+        onBooked={async (info) => {
           setTransferring(false);
+          await refresh();
+          // Chain into the deposit step so the held amount can match the new room.
+          setTransferDeposit(info);
+        }}
+      />
+      <TransferDepositDialog
+        open={transferDeposit !== null}
+        residentId={id}
+        currentDepositPaise={deposit?.amountPaise ?? 0}
+        hasDeposit={!!deposit}
+        bedRentPaise={transferDeposit?.bedRentPaise ?? 0}
+        bedLabel={transferDeposit?.bedLabel ?? ""}
+        onClose={() => setTransferDeposit(null)}
+        onDone={async () => {
+          setTransferDeposit(null);
           await refresh();
         }}
       />
@@ -1796,13 +1816,18 @@ function TransferDialog({
   residentId,
   currentBedLabel,
   onClose,
-  onDone,
+  onBooked,
 }: {
   open: boolean;
   residentId: string;
   currentBedLabel: string | null;
   onClose: () => void;
-  onDone: () => Promise<void> | void;
+  /** Fires after the transfer is booked, with the target room's rent + label
+   * so the parent can prompt to adjust the deposit to match the new room. */
+  onBooked: (info: {
+    bedRentPaise: number;
+    bedLabel: string;
+  }) => Promise<void> | void;
 }) {
   const toast = useToast();
   const [beds, setBeds] = useState<AvailableBed[] | null>(null);
@@ -1841,6 +1866,9 @@ function TransferDialog({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBedId) return;
+    const target =
+      beds?.find((b) => b.bedId === selectedBedId) ??
+      exiting?.find((b) => b.bedId === selectedBedId);
     setBusy(true);
     try {
       await api.allocations.transfers.create({
@@ -1848,7 +1876,10 @@ function TransferDialog({
         toBedId: selectedBedId,
         plannedDate,
       });
-      await onDone();
+      await onBooked({
+        bedRentPaise: target?.monthlyRentPaise ?? 0,
+        bedLabel: target ? `${target.roomLabel} · ${target.bedLabel}` : "",
+      });
     } catch (err) {
       toast.error(toMessage(err, "Could not book the transfer."));
     } finally {
@@ -2028,6 +2059,156 @@ function RecordDepositDialog({
           </Button>
         </div>
       </form>
+    </Dialog>
+  );
+}
+
+/**
+ * Shown right after a room transfer is booked: review/adjust the held deposit so
+ * it still covers a month's rent in the new room (a 7k→8k move otherwise leaves
+ * the deposit short for last-month rent, which `applyToInvoice` would reject).
+ * Prefilled with the current deposit (or the new room's rent when none exists);
+ * a confirm step spells out how much to collect/refund. Creates a deposit when
+ * the resident has none. Collection is offline — this only records the target.
+ */
+function TransferDepositDialog({
+  open,
+  residentId,
+  currentDepositPaise,
+  hasDeposit,
+  bedRentPaise,
+  bedLabel,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  residentId: string;
+  currentDepositPaise: number;
+  hasDeposit: boolean;
+  bedRentPaise: number;
+  bedLabel: string;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+}) {
+  const toast = useToast();
+  const [rupees, setRupees] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    // Prefill the current deposit, or one month's rent as a sensible default when
+    // the resident has none on record yet.
+    const seed = hasDeposit ? currentDepositPaise : bedRentPaise;
+    setRupees(seed > 0 ? String(Math.round(seed / 100)) : "");
+    setConfirming(false);
+  }, [open, hasDeposit, currentDepositPaise, bedRentPaise]);
+
+  const newPaise = rupees === "" ? 0 : Math.round(Number(rupees) * 100);
+  const delta = newPaise - currentDepositPaise;
+
+  const deltaNote = !hasDeposit
+    ? `Collect ${formatPaise(newPaise)}`
+    : delta > 0
+      ? `Collect ${formatPaise(delta)} more`
+      : delta < 0
+        ? `Refund ${formatPaise(-delta)}`
+        : "No change to collect";
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.deposits.updateAmount({ residentId, amountPaise: newPaise });
+      await onDone();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not update the deposit."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={confirming ? "Confirm deposit" : "Adjust deposit"}
+      description={
+        confirming
+          ? undefined
+          : `Transfer booked to ${bedLabel}. Update the held deposit so it still covers a month's rent in the new room.`
+      }
+    >
+      {confirming ? (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+            <p className="font-medium">Please settle the deposit.</p>
+            <p className="mt-1 text-muted-foreground">
+              {deltaNote} · new deposit{" "}
+              <span className="font-medium text-foreground">
+                {formatPaise(newPaise)}
+              </span>
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirming(false)}
+              disabled={busy}
+            >
+              Back
+            </Button>
+            <Button type="button" onClick={save} disabled={busy}>
+              {busy ? "Saving…" : "Confirm"}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setConfirming(true);
+          }}
+          className="space-y-4"
+        >
+          <p className="text-sm text-muted-foreground">
+            New room rent:{" "}
+            <span className="font-medium text-foreground">
+              {formatPaise(bedRentPaise)}/mo
+            </span>
+            {hasDeposit ? (
+              <>
+                {" · "}current deposit {formatPaise(currentDepositPaise)}
+              </>
+            ) : (
+              <> · no deposit on record yet</>
+            )}
+          </p>
+          <Field label="Deposit (₹)" htmlFor="xfer-dep-amount">
+            <Input
+              id="xfer-dep-amount"
+              type="number"
+              min={0}
+              step="1"
+              value={rupees}
+              onChange={(e) => setRupees(e.target.value)}
+              required
+              placeholder="e.g. 8000"
+            />
+          </Field>
+          {rupees !== "" && delta !== 0 && (
+            <p className="text-sm text-muted-foreground">{deltaNote}</p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Skip
+            </Button>
+            <Button type="submit" disabled={rupees === ""}>
+              Review
+            </Button>
+          </div>
+        </form>
+      )}
     </Dialog>
   );
 }
