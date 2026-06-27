@@ -29,6 +29,7 @@ export * from "./budgets";
 export * from "./expenses";
 export * from "./billing-snapshots";
 export * from "./short-stays";
+export * from "./invoice-schedules";
 
 import { tenants } from "./tenants";
 import { owners } from "./owners";
@@ -61,6 +62,7 @@ import { budgets } from "./budgets";
 import { expenses } from "./expenses";
 import { billingSnapshots } from "./billing-snapshots";
 import { shortStays } from "./short-stays";
+import { invoiceSchedules } from "./invoice-schedules";
 
 /** Full schema object passed to drizzle(). */
 export const schema = {
@@ -96,6 +98,7 @@ export const schema = {
   expenses,
   billingSnapshots,
   shortStays,
+  invoiceSchedules,
 };
 
 /**
@@ -133,4 +136,5 @@ export const RLS_TABLES = [
   "expenses",
   "billing_snapshots",
   "short_stays",
+  "invoice_schedules",
 ] as const;

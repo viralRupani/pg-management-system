@@ -1,4 +1,9 @@
-import { istStartOfDayUtc, istPeriod, daysInPeriod } from "./ist-date";
+import {
+  istStartOfDayUtc,
+  istPeriod,
+  istMomentUtc,
+  daysInPeriod,
+} from "./ist-date";
 
 /**
  * Guards the IST calendar helpers — specifically the boundary `istStartOfDayUtc`
@@ -43,6 +48,22 @@ describe("ist-date", () => {
       expect(daysInPeriod("2026-06")).toBe(30);
       expect(daysInPeriod("2024-02")).toBe(29);
       expect(daysInPeriod("2026-02")).toBe(28);
+    });
+  });
+
+  describe("istMomentUtc", () => {
+    it("returns the UTC instant of an IST wall-clock schedule moment", () => {
+      // The 5th @ 09:30 IST == 04:00:00Z (09:30 − 05:30).
+      expect(istMomentUtc("2026-06", 5, 9, 30).toISOString()).toBe(
+        "2026-06-05T04:00:00.000Z",
+      );
+    });
+
+    it("crosses the IST→UTC day boundary for early-morning times", () => {
+      // The 1st @ 02:00 IST is still the previous day in UTC: 2025-12-31T20:30Z.
+      expect(istMomentUtc("2026-01", 1, 2, 0).toISOString()).toBe(
+        "2025-12-31T20:30:00.000Z",
+      );
     });
   });
 });

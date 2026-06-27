@@ -42,6 +42,25 @@ export function istStartOfDayUtc(d: Date): Date {
   return new Date(Date.UTC(year, month - 1, day) - IST_OFFSET_MINUTES * 60_000);
 }
 
+/**
+ * The real UTC instant of an IST wall-clock moment: `(period, day, hour,
+ * minute)` read in IST. Used by the scheduled-invoice dispatcher to decide
+ * whether a per-PG schedule's moment has arrived — `period` is the current IST
+ * billing month ('YYYY-MM'), and the returned instant is compared to `now`.
+ * IST = UTC + 05:30, so subtract the offset from the naive UTC instant.
+ */
+export function istMomentUtc(
+  period: string,
+  day: number,
+  hour: number,
+  minute: number,
+): Date {
+  const [year, month] = period.split("-").map(Number);
+  return new Date(
+    Date.UTC(year, month - 1, day, hour, minute) - IST_OFFSET_MINUTES * 60_000,
+  );
+}
+
 /** Number of days in a 'YYYY-MM' period (handles leap Februaries). */
 export function daysInPeriod(period: string): number {
   const [year, month] = period.split("-").map(Number);

@@ -204,6 +204,13 @@
       "when": 1782330024378,
       "tag": "0028_late_marvel_boy",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1782559171407,
+      "tag": "0029_brave_shockwave",
+      "breakpoints": true
     }
   ]
 }

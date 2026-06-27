@@ -113,7 +113,9 @@ the sidebar. Settings page edits this live via `refreshBranding()` (no reload).
 ## Page-specific notes (only the non-obvious)
 - **Rent** — tabbed Payments review queue (approve / reject-with-note / view
   screenshot; approving flips the linked invoice to PAID, so refetch invoices too)
-  + Invoices list with a Generate dialog.
+  + Invoices list with a Generate dialog + a **Schedule** tab (one auto-generation
+  schedule per PG: day-of-month + time in IST; create/edit/delete via
+  `invoices.getSchedule/setSchedule/deleteSchedule`. No schedule = manual-only).
 - **Residents** — detail bundles bed allocation (ranked-suggestion picker /
   move-out), KYC docs (verify/reject/download), security deposit (record +
   settle-exit with live refund preview that blocks over-deduction).

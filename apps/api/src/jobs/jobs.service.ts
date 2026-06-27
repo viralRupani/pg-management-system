@@ -4,6 +4,7 @@ import { InvoiceStatus } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
 import { PlatformService } from "../platform/platform.service";
 import { RentService } from "../rent/rent.service";
+import { InvoiceScheduleService } from "../rent/invoice-schedule.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { BookingsService } from "../bookings/bookings.service";
 import { AllocationService } from "../allocation/allocation.service";
@@ -31,6 +32,7 @@ export class JobsService {
     private readonly ctx: TenantContextService,
     private readonly platform: PlatformService,
     private readonly rent: RentService,
+    private readonly invoiceSchedule: InvoiceScheduleService,
     private readonly notifications: NotificationsService,
     private readonly bookings: BookingsService,
     private readonly allocation: AllocationService,
@@ -64,6 +66,18 @@ export class JobsService {
       const res = await this.rent.generateMonthly({ period });
       return res.generated;
     });
+  }
+
+  /**
+   * Fire every per-PG invoice schedule whose IST moment for the current period
+   * has arrived and that hasn't already run this month. The per-tenant guard
+   * (`lastRunPeriod`) lives in InvoiceScheduleService.runDue, so this is just the
+   * cross-tenant fan-out. Tenants with no schedule generate nothing (opt-in).
+   */
+  async dispatchScheduledInvoices(): Promise<BatchResult> {
+    return this.forEachTenant("scheduled invoice dispatch", () =>
+      this.invoiceSchedule.runDue(),
+    );
   }
 
   /** Flip past-due PENDING invoices to OVERDUE in every active tenant. */

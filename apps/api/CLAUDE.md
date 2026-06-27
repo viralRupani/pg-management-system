@@ -121,7 +121,7 @@ onboarding and metering only. Platform routes are `@Roles(UserRole.PLATFORM_ADMI
 and are NOT wrapped in a tenant txn.
 
 ## Scheduled jobs (`jobs/`, BullMQ)
-`JobsModule` runs a BullMQ worker in-process (repeatable monthly generation +
+`JobsModule` runs a BullMQ worker in-process (per-PG scheduled invoice dispatch +
 daily reminders) that calls `JobsService`. A batch job is cross-tenant but must
 NOT run business logic on the platform pool: `JobsService.forEachTenant` lists
 ids via `PlatformService.listActiveTenantIds()` (the only cross-tenant read),
@@ -131,6 +131,17 @@ the app pool, so RLS still applies and a bug can't cross-bill. Each tenant's
 `TenantContextService` is not request-scoped, so it works fine outside HTTP.
 Platform-admin `POST /platform/jobs/*` calls the same service synchronously for
 ops/tests; the worker provides the schedule.
+
+**Invoice generation is per-PG scheduled, not a fixed cron.** The
+`dispatch-scheduled-invoices` tick (every 15 min) fans out via `forEachTenant` to
+`InvoiceScheduleService.runDue()` (in `rent/`), which reads the tenant's
+`invoice_schedules` row and fires `RentService.generateMonthly` when the
+schedule's IST moment for the current period has passed AND it hasn't run this
+period (the `lastRunPeriod` guard makes it exactly-once + catch-up after
+downtime). Managers own the schedule via `GET/PUT/DELETE /invoices/schedule`
+(create/edit/delete; no row = manual-only). `generateInvoicesAllTenants` still
+exists behind `POST /platform/jobs/generate-invoices` as a manual platform-wide
+trigger.
 
 ## Storage & notifications (seams)
 - `StorageModule` — `StorageProvider` (presigned upload/download). Local stub

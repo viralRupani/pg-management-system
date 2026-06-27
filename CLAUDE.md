@@ -58,7 +58,7 @@ infra/             docker-compose: Postgres 16 on :5433, Redis 7 on :6379
 
 ### Cross-cutting modules (real drivers swap in at deploy time)
 - `StorageModule` — S3 presigned-URL seam (local stub in dev; always store key, presign on read)
-- `JobsModule` — BullMQ on Redis (monthly invoice generation + daily reminders)
+- `JobsModule` — BullMQ on Redis (per-PG scheduled invoice dispatch + daily reminders)
 - `NotificationsModule` — Expo push stub + `NotificationChannel` abstraction
 
 ### PG Owner role
@@ -82,7 +82,9 @@ infra/             docker-compose: Postgres 16 on :5433, Redis 7 on :6379
 | PG Owner role | ✅ | `owners`, `owner_tenants`; token-switch, manager deactivation |
 | M8 Resident mobile | ✅ | Expo app, **device-verified**: OTP auth + swipe tabs + all resident screens (rent/payments, complaints, KYC, deposit + move-out, announcements, mess, notifications, profile). `api-client` resident methods + NativeWind white-label (`var(--brand)` paints/repaints, persists cold start). See `apps/mobile/CLAUDE.md` |
 
-**Test suite:** `pnpm --filter @pg/api test` → **219 tests / 22 files, all green** (as of 2026-06-24).
+**Test suite:** `pnpm --filter @pg/api test` → **237 tests / 25 files, all green** (as of 2026-06-27).
+
+**Scheduled invoice generation** (2026-06-27): each PG owns an optional auto-generation schedule (`invoice_schedules`, one row per tenant — day-of-month 1–28 + time, all IST). Managers create/edit/delete it on the Rent page's **Schedule** tab (`GET/PUT/DELETE /invoices/schedule`, `InvoiceScheduleService`). A single repeatable BullMQ tick (`dispatch-scheduled-invoices`, every 15 min) replaces the old fixed monthly cron: per tenant under RLS it fires `generateMonthly` when the schedule's IST moment for the current period has passed **and** it hasn't run this period (`lastRunPeriod` guard → exactly-once + catch-up after downtime). **Opt-in:** a PG with no schedule row is manual-only (the "Generate invoices" button is unchanged). On create, `initialLastRunPeriod` seeds `lastRunPeriod` only when this month's moment has already passed (so it won't back-fire for a gone day) — if the scheduled day is still ahead this month, it fires this month.
 
 **Unified onboarding flow** (2026-06-24): registration + bed assignment both run from the residents page — the standalone `/bookings` and `/short-stays` admin pages are gone (their cancel/complete actions live on the resident profile). A resident is registered with a planned move-in date (`users.expectedMoveInDate`); the profile's assign-bed dialog (`GET /allocations/eligible-beds?residentId=`) offers vacant beds **plus** soon-to-free beds (a sitting resident's `exitRequestedDate` on/before the move-in) and dispatches: vacant + move-in today → `allocations.allocate` (live now); future move-in or a soon-to-free bed → `bookings.create` (RESERVED + UPCOMING + deposit HELD). **Short-stay guests** are now lightweight resident rows (`users.isShortStay`, registered from the same form with a check-out date + per-day charge; no OTP identity) assigned via `short-stays` to a VACANT bed (bookingId null) or a RESERVED bed whose booking move-in is after check-out (bed → TRANSIENT; terms read from the resident, not the body). They are **never given an `allocations` row**, so they are auto-excluded from both rent invoicing and ₹10/resident metering; the upfront total (days × per-day) is stored, not invoiced. Complete/cancel frees the bed via `freeBed()` and flips the guest to EXITED.
 

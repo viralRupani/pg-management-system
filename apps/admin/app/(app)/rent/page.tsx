@@ -1,7 +1,11 @@
 "use client";
 
-import type { InvoiceSummary, PaymentSummary } from "@pg/shared";
-import { ImageIcon, Plus, Trash2 } from "lucide-react";
+import type {
+  InvoiceSchedule,
+  InvoiceSummary,
+  PaymentSummary,
+} from "@pg/shared";
+import { CalendarClock, ImageIcon, Pencil, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
@@ -14,7 +18,7 @@ import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { cn, formatDate, formatPaise, toMessage } from "@/lib/utils";
 
-type Tab = "payments" | "invoices";
+type Tab = "payments" | "invoices" | "schedule";
 type StatusFilter = "SUBMITTED" | "APPROVED" | "REJECTED" | "ALL";
 
 const PAYMENT_FILTERS: { value: StatusFilter; label: string }[] = [
@@ -171,6 +175,7 @@ function RentPageInner() {
           [
             ["payments", "Payments"],
             ["invoices", "Invoices"],
+            ["schedule", "Schedule"],
           ] as [Tab, string][]
         ).map(([value, label]) => (
           <button
@@ -200,8 +205,10 @@ function RentPageInner() {
           onReject={setRejecting}
           onView={viewScreenshot}
         />
-      ) : (
+      ) : tab === "invoices" ? (
         <InvoicesTab refreshKey={invoicesRefresh} residentId={residentId} />
+      ) : (
+        <ScheduleTab />
       )}
 
       <RejectDialog
@@ -1039,6 +1046,304 @@ function ListSkeleton() {
         <div key={i} className="h-12 animate-pulse rounded bg-muted" />
       ))}
     </div>
+  );
+}
+
+// --- Automatic invoice-generation schedule ---------------------------------
+
+const selectClass =
+  "flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
+
+const ordinal = (n: number): string => {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+};
+
+const fmtTime = (h: number, m: number): string =>
+  `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+
+/** Local YYYY-MM (the schedule's IST day == the manager's local day in India). */
+const localPeriod = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+/**
+ * The next IST instant the schedule will fire. If this month's slot is still in
+ * the future AND it hasn't already generated this period, that's the next run;
+ * otherwise it rolls to next month. Display-only (built with local getters).
+ */
+function nextRun(s: InvoiceSchedule): Date {
+  const now = new Date();
+  let cand = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    s.dayOfMonth,
+    s.hour,
+    s.minute,
+  );
+  const ranThisPeriod = s.lastRunPeriod === localPeriod(now);
+  if (ranThisPeriod || cand <= now) {
+    cand = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      s.dayOfMonth,
+      s.hour,
+      s.minute,
+    );
+  }
+  return cand;
+}
+
+const fmtDateTime = (d: Date): string =>
+  d.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }) + `, ${fmtTime(d.getHours(), d.getMinutes())}`;
+
+function ScheduleTab() {
+  const toast = useToast();
+  const [schedule, setSchedule] = useState<InvoiceSchedule | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setSchedule(await api.invoices.getSchedule());
+    } catch (err) {
+      toast.error(toMessage(err, "Could not load the schedule."));
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (loading) {
+    return <div className="h-40 animate-pulse rounded bg-muted" />;
+  }
+
+  return (
+    <>
+      <Card className="p-5">
+        {schedule ? (
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <CalendarClock className="mt-0.5 h-5 w-5 text-brand" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium">
+                  Invoices generate automatically on the{" "}
+                  <span className="text-brand">
+                    {ordinal(schedule.dayOfMonth)}
+                  </span>{" "}
+                  of every month at{" "}
+                  <span className="text-brand">
+                    {fmtTime(schedule.hour, schedule.minute)}
+                  </span>{" "}
+                  IST.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Next run: {fmtDateTime(nextRun(schedule))} ·{" "}
+                  {schedule.lastRunPeriod
+                    ? `last generated for ${schedule.lastRunPeriod}`
+                    : "not yet run"}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setDeleting(true)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <CalendarClock className="mt-0.5 h-5 w-5 text-muted-foreground" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium">No schedule set</p>
+                <p className="text-sm text-muted-foreground">
+                  Invoices are generated only when you click “Generate invoices”.
+                  Set up a schedule to have them created automatically each month.
+                </p>
+              </div>
+            </div>
+            <Button size="sm" onClick={() => setEditing(true)}>
+              <Plus className="h-4 w-4" />
+              Set up schedule
+            </Button>
+          </div>
+        )}
+      </Card>
+
+      <ScheduleDialog
+        open={editing}
+        current={schedule}
+        onClose={() => setEditing(false)}
+        onDone={async () => {
+          setEditing(false);
+          await load();
+        }}
+      />
+      <DeleteScheduleDialog
+        open={deleting}
+        onClose={() => setDeleting(false)}
+        onDone={async () => {
+          setDeleting(false);
+          await load();
+        }}
+      />
+    </>
+  );
+}
+
+function ScheduleDialog({
+  open,
+  current,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  current: InvoiceSchedule | null;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+}) {
+  const toast = useToast();
+  const [dayOfMonth, setDayOfMonth] = useState(1);
+  const [time, setTime] = useState("02:00");
+  const [busy, setBusy] = useState(false);
+
+  // Seed from the existing schedule (edit) or defaults (create) on open.
+  useEffect(() => {
+    if (!open) return;
+    setDayOfMonth(current?.dayOfMonth ?? 1);
+    setTime(
+      current ? fmtTime(current.hour, current.minute) : "02:00",
+    );
+  }, [open, current]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const [h, m] = time.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) {
+      toast.error("Pick a valid time.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.invoices.setSchedule({ dayOfMonth, hour: h, minute: m });
+      await onDone();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not save the schedule."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={current ? "Edit schedule" : "Set up schedule"}
+      description="Invoices for the current month are generated automatically at this day and time (IST) every month. Re-runs are safe — already-billed residents are skipped."
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="sched-day">Day of month</Label>
+            <select
+              id="sched-day"
+              value={dayOfMonth}
+              onChange={(e) => setDayOfMonth(Number(e.target.value))}
+              className={selectClass}
+            >
+              {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                <option key={d} value={d}>
+                  {ordinal(d)}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Capped at the 28th so every month has the date.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="sched-time">Time (IST)</Label>
+            <Input
+              id="sched-time"
+              type="time"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              required
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={busy}>
+            {busy ? "Saving…" : current ? "Save changes" : "Create schedule"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+function DeleteScheduleDialog({
+  open,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      await api.invoices.deleteSchedule();
+      await onDone();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not delete the schedule."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Delete schedule?"
+      description="Invoices will no longer be generated automatically. You can still generate them manually any time from the Invoices tab."
+    >
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="button" variant="danger" disabled={busy} onClick={submit}>
+          {busy ? "Deleting…" : "Delete schedule"}
+        </Button>
+      </div>
+    </Dialog>
   );
 }
 

@@ -56,6 +56,32 @@ export const invoiceListResultSchema = z.object({
 });
 export type InvoiceListResult = z.infer<typeof invoiceListResultSchema>;
 
+/**
+ * Per-PG schedule for automatic monthly invoice generation. Day-of-month +
+ * time of day are interpreted in IST (the product's business calendar). Used
+ * for both create and edit (the endpoint upserts the single per-tenant row).
+ * Day is capped at 28 to avoid short-month ambiguity (matches the project's
+ * day-granular IST conventions). Delete removes the row → manual-only.
+ */
+export const invoiceScheduleInputSchema = z.object({
+  dayOfMonth: z.number().int().min(1).max(28),
+  hour: z.number().int().min(0).max(23),
+  minute: z.number().int().min(0).max(59),
+});
+export type InvoiceScheduleInput = z.infer<typeof invoiceScheduleInputSchema>;
+
+/** The stored schedule as returned to the manager UI (null when none set). */
+export const invoiceScheduleSchema = z.object({
+  dayOfMonth: z.number().int(),
+  hour: z.number().int(),
+  minute: z.number().int(),
+  // Last billing period ('YYYY-MM') the scheduled run generated for — drives
+  // the "last generated" display and the once-per-period dispatch guard.
+  lastRunPeriod: z.string().nullable(),
+  updatedAt: z.string(),
+});
+export type InvoiceSchedule = z.infer<typeof invoiceScheduleSchema>;
+
 /** Resident asks for a presigned URL to upload a payment screenshot. */
 export const paymentUploadUrlSchema = z.object({
   invoiceId: z.string().uuid(),

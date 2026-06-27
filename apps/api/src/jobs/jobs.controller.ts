@@ -25,6 +25,11 @@ export class JobsController {
     return this.jobs.generateInvoicesAllTenants(dto.period);
   }
 
+  @Post("dispatch-scheduled-invoices")
+  dispatchScheduled() {
+    return this.jobs.dispatchScheduledInvoices();
+  }
+
   @Post("mark-overdue")
   markOverdue(@Body(new ZodBody(runJobSchema)) dto: RunJobInput) {
     return this.jobs.markOverdueAllTenants(dto.period);

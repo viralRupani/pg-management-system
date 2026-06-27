@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { InvoicesController } from "./invoices.controller";
 import { PaymentsController } from "./payments.controller";
 import { RentService } from "./rent.service";
+import { InvoiceScheduleService } from "./invoice-schedule.service";
 
 /**
  * The resident rent loop: invoice generation, screenshot payments, manager
@@ -10,7 +11,7 @@ import { RentService } from "./rent.service";
  */
 @Module({
   controllers: [InvoicesController, PaymentsController],
-  providers: [RentService],
-  exports: [RentService],
+  providers: [RentService, InvoiceScheduleService],
+  exports: [RentService, InvoiceScheduleService],
 })
 export class RentModule {}

@@ -45,7 +45,7 @@ process.env.PLATFORM_DATABASE_URL ??=
 process.env.JWT_ACCESS_SECRET ??= "dev-access-secret-change-me";
 process.env.JWT_REFRESH_SECRET ??= "dev-refresh-secret-change-me";
 
-export type HttpMethod = "get" | "post" | "patch" | "delete";
+export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
 export interface TestPg {
   id: string;

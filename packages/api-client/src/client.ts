@@ -50,6 +50,8 @@ import type {
   InvoiceCharge,
   InvoiceListQuery,
   InvoiceListResult,
+  InvoiceSchedule,
+  InvoiceScheduleInput,
   InvoiceSummary,
   LogoUploadUrlInput,
   ManagerLoginInput,
@@ -362,6 +364,18 @@ export class PgApiClient {
     /** Void (soft-delete) an invoice with a mandatory reason; stays listed. */
     delete: (id: string, input: DeleteInvoiceInput) =>
       this.http.post<{ deletedAt: string }>(`/invoices/${id}/delete`, input),
+    /** The PG's automatic-generation schedule, or null when none is set. */
+    getSchedule: () =>
+      this.http
+        .get<InvoiceSchedule | null>("/invoices/schedule")
+        // No schedule → the API returns an empty 200 body (parsed as undefined).
+        .then((s) => s ?? null),
+    /** Create or replace the PG's monthly auto-generation schedule (IST). */
+    setSchedule: (input: InvoiceScheduleInput) =>
+      this.http.put<InvoiceSchedule>("/invoices/schedule", input),
+    /** Remove the schedule → PG reverts to manual-only generation. */
+    deleteSchedule: () =>
+      this.http.del<{ deleted: boolean }>("/invoices/schedule"),
   };
 
   readonly payments = {
