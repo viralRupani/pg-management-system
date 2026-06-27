@@ -91,8 +91,8 @@ class S3StorageProvider implements StorageProvider {
     const config: S3ClientConfig = {
       region: env.S3_REGION!,
       credentials: {
-        accessKeyId: env.S3_ACCESS_KEY_ID!,
-        secretAccessKey: env.S3_SECRET_ACCESS_KEY!,
+        accessKeyId: env.ACCESS_KEY_ID!,
+        secretAccessKey: env.SECRET_ACCESS_KEY!,
       },
     };
     if (env.S3_ENDPOINT) {

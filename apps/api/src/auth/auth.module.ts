@@ -6,7 +6,12 @@ import { AuthService } from "./auth.service";
 import { AuthRepository } from "./auth.repository";
 import { OtpService } from "./otp.service";
 import { PasswordResetService } from "./password-reset.service";
-import { ConsoleEmailStub, EMAIL_PROVIDER } from "./email-provider";
+import {
+  ConsoleEmailStub,
+  SesEmailProvider,
+  EMAIL_PROVIDER,
+  type EmailProvider,
+} from "./email-provider";
 
 @Module({
   imports: [
@@ -32,7 +37,17 @@ import { ConsoleEmailStub, EMAIL_PROVIDER } from "./email-provider";
     AuthRepository,
     OtpService,
     PasswordResetService,
-    { provide: EMAIL_PROVIDER, useClass: ConsoleEmailStub },
+    {
+      // Real SES sends when SES_FROM_EMAIL is configured; otherwise the console
+      // stub. Forced to the stub under NODE_ENV=test so the serialized e2e suite
+      // never makes a live SES call even if the var leaks into the test env.
+      provide: EMAIL_PROVIDER,
+      inject: [ENV],
+      useFactory: (env: AppEnv): EmailProvider =>
+        env.SES_FROM_EMAIL && env.NODE_ENV !== "test"
+          ? new SesEmailProvider(env)
+          : new ConsoleEmailStub(),
+    },
   ],
   exports: [AuthService],
 })

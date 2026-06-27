@@ -63,8 +63,8 @@ const envSchema = z.object({
   STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   S3_REGION: z.string().optional(),
   S3_BUCKET: z.string().optional(),
-  S3_ACCESS_KEY_ID: z.string().optional(),
-  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  ACCESS_KEY_ID: z.string().optional(),
+  SECRET_ACCESS_KEY: z.string().optional(),
   // Presigned upload/download URL lifetime, in seconds.
   S3_PRESIGN_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   // Max upload size in bytes; the presigned-POST policy edge-rejects anything
@@ -76,6 +76,17 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+
+  // Outbound email (AWS SES). Setting SES_FROM_EMAIL switches the EmailProvider
+  // from the console stub to real SES sends (password-reset links); leave it
+  // unset for dev/CI. SES reuses the S3_* credentials (the same IAM principal is
+  // granted ses:SendEmail) — so STORAGE_DRIVER=s3 is NOT required, but the creds
+  // must be present (enforced in the superRefine). SES is regional: SES_REGION
+  // overrides, else S3_REGION is used. The From address must be a verified SES
+  // identity in that region, and in a sandbox account every recipient must be
+  // verified too.
+  SES_FROM_EMAIL: z.string().email().optional(),
+  SES_REGION: z.string().optional(),
 });
 
 const envSchemaChecked = envSchema.superRefine((env, ctx) => {
@@ -83,8 +94,8 @@ const envSchemaChecked = envSchema.superRefine((env, ctx) => {
     for (const key of [
       "S3_REGION",
       "S3_BUCKET",
-      "S3_ACCESS_KEY_ID",
-      "S3_SECRET_ACCESS_KEY",
+      "ACCESS_KEY_ID",
+      "SECRET_ACCESS_KEY",
     ] as const) {
       if (!env[key]) {
         ctx.addIssue({
@@ -93,6 +104,28 @@ const envSchemaChecked = envSchema.superRefine((env, ctx) => {
           message: `${key} is required when STORAGE_DRIVER=s3`,
         });
       }
+    }
+  }
+
+  // SES is opt-in via SES_FROM_EMAIL; when enabled it needs the (reused) S3
+  // credentials and a region, so a half-configured deploy fails fast at boot
+  // rather than silently throwing on the first send.
+  if (env.SES_FROM_EMAIL) {
+    for (const key of ["ACCESS_KEY_ID", "SECRET_ACCESS_KEY"] as const) {
+      if (!env[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} is required when SES_FROM_EMAIL is set (SES reuses the S3 credentials)`,
+        });
+      }
+    }
+    if (!env.SES_REGION && !env.S3_REGION) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["SES_REGION"],
+        message: "SES_REGION (or S3_REGION) is required when SES_FROM_EMAIL is set",
+      });
     }
   }
 });

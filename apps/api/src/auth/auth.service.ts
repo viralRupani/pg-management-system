@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
@@ -31,6 +32,8 @@ const PASSWORD_ROLES: readonly UserRole[] = [
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly repo: AuthRepository,
     private readonly otp: OtpService,
@@ -185,13 +188,23 @@ export class AuthService {
     ) {
       const token = await this.reset.issue(identity.id, input.email);
       const link = `${this.env.APP_BASE_URL}/reset-password?token=${token}`;
-      await this.email.send(
-        input.email,
-        "Reset your PG Manager password",
-        `Use this link to set a new password (valid for ${Math.round(
-          this.env.PWRESET_TTL_SECONDS / 60,
-        )} minutes):\n\n${link}\n\nIf you didn't request this, you can ignore this email.`,
-      );
+      try {
+        await this.email.send(
+          input.email,
+          "Reset your PG Manager password",
+          `Use this link to set a new password (valid for ${Math.round(
+            this.env.PWRESET_TTL_SECONDS / 60,
+          )} minutes):\n\n${link}\n\nIf you didn't request this, you can ignore this email.`,
+        );
+      } catch (err) {
+        // A real delivery failure (SES throttle, unverified/sandboxed recipient,
+        // transient error) must NOT change the response — otherwise a 500 here vs
+        // a 200 for an unknown email becomes an account-enumeration oracle, and
+        // the user gets a spurious error. Log for ops; still report { sent: true }.
+        this.logger.error(
+          `Password-reset email send failed: ${(err as Error).message}`,
+        );
+      }
     }
     return { sent: true };
   }
