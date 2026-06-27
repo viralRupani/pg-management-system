@@ -595,10 +595,11 @@ function RoomBlock({
           <button
             type="button"
             onClick={onEditRent}
-            className="rounded-md px-2 py-1 text-sm font-medium text-brand transition-colors hover:bg-brand/10"
+            className="group inline-flex cursor-pointer items-center gap-1 rounded-md border border-dashed border-brand/40 px-2 py-1 text-sm font-medium text-brand transition-colors hover:border-brand hover:bg-brand/10"
             title="Edit rent"
           >
             {formatPaise(room.monthlyRentPaise)}/mo
+            <Pencil className="h-3 w-3 opacity-60 transition-opacity group-hover:opacity-100" />
           </button>
           <Button
             variant="outline"

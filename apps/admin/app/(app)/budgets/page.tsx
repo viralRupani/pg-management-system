@@ -58,6 +58,9 @@ export default function BudgetsPage() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
+  const [tab, setTab] = useState<"budget" | "expenses">("budget");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [page, setPage] = useState(1);
 
   const period = ymPeriod(month);
 
@@ -97,10 +100,39 @@ export default function BudgetsPage() {
     };
   }, [period, toast]);
 
+  // Switching month resets the expense filter + pagination.
+  useEffect(() => {
+    setCategoryFilter("all");
+    setPage(1);
+  }, [period]);
+
+  // Changing the filter sends us back to the first page.
+  useEffect(() => {
+    setPage(1);
+  }, [categoryFilter]);
+
   // Known categories (this period) → datalist suggestions for both dialogs.
   const knownCategories = Array.from(
     new Set((summary ?? []).map((r) => r.category)),
   ).sort();
+
+  // Categories actually present in this month's expenses → filter dropdown
+  // options (every choice yields rows; budgeted-but-unspent categories excluded).
+  const expenseCategories = Array.from(
+    new Set((expenses ?? []).map((e) => e.category)),
+  ).sort();
+
+  // Client-side filter + pagination over the already-loaded (newest-first) ledger.
+  const PAGE_SIZE = 10;
+  const filteredExpenses = (expenses ?? []).filter(
+    (e) => categoryFilter === "all" || e.category === categoryFilter,
+  );
+  const pageCount = Math.max(1, Math.ceil(filteredExpenses.length / PAGE_SIZE));
+  const pageSafe = Math.min(page, pageCount);
+  const pagedExpenses = filteredExpenses.slice(
+    (pageSafe - 1) * PAGE_SIZE,
+    pageSafe * PAGE_SIZE,
+  );
 
   const totalBudget = (summary ?? []).reduce(
     (sum, r) => sum + (r.limitPaise ?? 0),
@@ -163,178 +195,271 @@ export default function BudgetsPage() {
         </span>
       </div>
 
-      {/* Spend-vs-budget summary */}
-      <Card>
-        <CardContent className="overflow-x-auto pt-5">
-          <table className="w-full min-w-[560px] border-collapse text-sm">
-            <thead>
-              <tr className="text-left text-xs font-medium text-muted-foreground">
-                <th className="pb-3">Category</th>
-                <th className="pb-3 text-right">Budget</th>
-                <th className="pb-3 text-right">Spent</th>
-                <th className="pb-3 text-right">Remaining</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summary === null ? (
-                loadFailed ? (
+      {/* Tabs */}
+      <div className="inline-flex rounded-md border border-border bg-card p-0.5">
+        {(
+          [
+            ["budget", "Budget"],
+            ["expenses", "Expenses"],
+          ] as ["budget" | "expenses", string][]
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setTab(value)}
+            className={cn(
+              "rounded px-4 py-1.5 text-sm font-medium transition-colors",
+              tab === value
+                ? "bg-brand text-brand-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "budget" ? (
+        /* Spend-vs-budget summary */
+        <Card>
+          <CardContent className="overflow-x-auto pt-5">
+            <table className="w-full min-w-[560px] border-collapse text-sm">
+              <thead>
+                <tr className="text-left text-xs font-medium text-muted-foreground">
+                  <th className="pb-3">Category</th>
+                  <th className="pb-3 text-right">Budget</th>
+                  <th className="pb-3 text-right">Spent</th>
+                  <th className="pb-3 text-right">Remaining</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary === null ? (
+                  loadFailed ? (
+                    <tr className="border-t border-border">
+                      <td
+                        colSpan={4}
+                        className="py-8 text-center text-muted-foreground"
+                      >
+                        Couldn&apos;t load budgets — try refreshing.
+                      </td>
+                    </tr>
+                  ) : (
+                    Array.from({ length: 3 }).map((_, i) => (
+                      <tr key={i} className="border-t border-border">
+                        <td colSpan={4} className="py-3">
+                          <span className="block h-4 w-full animate-pulse rounded bg-muted" />
+                        </td>
+                      </tr>
+                    ))
+                  )
+                ) : summary.length === 0 ? (
                   <tr className="border-t border-border">
                     <td
                       colSpan={4}
                       className="py-8 text-center text-muted-foreground"
                     >
-                      Couldn&apos;t load budgets — try refreshing.
+                      No budgets or expenses for {monthLabel}.
                     </td>
                   </tr>
                 ) : (
-                  Array.from({ length: 3 }).map((_, i) => (
-                    <tr key={i} className="border-t border-border">
-                      <td colSpan={4} className="py-3">
-                        <span className="block h-4 w-full animate-pulse rounded bg-muted" />
-                      </td>
-                    </tr>
-                  ))
-                )
-              ) : summary.length === 0 ? (
-                <tr className="border-t border-border">
-                  <td
-                    colSpan={4}
-                    className="py-8 text-center text-muted-foreground"
-                  >
-                    No budgets or expenses for {monthLabel}.
-                  </td>
-                </tr>
-              ) : (
-                summary.map((row) => {
-                  const remaining =
-                    row.limitPaise == null
-                      ? null
-                      : row.limitPaise - row.spentPaise;
-                  const over = remaining != null && remaining < 0;
-                  const pct =
-                    row.limitPaise && row.limitPaise > 0
-                      ? Math.min(100, (row.spentPaise / row.limitPaise) * 100)
-                      : null;
-                  return (
-                    <tr key={row.category} className="border-t border-border">
-                      <td className="py-2.5">
-                        <div className="font-medium">{row.category}</div>
-                        {pct != null && (
-                          <div className="mt-1.5 h-1.5 w-full max-w-48 overflow-hidden rounded-full bg-muted">
-                            <div
-                              className={cn(
-                                "h-full rounded-full",
-                                over ? "bg-danger" : "bg-brand",
-                              )}
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-2.5 text-right tabular-nums">
-                        {row.limitPaise == null
-                          ? "—"
-                          : formatPaise(row.limitPaise)}
-                      </td>
-                      <td className="py-2.5 text-right tabular-nums">
-                        {formatPaise(row.spentPaise)}
-                      </td>
-                      <td
-                        className={cn(
-                          "py-2.5 text-right tabular-nums",
-                          over && "font-medium text-danger",
-                        )}
-                      >
-                        {remaining == null ? "—" : formatPaise(remaining)}
-                      </td>
-                    </tr>
-                  );
-                })
+                  summary.map((row) => {
+                    const remaining =
+                      row.limitPaise == null
+                        ? null
+                        : row.limitPaise - row.spentPaise;
+                    const over = remaining != null && remaining < 0;
+                    const pct =
+                      row.limitPaise && row.limitPaise > 0
+                        ? Math.min(100, (row.spentPaise / row.limitPaise) * 100)
+                        : null;
+                    return (
+                      <tr key={row.category} className="border-t border-border">
+                        <td className="py-2.5">
+                          <div className="font-medium">{row.category}</div>
+                          {pct != null && (
+                            <div className="mt-1.5 h-1.5 w-full max-w-48 overflow-hidden rounded-full bg-muted">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full",
+                                  over ? "bg-danger" : "bg-brand",
+                                )}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2.5 text-right tabular-nums">
+                          {row.limitPaise == null
+                            ? "—"
+                            : formatPaise(row.limitPaise)}
+                        </td>
+                        <td className="py-2.5 text-right tabular-nums">
+                          {formatPaise(row.spentPaise)}
+                        </td>
+                        <td
+                          className={cn(
+                            "py-2.5 text-right tabular-nums",
+                            over && "font-medium text-danger",
+                          )}
+                        >
+                          {remaining == null ? "—" : formatPaise(remaining)}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+              {summary && summary.length > 0 && (
+                <tfoot>
+                  <tr className="border-t-2 border-border font-medium">
+                    <td className="py-2.5">Total</td>
+                    <td className="py-2.5 text-right tabular-nums">
+                      {formatPaise(totalBudget)}
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums">
+                      {formatPaise(totalSpent)}
+                    </td>
+                    <td
+                      className={cn(
+                        "py-2.5 text-right tabular-nums",
+                        totalBudget > 0 &&
+                          totalBudget - totalSpent < 0 &&
+                          "text-danger",
+                      )}
+                    >
+                      {totalBudget === 0
+                        ? "—"
+                        : formatPaise(totalBudget - totalSpent)}
+                    </td>
+                  </tr>
+                </tfoot>
               )}
-            </tbody>
-            {summary && summary.length > 0 && (
-              <tfoot>
-                <tr className="border-t-2 border-border font-medium">
-                  <td className="py-2.5">Total</td>
-                  <td className="py-2.5 text-right tabular-nums">
-                    {formatPaise(totalBudget)}
-                  </td>
-                  <td className="py-2.5 text-right tabular-nums">
-                    {formatPaise(totalSpent)}
-                  </td>
-                  <td
-                    className={cn(
-                      "py-2.5 text-right tabular-nums",
-                      totalBudget > 0 &&
-                        totalBudget - totalSpent < 0 &&
-                        "text-danger",
-                    )}
-                  >
-                    {totalBudget === 0
-                      ? "—"
-                      : formatPaise(totalBudget - totalSpent)}
-                  </td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </CardContent>
-      </Card>
-
-      {/* Expense ledger */}
-      <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-muted-foreground">
-          Expenses
-        </h2>
-        {expenses === null ? (
-          loadFailed ? null : (
-            <Card>
-              <CardContent className="space-y-3 pt-5">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <span
-                    key={i}
-                    className="block h-5 w-full animate-pulse rounded bg-muted"
-                  />
+            </table>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {/* Category filter */}
+          {expenses && expenses.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Label htmlFor="exp-filter" className="text-muted-foreground">
+                Category
+              </Label>
+              <select
+                id="exp-filter"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className={cn(inputClass, "h-9 w-auto min-w-44")}
+              >
+                <option value="all">All categories</option>
+                {expenseCategories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
                 ))}
+              </select>
+            </div>
+          )}
+
+          {expenses === null ? (
+            loadFailed ? (
+              <Card>
+                <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                  Couldn&apos;t load expenses — try refreshing.
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="space-y-3 pt-5">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <span
+                      key={i}
+                      className="block h-5 w-full animate-pulse rounded bg-muted"
+                    />
+                  ))}
+                </CardContent>
+              </Card>
+            )
+          ) : filteredExpenses.length === 0 ? (
+            <Card>
+              <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                {expenses.length === 0
+                  ? `No expenses recorded for ${monthLabel}.`
+                  : "No expenses match this category."}
               </CardContent>
             </Card>
-          )
-        ) : expenses.length === 0 ? (
-          <Card>
-            <CardContent className="py-8 text-center text-sm text-muted-foreground">
-              No expenses recorded for {monthLabel}.
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardContent className="divide-y divide-border pt-2">
-              {expenses.map((ex) => (
-                <div
-                  key={ex.id}
-                  className="flex items-start justify-between gap-3 py-3"
+          ) : (
+            <Card>
+              <CardContent className="overflow-x-auto pt-5">
+                <table className="w-full min-w-[560px] border-collapse text-sm">
+                  <thead>
+                    <tr className="text-left text-xs font-medium text-muted-foreground">
+                      <th className="pb-3">Date</th>
+                      <th className="pb-3">Category</th>
+                      <th className="pb-3">Note</th>
+                      <th className="pb-3 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedExpenses.map((ex) => (
+                      <tr key={ex.id} className="border-t border-border">
+                        <td className="py-2.5 whitespace-nowrap text-muted-foreground">
+                          {formatDate(ex.spentOn)}
+                        </td>
+                        <td className="py-2.5">
+                          <Badge tone="neutral">{ex.category}</Badge>
+                        </td>
+                        <td className="py-2.5 text-muted-foreground">
+                          <span className="block max-w-xs truncate">
+                            {ex.note || "—"}
+                          </span>
+                        </td>
+                        <td className="py-2.5 text-right font-medium tabular-nums">
+                          {formatPaise(ex.amountPaise)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Pagination */}
+          {filteredExpenses.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">
+                Showing {(pageSafe - 1) * PAGE_SIZE + 1}–
+                {Math.min(pageSafe * PAGE_SIZE, filteredExpenses.length)} of{" "}
+                {filteredExpenses.length}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pageSafe <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  aria-label="Previous page"
                 >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <Badge tone="neutral">{ex.category}</Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {formatDate(ex.spentOn)}
-                      </span>
-                    </div>
-                    {ex.note && (
-                      <p className="mt-1 truncate text-sm text-muted-foreground">
-                        {ex.note}
-                      </p>
-                    )}
-                  </div>
-                  <span className="shrink-0 font-medium tabular-nums">
-                    {formatPaise(ex.amountPaise)}
-                  </span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
-      </div>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm font-medium text-muted-foreground">
+                  {pageSafe} / {pageCount}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pageSafe >= pageCount}
+                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                  aria-label="Next page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <datalist id="budget-categories">
         {knownCategories.map((c) => (
