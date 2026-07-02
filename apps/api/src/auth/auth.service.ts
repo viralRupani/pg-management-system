@@ -22,7 +22,7 @@ import { ENV, type AppEnv } from "../config/env";
 import { AuthRepository } from "./auth.repository";
 import { OtpService } from "./otp.service";
 import { PasswordResetService } from "./password-reset.service";
-import { EMAIL_PROVIDER, type EmailProvider } from "./email-provider";
+import { MailService } from "../mail/mail.service";
 
 /** Roles that authenticate with an email + password (and can reset it). */
 const PASSWORD_ROLES: readonly UserRole[] = [
@@ -39,7 +39,7 @@ export class AuthService {
     private readonly otp: OtpService,
     private readonly reset: PasswordResetService,
     private readonly jwt: JwtService,
-    @Inject(EMAIL_PROVIDER) private readonly email: EmailProvider,
+    private readonly mail: MailService,
     @Inject(ENV) private readonly env: AppEnv,
   ) {}
 
@@ -187,15 +187,12 @@ export class AuthService {
       PASSWORD_ROLES.includes(identity.role as UserRole)
     ) {
       const token = await this.reset.issue(identity.id, input.email);
-      const link = `${this.env.APP_BASE_URL}/reset-password?token=${token}`;
+      const resetUrl = `${this.env.APP_BASE_URL}/reset-password?token=${token}`;
       try {
-        await this.email.send(
-          input.email,
-          "Reset your PG Manager password",
-          `Use this link to set a new password (valid for ${Math.round(
-            this.env.PWRESET_TTL_SECONDS / 60,
-          )} minutes):\n\n${link}\n\nIf you didn't request this, you can ignore this email.`,
-        );
+        await this.mail.sendPasswordResetEmail(input.email, {
+          resetUrl,
+          ttlMinutes: Math.round(this.env.PWRESET_TTL_SECONDS / 60),
+        });
       } catch (err) {
         // A real delivery failure (SES throttle, unverified/sandboxed recipient,
         // transient error) must NOT change the response — otherwise a 500 here vs

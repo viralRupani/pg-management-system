@@ -102,6 +102,9 @@ importers:
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.20.0)(gel@2.2.0)(pg@8.21.0)
+      handlebars:
+        specifier: ^4.7.8
+        version: 4.7.9
       ioredis:
         specifier: ^5.11.1
         version: 5.11.1

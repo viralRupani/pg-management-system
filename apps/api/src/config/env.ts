@@ -87,6 +87,13 @@ const envSchema = z.object({
   // verified too.
   SES_FROM_EMAIL: z.string().email().optional(),
   SES_REGION: z.string().optional(),
+  // Display name on the From header ("PG Manager" <no-reply@…>) and the brand
+  // name shown inside the email templates. A named sender reads as professional
+  // and helps deliverability.
+  MAIL_FROM_NAME: z.string().default("PG Manager"),
+  // Optional Reply-To. Set to a monitored inbox if you want replies to reach a
+  // human; otherwise the templates already say "do not reply".
+  MAIL_REPLY_TO: z.string().email().optional(),
 });
 
 const envSchemaChecked = envSchema.superRefine((env, ctx) => {
