@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, ne, sql, isNull } from "drizzle-orm";
 import {
   ComplaintStatus,
   DocumentStatus,
@@ -56,7 +56,13 @@ export class DashboardService {
             total: sql<number>`coalesce(sum(${invoices.amountPaise}), 0)::int`,
           })
           .from(invoices)
-          .where(eq(invoices.period, period))
+          .where(
+            and(
+              eq(invoices.period, period),
+              ne(invoices.status, PaymentStatus.REJECTED),
+              isNull(invoices.deletedAt)
+            )
+          )
           .groupBy(invoices.status),
 
         // 3. All-time overdue total
@@ -78,7 +84,7 @@ export class DashboardService {
             sql`${invoices.period} >= to_char(
               date_trunc('month', now() at time zone 'Asia/Kolkata') - interval '5 months',
               'YYYY-MM'
-            )`,
+            ) AND invoices.deleted_at IS NULL AND invoices.status <> 'REJECTED'`,
           )
           .groupBy(invoices.period),
 
