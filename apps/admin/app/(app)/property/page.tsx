@@ -36,7 +36,7 @@ const inputClass =
   "flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
 
 const bedTone = (s: BedSummary["status"]) =>
-  s === "VACANT" ? "success" : s === "OCCUPIED" ? "neutral" : "warning";
+  s === "VACANT" ? "neutral" : s === "OCCUPIED" ? "success" : "warning";
 
 interface Tree {
   buildings: BuildingSummary[];
@@ -650,7 +650,7 @@ function RoomBlock({
               <Badge
                 key={bed.id}
                 id={`bed-${bed.id}`}
-                tone="success"
+                tone={bedTone(bed.status)}
                 className={cn("gap-1 pr-1", highlight)}
               >
                 {bed.label} · vacant
