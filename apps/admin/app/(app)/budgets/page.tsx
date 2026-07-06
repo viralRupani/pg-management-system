@@ -8,12 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
 import { Input, Label } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Select } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TBody, Th, THead, Td, Tr } from "@/components/ui/table";
+import { Tabs } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { cn, formatDate, formatPaise, toMessage } from "@/lib/utils";
-
-const inputClass =
-  "flex w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
 
 /** Local "YYYY-MM" (zero-padded). NOT toISOString — that's UTC and shifts the
  * month in IST. The API validates period against ^\d{4}-(0[1-9]|1[0-2])$. */
@@ -147,24 +150,22 @@ export default function BudgetsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Budgets</h1>
-          <p className="text-sm text-muted-foreground">
-            Track spend against category budgets, month by month.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={() => setBudgetOpen(true)}>
-            <Wallet className="h-4 w-4" />
-            Set budget
-          </Button>
-          <Button onClick={() => setExpenseOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Record expense
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Budgets"
+        description="Track spend against category budgets, month by month."
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setBudgetOpen(true)}>
+              <Wallet className="h-4 w-4" />
+              Set budget
+            </Button>
+            <Button onClick={() => setExpenseOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Record expense
+            </Button>
+          </>
+        }
+      />
 
       <div className="flex items-center gap-2">
         <Button
@@ -195,71 +196,56 @@ export default function BudgetsPage() {
         </span>
       </div>
 
-      {/* Tabs */}
-      <div className="inline-flex rounded-md border border-border bg-card p-0.5">
-        {(
-          [
-            ["budget", "Budget"],
-            ["expenses", "Expenses"],
-          ] as ["budget" | "expenses", string][]
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setTab(value)}
-            className={cn(
-              "rounded px-4 py-1.5 text-sm font-medium transition-colors",
-              tab === value
-                ? "bg-brand text-brand-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        items={[
+          { value: "budget", label: "Budget" },
+          { value: "expenses", label: "Expenses" },
+        ]}
+      />
 
       {tab === "budget" ? (
         /* Spend-vs-budget summary */
         <Card>
-          <CardContent className="overflow-x-auto pt-5">
-            <table className="w-full min-w-[560px] border-collapse text-sm">
-              <thead>
-                <tr className="text-left text-xs font-medium text-muted-foreground">
-                  <th className="pb-3">Category</th>
-                  <th className="pb-3 text-right">Budget</th>
-                  <th className="pb-3 text-right">Spent</th>
-                  <th className="pb-3 text-right">Remaining</th>
+          <CardContent className="pt-5">
+            <Table className="min-w-[560px]">
+              <THead>
+                <tr>
+                  <Th className="pb-3 pt-0">Category</Th>
+                  <Th className="pb-3 pt-0 text-right">Budget</Th>
+                  <Th className="pb-3 pt-0 text-right">Spent</Th>
+                  <Th className="pb-3 pt-0 text-right">Remaining</Th>
                 </tr>
-              </thead>
-              <tbody>
+              </THead>
+              <TBody className="border-t border-border">
                 {summary === null ? (
                   loadFailed ? (
-                    <tr className="border-t border-border">
-                      <td
+                    <tr>
+                      <Td
                         colSpan={4}
                         className="py-8 text-center text-muted-foreground"
                       >
                         Couldn&apos;t load budgets — try refreshing.
-                      </td>
+                      </Td>
                     </tr>
                   ) : (
                     Array.from({ length: 3 }).map((_, i) => (
-                      <tr key={i} className="border-t border-border">
-                        <td colSpan={4} className="py-3">
-                          <span className="block h-4 w-full animate-pulse rounded bg-muted" />
-                        </td>
+                      <tr key={i}>
+                        <Td colSpan={4} className="py-3">
+                          <Skeleton className="h-4 w-full" />
+                        </Td>
                       </tr>
                     ))
                   )
                 ) : summary.length === 0 ? (
-                  <tr className="border-t border-border">
-                    <td
+                  <tr>
+                    <Td
                       colSpan={4}
                       className="py-8 text-center text-muted-foreground"
                     >
                       No budgets or expenses for {monthLabel}.
-                    </td>
+                    </Td>
                   </tr>
                 ) : (
                   summary.map((row) => {
@@ -273,53 +259,53 @@ export default function BudgetsPage() {
                         ? Math.min(100, (row.spentPaise / row.limitPaise) * 100)
                         : null;
                     return (
-                      <tr key={row.category} className="border-t border-border">
-                        <td className="py-2.5">
+                      <Tr key={row.category}>
+                        <Td className="py-2.5">
                           <div className="font-medium">{row.category}</div>
                           {pct != null && (
                             <div className="mt-1.5 h-1.5 w-full max-w-48 overflow-hidden rounded-full bg-muted">
                               <div
                                 className={cn(
-                                  "h-full rounded-full",
+                                  "h-full rounded-full transition-[width] duration-300",
                                   over ? "bg-danger" : "bg-brand",
                                 )}
                                 style={{ width: `${pct}%` }}
                               />
                             </div>
                           )}
-                        </td>
-                        <td className="py-2.5 text-right tabular-nums">
+                        </Td>
+                        <Td className="py-2.5 text-right tabular-nums">
                           {row.limitPaise == null
                             ? "—"
                             : formatPaise(row.limitPaise)}
-                        </td>
-                        <td className="py-2.5 text-right tabular-nums">
+                        </Td>
+                        <Td className="py-2.5 text-right tabular-nums">
                           {formatPaise(row.spentPaise)}
-                        </td>
-                        <td
+                        </Td>
+                        <Td
                           className={cn(
                             "py-2.5 text-right tabular-nums",
                             over && "font-medium text-danger",
                           )}
                         >
                           {remaining == null ? "—" : formatPaise(remaining)}
-                        </td>
-                      </tr>
+                        </Td>
+                      </Tr>
                     );
                   })
                 )}
-              </tbody>
+              </TBody>
               {summary && summary.length > 0 && (
                 <tfoot>
                   <tr className="border-t-2 border-border font-medium">
-                    <td className="py-2.5">Total</td>
-                    <td className="py-2.5 text-right tabular-nums">
+                    <Td className="py-2.5">Total</Td>
+                    <Td className="py-2.5 text-right tabular-nums">
                       {formatPaise(totalBudget)}
-                    </td>
-                    <td className="py-2.5 text-right tabular-nums">
+                    </Td>
+                    <Td className="py-2.5 text-right tabular-nums">
                       {formatPaise(totalSpent)}
-                    </td>
-                    <td
+                    </Td>
+                    <Td
                       className={cn(
                         "py-2.5 text-right tabular-nums",
                         totalBudget > 0 &&
@@ -330,11 +316,11 @@ export default function BudgetsPage() {
                       {totalBudget === 0
                         ? "—"
                         : formatPaise(totalBudget - totalSpent)}
-                    </td>
+                    </Td>
                   </tr>
                 </tfoot>
               )}
-            </table>
+            </Table>
           </CardContent>
         </Card>
       ) : (
@@ -345,11 +331,11 @@ export default function BudgetsPage() {
               <Label htmlFor="exp-filter" className="text-muted-foreground">
                 Category
               </Label>
-              <select
+              <Select
                 id="exp-filter"
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className={cn(inputClass, "h-9 w-auto min-w-44")}
+                className="h-9 w-auto min-w-44"
               >
                 <option value="all">All categories</option>
                 {expenseCategories.map((c) => (
@@ -357,7 +343,7 @@ export default function BudgetsPage() {
                     {c}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           )}
 
@@ -372,10 +358,7 @@ export default function BudgetsPage() {
               <Card>
                 <CardContent className="space-y-3 pt-5">
                   {Array.from({ length: 3 }).map((_, i) => (
-                    <span
-                      key={i}
-                      className="block h-5 w-full animate-pulse rounded bg-muted"
-                    />
+                    <Skeleton key={i} className="h-5 w-full" />
                   ))}
                 </CardContent>
               </Card>
@@ -390,37 +373,37 @@ export default function BudgetsPage() {
             </Card>
           ) : (
             <Card>
-              <CardContent className="overflow-x-auto pt-5">
-                <table className="w-full min-w-[560px] border-collapse text-sm">
-                  <thead>
-                    <tr className="text-left text-xs font-medium text-muted-foreground">
-                      <th className="pb-3">Date</th>
-                      <th className="pb-3">Category</th>
-                      <th className="pb-3">Note</th>
-                      <th className="pb-3 text-right">Amount</th>
+              <CardContent className="pt-5">
+                <Table className="min-w-[560px]">
+                  <THead>
+                    <tr>
+                      <Th className="pb-3 pt-0">Date</Th>
+                      <Th className="pb-3 pt-0">Category</Th>
+                      <Th className="pb-3 pt-0">Note</Th>
+                      <Th className="pb-3 pt-0 text-right">Amount</Th>
                     </tr>
-                  </thead>
-                  <tbody>
+                  </THead>
+                  <TBody className="border-t border-border">
                     {pagedExpenses.map((ex) => (
-                      <tr key={ex.id} className="border-t border-border">
-                        <td className="py-2.5 whitespace-nowrap text-muted-foreground">
+                      <Tr key={ex.id}>
+                        <Td className="whitespace-nowrap py-2.5 text-muted-foreground">
                           {formatDate(ex.spentOn)}
-                        </td>
-                        <td className="py-2.5">
+                        </Td>
+                        <Td className="py-2.5">
                           <Badge tone="neutral">{ex.category}</Badge>
-                        </td>
-                        <td className="py-2.5 text-muted-foreground">
+                        </Td>
+                        <Td className="py-2.5 text-muted-foreground">
                           <span className="block max-w-xs truncate">
                             {ex.note || "—"}
                           </span>
-                        </td>
-                        <td className="py-2.5 text-right font-medium tabular-nums">
+                        </Td>
+                        <Td className="py-2.5 text-right font-medium tabular-nums">
                           {formatPaise(ex.amountPaise)}
-                        </td>
-                      </tr>
+                        </Td>
+                      </Tr>
                     ))}
-                  </tbody>
-                </table>
+                  </TBody>
+                </Table>
               </CardContent>
             </Card>
           )}
@@ -547,7 +530,7 @@ function SetBudgetDialog({
       <form onSubmit={submit} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="b-category">Category</Label>
-          <input
+          <Input
             id="b-category"
             list="budget-categories"
             value={category}
@@ -555,7 +538,6 @@ function SetBudgetDialog({
             required
             maxLength={60}
             placeholder="e.g. Utilities"
-            className={inputClass}
           />
         </div>
         <div className="space-y-1.5">
@@ -577,7 +559,8 @@ function SetBudgetDialog({
           </Button>
           <Button
             type="submit"
-            disabled={busy || category.trim() === "" || amount === ""}
+            loading={busy}
+            disabled={category.trim() === "" || amount === ""}
           >
             {busy ? "Saving…" : "Save budget"}
           </Button>
@@ -649,7 +632,7 @@ function RecordExpenseDialog({
       <form onSubmit={submit} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="e-category">Category</Label>
-          <input
+          <Input
             id="e-category"
             list="budget-categories"
             value={category}
@@ -657,10 +640,9 @@ function RecordExpenseDialog({
             required
             maxLength={60}
             placeholder="e.g. Utilities"
-            className={inputClass}
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="e-amount">Amount (₹)</Label>
             <Input
@@ -689,14 +671,13 @@ function RecordExpenseDialog({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="e-note">Note (optional)</Label>
-          <textarea
+          <Textarea
             id="e-note"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             maxLength={300}
             rows={2}
             placeholder="e.g. June electricity bill"
-            className={inputClass}
           />
         </div>
         <div className="flex justify-end gap-2">
@@ -705,7 +686,8 @@ function RecordExpenseDialog({
           </Button>
           <Button
             type="submit"
-            disabled={busy || category.trim() === "" || amount === ""}
+            loading={busy}
+            disabled={category.trim() === "" || amount === ""}
           >
             {busy ? "Saving…" : "Record expense"}
           </Button>

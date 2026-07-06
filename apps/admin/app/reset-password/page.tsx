@@ -1,7 +1,7 @@
 "use client";
 
 import { ApiError } from "@pg/api-client";
-import { Building2, Loader2 } from "lucide-react";
+import { Building2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Suspense, useState } from "react";
@@ -57,7 +57,7 @@ function ResetPasswordForm() {
 
   if (!token) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-muted px-4">
+      <div className="flex min-h-dvh items-center justify-center bg-muted px-4 py-10">
         <div className="w-full max-w-sm text-center space-y-3">
           <p className="text-sm text-muted-foreground">
             Invalid reset link. Please request a new one.
@@ -71,7 +71,7 @@ function ResetPasswordForm() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted px-4">
+    <div className="flex min-h-dvh items-center justify-center bg-muted px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand text-brand-foreground">
@@ -114,8 +114,7 @@ function ResetPasswordForm() {
                 )}
               </div>
 
-              <Button type="submit" className="w-full" disabled={submitting || !valid}>
-                {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              <Button type="submit" className="w-full" loading={submitting} disabled={!valid}>
                 Set new password
               </Button>
 

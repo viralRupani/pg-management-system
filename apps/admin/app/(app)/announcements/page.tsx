@@ -13,15 +13,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Select } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { FilterPills } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
-import { cn, formatDate, toMessage } from "@/lib/utils";
+import { formatDate, toMessage } from "@/lib/utils";
 
 const PAGE_SIZE = 5;
-
-const inputClass =
-  "flex w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
 
 type AudienceType = "ALL" | "SPECIFIC" | "SEGMENT";
 
@@ -82,20 +85,16 @@ export default function AnnouncementsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Announcements
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Post updates for your whole PG or a chosen audience. Newest first.
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setCreating(true)}>
-          <Plus className="h-4 w-4" />
-          New announcement
-        </Button>
-      </div>
+      <PageHeader
+        title="Announcements"
+        description="Post updates for your whole PG or a chosen audience. Newest first."
+        actions={
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" />
+            New announcement
+          </Button>
+        }
+      />
 
       <Input
         value={searchInput}
@@ -115,9 +114,9 @@ export default function AnnouncementsPage() {
             {[0, 1, 2].map((i) => (
               <Card key={i}>
                 <CardContent className="space-y-2 pt-5">
-                  <span className="block h-4 w-1/3 animate-pulse rounded bg-muted" />
-                  <span className="block h-3 w-full animate-pulse rounded bg-muted" />
-                  <span className="block h-3 w-2/3 animate-pulse rounded bg-muted" />
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-3 w-full" />
+                  <Skeleton className="h-3 w-2/3" />
                 </CardContent>
               </Card>
             ))}
@@ -125,16 +124,29 @@ export default function AnnouncementsPage() {
         )
       ) : items.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
-            <Megaphone className="h-6 w-6" />
-            <p className="text-sm">
-              {search
+          <EmptyState
+            icon={Megaphone}
+            title={
+              search
                 ? "No announcements match your search."
                 : page > 1
                   ? "No more announcements."
-                  : "No announcements yet."}
-            </p>
-          </CardContent>
+                  : "No announcements yet."
+            }
+            description={
+              !search && page === 1
+                ? "Post your first update so residents stay in the loop."
+                : undefined
+            }
+            action={
+              !search && page === 1 ? (
+                <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
+                  <Plus className="h-4 w-4" />
+                  New announcement
+                </Button>
+              ) : undefined
+            }
+          />
         </Card>
       ) : (
         <div className="space-y-3">
@@ -298,19 +310,18 @@ function NewAnnouncementDialog({
       <form onSubmit={submit} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="announcement-title">Title</Label>
-          <input
+          <Input
             id="announcement-title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
             maxLength={160}
             placeholder="e.g. Water supply maintenance on Sunday"
-            className={inputClass}
           />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="announcement-body">Message</Label>
-          <textarea
+          <Textarea
             id="announcement-body"
             value={body}
             onChange={(e) => setBody(e.target.value)}
@@ -318,29 +329,16 @@ function NewAnnouncementDialog({
             maxLength={4000}
             rows={6}
             placeholder="Share the details…"
-            className={inputClass}
           />
         </div>
 
         <div className="space-y-2">
           <Label>Audience</Label>
-          <div className="flex flex-wrap gap-2">
-            {AUDIENCE_TABS.map((t) => (
-              <button
-                key={t.value}
-                type="button"
-                onClick={() => setAudienceType(t.value)}
-                className={cn(
-                  "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                  audienceType === t.value
-                    ? "bg-brand text-brand-foreground"
-                    : "bg-muted text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          <FilterPills
+            value={audienceType}
+            onChange={setAudienceType}
+            items={AUDIENCE_TABS}
+          />
 
           {audienceType === "ALL" && (
             <p className="text-xs text-muted-foreground">
@@ -360,13 +358,12 @@ function NewAnnouncementDialog({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="segment-occupation">Occupation</Label>
-                <select
+                <Select
                   id="segment-occupation"
                   value={occupation}
                   onChange={(e) =>
                     setOccupation(e.target.value as "" | OccupationType)
                   }
-                  className={inputClass}
                   disabled={busy}
                 >
                   <option value="">Any</option>
@@ -375,15 +372,14 @@ function NewAnnouncementDialog({
                       {occupationLabel(o)}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="segment-building">Building</Label>
-                <select
+                <Select
                   id="segment-building"
                   value={buildingId}
                   onChange={(e) => setBuildingId(e.target.value)}
-                  className={inputClass}
                   disabled={busy}
                 >
                   <option value="">Any</option>
@@ -392,7 +388,7 @@ function NewAnnouncementDialog({
                       {b.name}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <p className="text-xs text-muted-foreground sm:col-span-2">
                 Sends to active residents matching the chosen filters.
@@ -405,7 +401,7 @@ function NewAnnouncementDialog({
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={!canSubmit}>
+          <Button type="submit" loading={busy} disabled={!canSubmit}>
             {busy ? "Posting…" : "Post"}
           </Button>
         </div>
@@ -490,11 +486,10 @@ function ResidentMultiSelect({
         </div>
       )}
 
-      <input
+      <Input
         value={searchInput}
         onChange={(e) => setSearchInput(e.target.value)}
         placeholder="Search residents by name or phone…"
-        className={inputClass}
         disabled={disabled}
       />
 

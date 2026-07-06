@@ -16,14 +16,14 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toMessage } from "@/lib/utils";
-
-const inputClass =
-  "flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
 
 /**
  * Owner PG chooser. Lives OUTSIDE the (app) shell — an owner here has the global
@@ -80,46 +80,43 @@ export default function PgsPage() {
 
   if (loading || !user || !isOwner) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
+      <div className="flex min-h-dvh items-center justify-center text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-muted">
-      <header className="flex h-16 items-center justify-between border-b border-border bg-card px-5">
-        <div className="flex items-center gap-2">
-          <Building2 className="h-5 w-5 text-brand" />
-          <span className="font-semibold">Your PGs</span>
+    <div className="min-h-dvh bg-muted">
+      <header className="sticky top-0 z-10 flex h-16 items-center justify-between gap-2 border-b border-border bg-card/95 px-4 backdrop-blur sm:px-5">
+        <div className="flex min-w-0 items-center gap-2">
+          <Building2 className="h-5 w-5 shrink-0 text-brand" />
+          <span className="truncate font-semibold">Your PGs</span>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={() => setChangingPassword(true)}>
             <KeyRound className="h-4 w-4" />
-            Change password
+            <span className="hidden sm:inline">Change password</span>
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setConfirmingLogout(true)}>
             <LogOut className="h-4 w-4" />
-            Sign out
+            <span className="hidden sm:inline">Sign out</span>
           </Button>
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl p-5 md:p-8">
-        <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Choose a PG to manage
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Open one of your properties, or add a new one.
-            </p>
-          </div>
-          <Button onClick={() => setCreating(true)}>
-            <Plus className="h-4 w-4" />
-            Add PG
-          </Button>
-        </div>
+      <main className="mx-auto max-w-5xl p-4 sm:p-6 md:p-8">
+        <PageHeader
+          className="mb-6"
+          title="Choose a PG to manage"
+          description="Open one of your properties, or add a new one."
+          actions={
+            <Button onClick={() => setCreating(true)}>
+              <Plus className="h-4 w-4" />
+              Add PG
+            </Button>
+          }
+        />
 
         {pgs === null ? (
           loadFailed ? (
@@ -127,26 +124,29 @@ export default function PgsPage() {
               Couldn&apos;t load your PGs — try refreshing.
             </p>
           ) : (
-            <div className="h-40 animate-pulse rounded bg-card" />
+            <Skeleton className="h-40 bg-card" />
           )
         ) : pgs.length === 0 ? (
           <Card>
-            <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-              <Building2 className="h-8 w-8 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
-                You don&apos;t own any PGs yet. Add your first one to get
-                started.
-              </p>
-              <Button onClick={() => setCreating(true)}>
-                <Plus className="h-4 w-4" />
-                Add PG
-              </Button>
-            </CardContent>
+            <EmptyState
+              icon={Building2}
+              title="You don't own any PGs yet"
+              description="Add your first one to get started."
+              action={
+                <Button onClick={() => setCreating(true)}>
+                  <Plus className="h-4 w-4" />
+                  Add PG
+                </Button>
+              }
+            />
           </Card>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {pgs.map((pg) => (
-              <Card key={pg.id} className="overflow-hidden">
+              <Card
+                key={pg.id}
+                className="overflow-hidden transition-shadow hover:shadow-md"
+              >
                 <CardContent className="flex flex-col gap-3 p-5">
                   <div className="flex items-center gap-3">
                     {pg.logoUrl ? (
@@ -179,11 +179,9 @@ export default function PgsPage() {
                   <Button
                     className="mt-1 w-full"
                     onClick={() => enter(pg.id)}
+                    loading={entering === pg.id}
                     disabled={entering !== null}
                   >
-                    {entering === pg.id && (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    )}
                     Open
                   </Button>
                 </CardContent>
@@ -295,11 +293,10 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="cpd-curr">Current password</Label>
-            <input
+            <Input
               id="cpd-curr"
               type="password"
               autoComplete="current-password"
-              className={inputClass}
               value={current}
               onChange={(e) => setCurrent(e.target.value)}
               placeholder="••••••••"
@@ -307,11 +304,10 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="cpd-new">New password</Label>
-            <input
+            <Input
               id="cpd-new"
               type="password"
               autoComplete="new-password"
-              className={inputClass}
               value={next}
               onChange={(e) => setNext(e.target.value)}
               placeholder="••••••••"
@@ -319,11 +315,10 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="cpd-confirm">Confirm new password</Label>
-            <input
+            <Input
               id="cpd-confirm"
               type="password"
               autoComplete="new-password"
-              className={inputClass}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               placeholder="••••••••"
@@ -336,8 +331,7 @@ function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={busy || !valid}>
-              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            <Button type="submit" loading={busy} disabled={!valid}>
               {busy ? "Saving…" : "Update password"}
             </Button>
           </div>
@@ -424,7 +418,8 @@ function CreatePgDialog({
             <Input
               value={accentColor}
               onChange={(e) => setAccentColor(e.target.value)}
-              className={inputClass}
+              className="max-w-40 font-mono"
+              aria-label="Accent colour hex"
             />
           </div>
         </div>
@@ -433,8 +428,7 @@ function CreatePgDialog({
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={submitting}>
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+          <Button type="submit" loading={submitting}>
             Create PG
           </Button>
         </div>

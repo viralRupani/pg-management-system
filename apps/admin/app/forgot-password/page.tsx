@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, Loader2 } from "lucide-react";
+import { Building2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted px-4">
+    <div className="flex min-h-dvh items-center justify-center bg-muted px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand text-brand-foreground">
@@ -76,8 +76,7 @@ export default function ForgotPasswordPage() {
                   />
                 </div>
 
-                <Button type="submit" className="w-full" disabled={submitting}>
-                  {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                <Button type="submit" className="w-full" loading={submitting}>
                   Send reset link
                 </Button>
 

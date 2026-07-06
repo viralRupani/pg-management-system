@@ -1,13 +1,16 @@
 "use client";
 
 import type { ManagerSummary } from "@pg/shared";
-import { Loader2, ShieldOff, UserCog, UserPlus } from "lucide-react";
+import { ShieldOff, UserCog, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { formatDate, toMessage } from "@/lib/utils";
@@ -40,18 +43,16 @@ export default function ManagersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Managers</h1>
-          <p className="text-sm text-muted-foreground">
-            People who can manage this PG alongside you.
-          </p>
-        </div>
-        <Button onClick={() => setAdding(true)}>
-          <UserPlus className="h-4 w-4" />
-          Add manager
-        </Button>
-      </div>
+      <PageHeader
+        title="Managers"
+        description="People who can manage this PG alongside you."
+        actions={
+          <Button onClick={() => setAdding(true)}>
+            <UserPlus className="h-4 w-4" />
+            Add manager
+          </Button>
+        }
+      />
 
       {managers === null ? (
         loadFailed ? (
@@ -59,16 +60,21 @@ export default function ManagersPage() {
             Couldn&apos;t load managers — try refreshing.
           </p>
         ) : (
-          <div className="h-40 animate-pulse rounded bg-muted" />
+          <Skeleton className="h-40" />
         )
       ) : managers.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-            <UserCog className="h-8 w-8 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">
-              No managers yet. Add one to share the day-to-day work.
-            </p>
-          </CardContent>
+          <EmptyState
+            icon={UserCog}
+            title="No managers yet"
+            description="Add one to share the day-to-day work."
+            action={
+              <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+                <UserPlus className="h-4 w-4" />
+                Add manager
+              </Button>
+            }
+          />
         </Card>
       ) : (
         <Card>
@@ -227,8 +233,7 @@ function AddManagerDialog({
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={submitting}>
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+          <Button type="submit" loading={submitting}>
             Add manager
           </Button>
         </div>
@@ -274,8 +279,7 @@ function DeactivateDialog({
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="danger" onClick={confirm} disabled={submitting}>
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+          <Button variant="danger" onClick={confirm} loading={submitting}>
             Deactivate
           </Button>
         </div>

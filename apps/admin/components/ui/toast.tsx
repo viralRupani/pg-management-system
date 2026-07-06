@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
@@ -8,11 +8,10 @@ import { cn } from "@/lib/utils";
  * Hand-rolled toast (no external lib, matches the dialog/button primitives).
  * Floating stack in the top-right; toasts auto-dismiss after AUTO_DISMISS_MS and
  * are also dismissable via the X. z-[60] keeps them above the dialog backdrop
- * (z-50) so failures show over open modals. Errors only for now — `tone` is kept
- * internal so a future "success" is a one-line addition.
+ * (z-50) so failures show over open modals.
  */
 
-type ToastTone = "error";
+type ToastTone = "error" | "success";
 
 interface ToastItem {
   id: string;
@@ -49,7 +48,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="pointer-events-none fixed right-4 top-4 z-[60] flex w-full max-w-sm flex-col gap-2">
+      <div className="pointer-events-none fixed right-4 top-4 z-[60] flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2">
         {toasts.map((t) => (
           <ToastCard key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />
         ))}
@@ -65,15 +64,17 @@ function ToastCard({
   toast: ToastItem;
   onDismiss: () => void;
 }) {
+  const error = toast.tone === "error";
+  const Icon = error ? AlertCircle : CheckCircle2;
   return (
     <div
       role="alert"
       className={cn(
-        "pointer-events-auto flex items-start gap-3 rounded-lg border bg-card p-3 text-sm shadow-lg",
-        "border-danger/30 text-danger",
+        "pointer-events-auto flex items-start gap-3 rounded-lg border bg-card p-3 text-sm shadow-lg animate-slide-in-right",
+        error ? "border-danger/30 text-danger" : "border-success/30 text-success",
       )}
     >
-      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+      <Icon className="mt-0.5 h-4 w-4 shrink-0" />
       <span className="flex-1 text-card-foreground">{toast.message}</span>
       <button
         type="button"
@@ -87,14 +88,20 @@ function ToastCard({
   );
 }
 
-export function useToast(): { error: (message: string) => void } {
+export function useToast(): {
+  error: (message: string) => void;
+  success: (message: string) => void;
+} {
   const ctx = React.useContext(ToastContext);
   if (!ctx) {
     throw new Error("useToast must be used within a <ToastProvider>");
   }
   // Stable reference (ctx.show is stable) so `toast` is dependency-array-safe.
   return React.useMemo(
-    () => ({ error: (message: string) => ctx.show(message, "error") }),
+    () => ({
+      error: (message: string) => ctx.show(message, "error"),
+      success: (message: string) => ctx.show(message, "success"),
+    }),
     [ctx.show],
   );
 }

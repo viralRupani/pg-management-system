@@ -11,15 +11,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/input";
+import { Input, Label } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Select } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { cn, toMessage } from "@/lib/utils";
 
 /* ---------------------------------------------------------------- constants */
-
-const inputClass =
-  "flex w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
 
 const MEALS: MealType[] = [
   MealType.BREAKFAST,
@@ -184,9 +185,9 @@ export default function MenuPage() {
           </p>
         ) : (
           <>
-            <div className="h-8 w-48 animate-pulse rounded bg-muted" />
-            <div className="h-48 w-full animate-pulse rounded bg-muted" />
-            <div className="h-64 w-full animate-pulse rounded bg-muted" />
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-48 w-full" />
+            <Skeleton className="h-64 w-full" />
           </>
         )}
       </div>
@@ -200,37 +201,33 @@ export default function MenuPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Menu</h1>
-        <p className="text-sm text-muted-foreground">
-          Define a repeating weekly cycle. Residents see their dates
-          materialized from this template automatically.
-        </p>
-      </div>
+      <PageHeader
+        title="Menu"
+        description="Define a repeating weekly cycle. Residents see their dates materialized from this template automatically."
+      />
 
       {/* ── Cycle settings ─────────────────────────────────────────────── */}
       <Card>
         <CardContent className="space-y-4 pt-5">
           <h2 className="text-sm font-semibold">Cycle settings</h2>
           <div className="flex flex-wrap items-end gap-4">
-            <div className="space-y-1.5">
+            <div className="w-full space-y-1.5 sm:w-36">
               <Label htmlFor="cycle-len">Cycle length</Label>
-              <select
+              <Select
                 id="cycle-len"
                 value={draftCycleLen}
                 onChange={(e) =>
                   setDraftCycleLen(Number(e.target.value) as 1 | 2 | 3)
                 }
-                className={cn(inputClass, "w-36")}
               >
                 <option value={1}>1 week</option>
                 <option value={2}>2 weeks</option>
                 <option value={3}>3 weeks</option>
-              </select>
+              </Select>
             </div>
-            <div className="space-y-1.5">
+            <div className="w-full space-y-1.5 sm:w-44">
               <Label htmlFor="cycle-start">Cycle starts (Monday)</Label>
-              <input
+              <Input
                 id="cycle-start"
                 type="date"
                 value={draftStart}
@@ -242,10 +239,9 @@ export default function MenuPage() {
                     setDraftStart(ymd(snapped));
                   }
                 }}
-                className={cn(inputClass, "w-44")}
               />
             </div>
-            <Button onClick={saveConfig} disabled={configBusy}>
+            <Button onClick={saveConfig} loading={configBusy}>
               {configBusy ? "Saving…" : "Save settings"}
             </Button>
           </div>
@@ -268,14 +264,16 @@ export default function MenuPage() {
       </Card>
 
       {/* ── Week tabs ───────────────────────────────────────────────────── */}
-      <div className="-mb-px flex gap-1 border-b border-border">
+      <div className="-mb-px flex gap-1 overflow-x-auto border-b border-border">
         {weekTabs.map((w) => (
           <button
             key={w}
             type="button"
+            role="tab"
+            aria-selected={activeWeek === w}
             onClick={() => setActiveWeek(w)}
             className={cn(
-              "border-b-2 px-4 py-2 text-sm font-medium transition-colors",
+              "shrink-0 border-b-2 px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
               activeWeek === w
                 ? "border-brand text-brand"
                 : "border-transparent text-muted-foreground hover:text-foreground",
@@ -350,7 +348,7 @@ export default function MenuPage() {
                               onClick={() =>
                                 handleDeleteSlot(activeWeek, dow, meal)
                               }
-                              className="absolute right-1 top-1 hidden items-center justify-center rounded p-0.5 text-muted-foreground hover:bg-danger/10 hover:text-danger group-hover:flex"
+                              className="absolute right-1 top-1 flex items-center justify-center rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-danger/10 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100"
                               title="Delete slot"
                             >
                               <Trash2 className="h-3 w-3" />
@@ -433,7 +431,7 @@ function EditSlotDialog({
       <form onSubmit={submit} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="slot-items">Items</Label>
-          <textarea
+          <Textarea
             id="slot-items"
             value={value}
             onChange={(e) => setValue(e.target.value)}
@@ -441,7 +439,6 @@ function EditSlotDialog({
             maxLength={1000}
             rows={4}
             placeholder="e.g. Poha, Tea, Banana"
-            className={inputClass}
           />
           <p className="text-xs text-muted-foreground">
             Comma-separated dishes. Saving replaces what&apos;s currently set.
@@ -451,7 +448,11 @@ function EditSlotDialog({
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={busy || value.trim() === ""}>
+          <Button
+            type="submit"
+            loading={busy}
+            disabled={value.trim() === ""}
+          >
             {busy ? "Saving…" : "Save"}
           </Button>
         </div>

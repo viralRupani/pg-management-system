@@ -11,6 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -24,22 +26,16 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground">
-          White-labeling for your PG — the name, accent colour, and logo your
-          residents and staff see.
-        </p>
-      </div>
+      <PageHeader
+        title="Settings"
+        description="White-labeling for your PG — the name, accent colour, and logo your residents and staff see."
+      />
 
       {branding === null ? (
         <Card>
           <CardContent className="space-y-3 pt-6">
             {Array.from({ length: 3 }).map((_, i) => (
-              <span
-                key={i}
-                className="block h-9 w-full animate-pulse rounded bg-muted"
-              />
+              <Skeleton key={i} className="h-9 w-full" />
             ))}
           </CardContent>
         </Card>
@@ -168,7 +164,8 @@ function IdentityCard({ onSaved }: { onSaved: () => Promise<void> | void }) {
           <div className="flex items-center gap-3">
             <Button
               type="submit"
-              disabled={busy || !dirty || !nameValid || !accentValid}
+              loading={busy}
+              disabled={!dirty || !nameValid || !accentValid}
             >
               {busy ? "Saving…" : "Save changes"}
             </Button>
@@ -292,8 +289,8 @@ function PgCodeCard({ onSaved }: { onSaved: () => Promise<void> | void }) {
 
           <div className="space-y-1.5">
             <Label htmlFor="pg-code">PG code</Label>
-            <div className="flex items-start gap-2">
-              <div className="flex-1 space-y-1.5">
+            <div className="flex flex-wrap items-start gap-2">
+              <div className="min-w-48 flex-1 space-y-1.5">
                 <Input
                   id="pg-code"
                   value={slug}
@@ -449,7 +446,7 @@ function UpiQrCard({
           Residents see this QR code on the payment screen so they know where to
           send money. Upload your UPI QR code screenshot or the QR from your UPI app.
         </p>
-        <div className="flex items-start gap-4">
+        <div className="flex flex-col items-start gap-4 sm:flex-row">
           <div className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted">
             {shown ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -480,19 +477,15 @@ function UpiQrCard({
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           {upiQrUrl && !file && (
-            <Button
-              variant="danger"
-              onClick={remove}
-              disabled={removing}
-            >
+            <Button variant="danger" onClick={remove} loading={removing}>
               {removing ? "Removing…" : "Remove QR code"}
             </Button>
           )}
           <div className="ml-auto">
-            <Button onClick={upload} disabled={!file || busy}>
-              <Upload className="h-4 w-4" />
+            <Button onClick={upload} loading={busy} disabled={!file}>
+              {!busy && <Upload className="h-4 w-4" />}
               {busy ? "Uploading…" : "Upload QR code"}
             </Button>
           </div>
@@ -587,8 +580,7 @@ function ChangePasswordCard() {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <Button type="submit" disabled={busy || !valid}>
-              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            <Button type="submit" loading={busy} disabled={!valid}>
               {busy ? "Saving…" : "Update password"}
             </Button>
             {saved && (
@@ -716,8 +708,8 @@ function LogoCard({
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={upload} disabled={!file || busy}>
-            <Upload className="h-4 w-4" />
+          <Button onClick={upload} loading={busy} disabled={!file}>
+            {!busy && <Upload className="h-4 w-4" />}
             {busy ? "Uploading…" : "Upload logo"}
           </Button>
         </div>

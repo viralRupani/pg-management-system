@@ -14,12 +14,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Input, inputClass } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { ListSkeleton, Skeleton } from "@/components/ui/skeleton";
+import { FilterPills } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
 import { api, currentUser } from "@/lib/api";
 import { cn, formatDate, toMessage } from "@/lib/utils";
-
-const inputClass =
-  "flex w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
 
 const statusTone = (s: ComplaintStatus) =>
   s === "OPEN" ? "danger" : s === "IN_PROGRESS" ? "warning" : "success";
@@ -38,7 +40,7 @@ const FILTERS: { value: Filter; label: string }[] = [
 
 export default function ComplaintsPage() {
   return (
-    <Suspense fallback={<div className="h-40 animate-pulse rounded bg-muted" />}>
+    <Suspense fallback={<Skeleton className="h-40" />}>
       <ComplaintsRouter />
     </Suspense>
   );
@@ -103,35 +105,17 @@ function ComplaintsList({ initialResidentId }: { initialResidentId?: string }) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Complaints</h1>
-        <p className="text-sm text-muted-foreground">
-          Review and resolve what residents have raised.
-        </p>
-      </div>
+      <PageHeader
+        title="Complaints"
+        description="Review and resolve what residents have raised."
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         <ResidentCombobox
           initialResidentId={initialResidentId}
           onChange={changeResident}
         />
-        <div className="flex flex-wrap gap-2">
-          {FILTERS.map((f) => (
-            <button
-              key={f.value}
-              type="button"
-              onClick={() => changeFilter(f.value)}
-              className={cn(
-                "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                filter === f.value
-                  ? "bg-brand text-brand-foreground"
-                  : "bg-muted text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+        <FilterPills value={filter} onChange={changeFilter} items={FILTERS} />
       </div>
 
       <Card>
@@ -295,9 +279,9 @@ function ResidentCombobox({
   };
 
   return (
-    <div ref={containerRef} className="relative w-64">
+    <div ref={containerRef} className="relative w-full sm:w-64">
       <div className="relative">
-        <input
+        <Input
           value={inputValue}
           onChange={(e) => {
             setSelectedName(null);
@@ -305,7 +289,7 @@ function ResidentCombobox({
           }}
           onFocus={() => { if (results.length > 0) setOpen(true); }}
           placeholder="Search resident…"
-          className={cn(inputClass, selectedName ? "pr-8" : "")}
+          className={selectedName ? "pr-8" : undefined}
           autoComplete="off"
         />
         {selectedName && (
@@ -326,7 +310,7 @@ function ResidentCombobox({
       </div>
 
       {open && results.length > 0 && (
-        <ul className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-border bg-card shadow-md">
+        <ul className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-border bg-card shadow-lg animate-pop-in">
           {results.map((r) => (
             <li key={r.id}>
               <button
@@ -469,7 +453,7 @@ function ComplaintDetail({ id }: { id: string }) {
     return (
       <div className="space-y-4">
         <BackLink />
-        <div className="h-40 animate-pulse rounded bg-muted" />
+        <Skeleton className="h-40" />
       </div>
     );
   }
@@ -657,8 +641,8 @@ function AddNoteForm({
         className={cn(inputClass, "resize-none overflow-y-auto")}
       />
       <div className="flex justify-end">
-        <Button type="submit" size="sm" disabled={busy || note.trim() === ""}>
-          <Send className="h-4 w-4" />
+        <Button type="submit" size="sm" loading={busy} disabled={note.trim() === ""}>
+          {!busy && <Send className="h-4 w-4" />}
           {busy ? "Sending…" : "Send"}
         </Button>
       </div>
@@ -714,7 +698,7 @@ function PhotoDialog({
           className="mx-auto max-h-[70vh] w-auto rounded-md border border-border"
         />
       ) : (
-        <div className="h-64 animate-pulse rounded-md bg-muted" />
+        <Skeleton className="h-64" />
       )}
     </Dialog>
   );
@@ -734,19 +718,7 @@ function BackLink() {
   );
 }
 
-function ListSkeleton() {
-  return (
-    <div className="space-y-3 py-1">
-      {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="h-12 animate-pulse rounded bg-muted" />
-      ))}
-    </div>
-  );
-}
-
 function EmptyRow({ text }: { text: string }) {
-  return (
-    <p className="py-8 text-center text-sm text-muted-foreground">{text}</p>
-  );
+  return <EmptyState compact title={text} className="py-8" />;
 }
 

@@ -13,7 +13,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Select } from "@/components/ui/select";
+import { ListSkeleton, Skeleton } from "@/components/ui/skeleton";
+import { FilterPills, Tabs } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { cn, formatDate, formatPaise, toMessage } from "@/lib/utils";
@@ -48,9 +54,7 @@ const INVOICES_PAGE_SIZE = 10;
 
 export default function RentPage() {
   return (
-    <Suspense
-      fallback={<div className="h-40 animate-pulse rounded bg-muted" />}
-    >
+    <Suspense fallback={<Skeleton className="h-40" />}>
       <RentPageInner />
     </Suspense>
   );
@@ -154,45 +158,28 @@ function RentPageInner() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Rent</h1>
-          <p className="text-sm text-muted-foreground">
-            Review payment submissions and manage monthly invoices.
-          </p>
-        </div>
-        {tab === "invoices" && (
-          <Button size="sm" onClick={() => setGenerating(true)}>
-            <Plus className="h-4 w-4" />
-            Generate invoices
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        title="Rent"
+        description="Review payment submissions and manage monthly invoices."
+        actions={
+          tab === "invoices" ? (
+            <Button size="sm" onClick={() => setGenerating(true)}>
+              <Plus className="h-4 w-4" />
+              Generate invoices
+            </Button>
+          ) : undefined
+        }
+      />
 
-      {/* Tabs */}
-      <div className="inline-flex rounded-md border border-border bg-card p-0.5">
-        {(
-          [
-            ["payments", "Payments"],
-            ["invoices", "Invoices"],
-            ["schedule", "Schedule"],
-          ] as [Tab, string][]
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setTab(value)}
-            className={cn(
-              "rounded px-4 py-1.5 text-sm font-medium transition-colors",
-              tab === value
-                ? "bg-brand text-brand-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        items={[
+          { value: "payments", label: "Payments" },
+          { value: "invoices", label: "Invoices" },
+          { value: "schedule", label: "Schedule" },
+        ]}
+      />
 
       {tab === "payments" ? (
         <PaymentsTab
@@ -255,23 +242,11 @@ function PaymentsTab({
   const hasRows = payments !== null && payments.length > 0;
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {PAYMENT_FILTERS.map((f) => (
-          <button
-            key={f.value}
-            type="button"
-            onClick={() => onFilter(f.value)}
-            className={cn(
-              "rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors",
-              statusFilter === f.value
-                ? "bg-brand text-brand-foreground"
-                : "bg-muted text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      <FilterPills
+        value={statusFilter}
+        onChange={onFilter}
+        items={PAYMENT_FILTERS}
+      />
 
       <Card className="overflow-hidden">
         {hasRows && (
@@ -334,16 +309,16 @@ function PaymentsTab({
                         </p>
                       )}
                     </div>
-                    <div className="ml-auto flex items-center gap-4">
-                      <span className="w-28 text-right text-sm font-semibold tabular-nums text-foreground">
+                    <div className="ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+                      <span className="text-right text-sm font-semibold tabular-nums text-foreground sm:w-28">
                         {formatPaise(p.amountPaise)}
                       </span>
-                      <div className="flex w-24 justify-center">
+                      <div className="flex justify-center sm:w-24">
                         <Badge tone={paymentTone(p.status)}>
                           {p.status.toLowerCase()}
                         </Badge>
                       </div>
-                      <div className="flex w-[16rem] items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2 sm:w-[16rem]">
                         {p.hasScreenshot && (
                           <Button
                             variant="outline"
@@ -560,10 +535,10 @@ function InvoicesTab({
                         </p>
                       )}
                     </div>
-                    <div className="ml-auto flex items-center gap-4">
+                    <div className="ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
                       <span
                         className={cn(
-                          "w-28 text-right text-sm font-semibold tabular-nums",
+                          "text-right text-sm font-semibold tabular-nums sm:w-28",
                           deleted
                             ? "text-muted-foreground line-through"
                             : "text-foreground",
@@ -571,7 +546,7 @@ function InvoicesTab({
                       >
                         {formatPaise(inv.amountPaise)}
                       </span>
-                      <div className="flex w-24 justify-center">
+                      <div className="flex justify-center sm:w-24">
                         <Badge
                           tone={deleted ? "neutral" : invoiceTone(inv.status)}
                         >
@@ -583,7 +558,7 @@ function InvoicesTab({
                         aria-label="Delete invoice"
                         disabled={deleted}
                         onClick={() => setDeleting(inv)}
-                        className="text-muted-foreground transition-colors hover:text-danger disabled:invisible"
+                        className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40 disabled:invisible"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -682,7 +657,7 @@ function DeleteInvoiceDialog({
       <form onSubmit={submit} className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="delete-reason">Reason</Label>
-          <textarea
+          <Textarea
             id="delete-reason"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -690,7 +665,6 @@ function DeleteInvoiceDialog({
             maxLength={300}
             rows={3}
             placeholder="Why is this invoice being deleted? (shown on the invoice)"
-            className="flex w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand"
           />
         </div>
         <div className="flex justify-end gap-2">
@@ -700,7 +674,8 @@ function DeleteInvoiceDialog({
           <Button
             type="submit"
             variant="danger"
-            disabled={busy || reason.trim().length === 0}
+            loading={busy}
+            disabled={reason.trim().length === 0}
           >
             {busy ? "Deleting…" : "Delete invoice"}
           </Button>
@@ -747,7 +722,7 @@ function RejectDialog({
       >
         <div className="space-y-1.5">
           <Label htmlFor="reject-note">Reason</Label>
-          <textarea
+          <Textarea
             id="reject-note"
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -755,7 +730,6 @@ function RejectDialog({
             maxLength={500}
             rows={3}
             placeholder="Tell the resident why this was rejected…"
-            className="flex w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand"
           />
         </div>
         <div className="flex justify-end gap-2">
@@ -765,7 +739,8 @@ function RejectDialog({
           <Button
             type="submit"
             variant="danger"
-            disabled={busy || note.trim().length === 0}
+            loading={busy}
+            disabled={note.trim().length === 0}
           >
             Reject payment
           </Button>
@@ -992,7 +967,7 @@ function GenerateDialog({
           <Button type="button" variant="outline" onClick={onClose}>
             {result ? "Close" : "Cancel"}
           </Button>
-          <Button type="submit" disabled={busy || nothingSelected}>
+          <Button type="submit" loading={busy} disabled={nothingSelected}>
             {busy ? "Generating…" : "Generate"}
           </Button>
         </div>
@@ -1033,26 +1008,13 @@ function ScreenshotDialog({
           className="mx-auto max-h-[70vh] w-auto rounded-md border border-border"
         />
       ) : (
-        <div className="h-64 animate-pulse rounded-md bg-muted" />
+        <Skeleton className="h-64" />
       )}
     </Dialog>
   );
 }
 
-function ListSkeleton() {
-  return (
-    <div className="space-y-3 py-1">
-      {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="h-12 animate-pulse rounded bg-muted" />
-      ))}
-    </div>
-  );
-}
-
 // --- Automatic invoice-generation schedule ---------------------------------
-
-const selectClass =
-  "flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
 
 const ordinal = (n: number): string => {
   const s = ["th", "st", "nd", "rd"];
@@ -1124,7 +1086,7 @@ function ScheduleTab() {
   }, [load]);
 
   if (loading) {
-    return <div className="h-40 animate-pulse rounded bg-muted" />;
+    return <Skeleton className="h-40" />;
   }
 
   return (
@@ -1264,18 +1226,17 @@ function ScheduleDialog({
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="sched-day">Day of month</Label>
-            <select
+            <Select
               id="sched-day"
               value={dayOfMonth}
               onChange={(e) => setDayOfMonth(Number(e.target.value))}
-              className={selectClass}
             >
               {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
                 <option key={d} value={d}>
                   {ordinal(d)}
                 </option>
               ))}
-            </select>
+            </Select>
             <p className="text-xs text-muted-foreground">
               Capped at the 28th so every month has the date.
             </p>
@@ -1295,7 +1256,7 @@ function ScheduleDialog({
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={busy}>
+          <Button type="submit" loading={busy}>
             {busy ? "Saving…" : current ? "Save changes" : "Create schedule"}
           </Button>
         </div>
@@ -1339,7 +1300,7 @@ function DeleteScheduleDialog({
         <Button type="button" variant="outline" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="button" variant="danger" disabled={busy} onClick={submit}>
+        <Button type="button" variant="danger" loading={busy} onClick={submit}>
           {busy ? "Deleting…" : "Delete schedule"}
         </Button>
       </div>
@@ -1348,7 +1309,5 @@ function DeleteScheduleDialog({
 }
 
 function EmptyRow({ text }: { text: string }) {
-  return (
-    <p className="py-8 text-center text-sm text-muted-foreground">{text}</p>
-  );
+  return <EmptyState compact title={text} className="py-8" />;
 }

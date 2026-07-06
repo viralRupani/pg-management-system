@@ -27,13 +27,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Select } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { cn, formatPaise, toMessage } from "@/lib/utils";
-
-const inputClass =
-  "flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
 
 const bedTone = (s: BedSummary["status"]) =>
   s === "VACANT" ? "neutral" : s === "OCCUPIED" ? "success" : "warning";
@@ -224,19 +225,16 @@ function PropertyTree() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Rooms & Beds</h1>
-          <p className="text-sm text-muted-foreground">
-            Your buildings, floors, rooms, and beds. Room rent feeds monthly
-            invoicing.
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setAddBuilding(true)}>
-          <Plus className="h-4 w-4" />
-          Add building
-        </Button>
-      </div>
+      <PageHeader
+        title="Rooms & Beds"
+        description="Your buildings, floors, rooms, and beds. Room rent feeds monthly invoicing."
+        actions={
+          <Button size="sm" onClick={() => setAddBuilding(true)}>
+            <Plus className="h-4 w-4" />
+            Add building
+          </Button>
+        }
+      />
 
       {tree === null ? (
         loadFailed ? (
@@ -250,9 +248,17 @@ function PropertyTree() {
         )
       ) : tree.buildings.length === 0 ? (
         <Card>
-          <CardContent className="pt-5">
-            <EmptyRow text="No buildings yet. Add your first building to start mapping out rooms and beds." />
-          </CardContent>
+          <EmptyState
+            icon={Building2}
+            title="No buildings yet"
+            description="Add your first building to start mapping out rooms and beds."
+            action={
+              <Button variant="outline" size="sm" onClick={() => setAddBuilding(true)}>
+                <Plus className="h-4 w-4" />
+                Add building
+              </Button>
+            }
+          />
         </Card>
       ) : (
         <div className="space-y-3">
@@ -265,10 +271,11 @@ function PropertyTree() {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <button
                       type="button"
+                      aria-expanded={open}
                       onClick={() =>
                         toggle(openBuildings, setOpenBuildings, b.id)
                       }
-                      className="flex min-w-0 items-center gap-2 text-left"
+                      className="flex min-w-0 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                     >
                       {open ? (
                         <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -490,8 +497,9 @@ function FloorBlock({
       <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5">
         <button
           type="button"
+          aria-expanded={open}
           onClick={onToggle}
-          className="flex min-w-0 items-center gap-2 text-left"
+          className="flex min-w-0 items-center gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
         >
           {open ? (
             <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -949,13 +957,12 @@ function AddRoomDialog({
             />
           </Field>
           <Field label="Occupation preference (optional)" htmlFor="rm-occ">
-            <select
+            <Select
               id="rm-occ"
               value={occupationPreference}
               onChange={(e) =>
                 setOccupationPreference(e.target.value as OccupationType | "")
               }
-              className={inputClass}
             >
               <option value="">No preference</option>
               {Object.values(OccupationType).map((o) => (
@@ -963,7 +970,7 @@ function AddRoomDialog({
                   {occLabel(o)}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
         </div>
         <p className="text-xs text-muted-foreground">
@@ -1169,13 +1176,12 @@ function EditRoomDialog({
             />
           </Field>
           <Field label="Occupation preference (optional)" htmlFor="ed-occ">
-            <select
+            <Select
               id="ed-occ"
               value={occupationPreference}
               onChange={(e) =>
                 setOccupationPreference(e.target.value as OccupationType | "")
               }
-              className={inputClass}
             >
               <option value="">No preference</option>
               {Object.values(OccupationType).map((o) => (
@@ -1183,7 +1189,7 @@ function EditRoomDialog({
                   {occLabel(o)}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
         </div>
         <p className="text-xs text-muted-foreground">
@@ -1298,7 +1304,7 @@ function ConfirmDeleteDialog({
         <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
           Cancel
         </Button>
-        <Button type="button" variant="danger" disabled={busy} onClick={confirm}>
+        <Button type="button" variant="danger" loading={busy} onClick={confirm}>
           {busy ? "Deleting…" : "Delete"}
         </Button>
       </div>
@@ -1322,7 +1328,7 @@ function DialogActions({
       <Button type="button" variant="outline" onClick={onClose}>
         Cancel
       </Button>
-      <Button type="submit" disabled={busy}>
+      <Button type="submit" loading={busy}>
         {busy ? "Saving…" : submitLabel}
       </Button>
     </div>
@@ -1350,14 +1356,12 @@ function ListSkeleton() {
   return (
     <div className="space-y-3">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="h-20 animate-pulse rounded-lg bg-muted" />
+        <Skeleton key={i} className="h-20 rounded-lg" />
       ))}
     </div>
   );
 }
 
 function EmptyRow({ text }: { text: string }) {
-  return (
-    <p className="py-6 text-center text-sm text-muted-foreground">{text}</p>
-  );
+  return <EmptyState compact title={text} />;
 }

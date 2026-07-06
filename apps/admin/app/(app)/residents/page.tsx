@@ -25,7 +25,6 @@ import {
   ArrowLeft,
   ArrowRightLeft,
   BedDouble,
-  ChevronDown,
   ExternalLink,
   Eye,
   MessageSquare,
@@ -40,13 +39,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input, Label } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Select } from "@/components/ui/select";
+import { ListSkeleton, Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { cn, formatDate, formatPaise, toMessage } from "@/lib/utils";
-
-const inputClass =
-  "flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:border-brand disabled:cursor-not-allowed disabled:opacity-50";
 
 const residentTone = (s: ResidentSummary["status"]) =>
   s === "ACTIVE" ? "success" : s === "UPCOMING" ? "warning" : "neutral";
@@ -90,9 +91,7 @@ function bedLocationPath(r: {
 
 export default function ResidentsPage() {
   return (
-    <Suspense
-      fallback={<div className="h-40 animate-pulse rounded bg-muted" />}
-    >
+    <Suspense fallback={<Skeleton className="h-40" />}>
       <ResidentsRouter />
     </Suspense>
   );
@@ -178,18 +177,16 @@ function ResidentsList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Residents</h1>
-          <p className="text-sm text-muted-foreground">
-            Everyone on record at your PG.
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setRegistering(true)}>
-          <UserPlus className="h-4 w-4" />
-          Register resident
-        </Button>
-      </div>
+      <PageHeader
+        title="Residents"
+        description="Everyone on record at your PG."
+        actions={
+          <Button size="sm" onClick={() => setRegistering(true)}>
+            <UserPlus className="h-4 w-4" />
+            Register resident
+          </Button>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         <Input
@@ -199,33 +196,27 @@ function ResidentsList() {
           className="max-w-xs"
           aria-label="Search residents"
         />
-        <div className="relative w-40">
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value as StatusFilter)}
-            className={cn(inputClass, "w-full appearance-none pr-8")}
-            aria-label="Filter by status"
-          >
-            <option value="CURRENT">Active</option>
-            <option value={ResidentStatus.UPCOMING}>Upcoming</option>
-            <option value={ResidentStatus.EXITED}>Exited</option>
-            <option value="ALL">All</option>
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        </div>
-        <div className="relative w-44">
-          <select
-            value={kyc}
-            onChange={(e) => setKyc(e.target.value as KycFilter)}
-            className={cn(inputClass, "w-full appearance-none pr-8")}
-            aria-label="Filter by KYC status"
-          >
-            <option value="ALL">All KYC</option>
-            <option value="PENDING">KYC pending</option>
-            <option value="VERIFIED">KYC verified</option>
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        </div>
+        <Select
+          value={status}
+          onChange={(e) => setStatus(e.target.value as StatusFilter)}
+          className="w-40"
+          aria-label="Filter by status"
+        >
+          <option value="CURRENT">Active</option>
+          <option value={ResidentStatus.UPCOMING}>Upcoming</option>
+          <option value={ResidentStatus.EXITED}>Exited</option>
+          <option value="ALL">All</option>
+        </Select>
+        <Select
+          value={kyc}
+          onChange={(e) => setKyc(e.target.value as KycFilter)}
+          className="w-44"
+          aria-label="Filter by KYC status"
+        >
+          <option value="ALL">All KYC</option>
+          <option value="PENDING">KYC pending</option>
+          <option value="VERIFIED">KYC verified</option>
+        </Select>
         <label
           className={cn(
             "flex h-10 cursor-pointer select-none items-center gap-2 rounded-md border px-3 text-sm",
@@ -456,7 +447,7 @@ function RegisterDialog({
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" form="register-resident-form" disabled={busy}>
+          <Button type="submit" form="register-resident-form" loading={busy}>
             {busy ? "Registering…" : "Register"}
           </Button>
         </>
@@ -588,20 +579,19 @@ function RegisterDialog({
                 />
               </Field>
               <Field label="Occupation" htmlFor="r-occ">
-                <select
+                <Select
                   id="r-occ"
                   value={occupationType}
                   onChange={(e) =>
                     setOccupationType(e.target.value as OccupationType)
                   }
-                  className={inputClass}
                 >
                   {Object.values(OccupationType).map((o) => (
                     <option key={o} value={o}>
                       {o.charAt(0) + o.slice(1).toLowerCase()}
                     </option>
                   ))}
-                </select>
+                </Select>
               </Field>
               <Field label="Native place (optional)" htmlFor="r-native">
                 <Input
@@ -631,14 +621,13 @@ function RegisterDialog({
                 />
               </Field>
               <Field label="Relation" htmlFor="r-ec-rel">
-                <select
+                <Select
                   id="r-ec-rel"
                   value={ecRelation}
                   onChange={(e) =>
                     setEcRelation(e.target.value as EmergencyRelation | "")
                   }
                   required={ecTouched}
-                  className={inputClass}
                 >
                   <option value="">Select relation…</option>
                   {Object.values(EmergencyRelation).map((r) => (
@@ -646,7 +635,7 @@ function RegisterDialog({
                       {r.charAt(0) + r.slice(1).toLowerCase()}
                     </option>
                   ))}
-                </select>
+                </Select>
               </Field>
               <Field label="Contact phone" htmlFor="r-ec-phone">
                 <Input
@@ -922,7 +911,7 @@ function ResidentDetail({ id }: { id: string }) {
     return (
       <div className="space-y-4">
         <BackLink />
-        <div className="h-40 animate-pulse rounded bg-muted" />
+        <Skeleton className="h-40" />
       </div>
     );
   }
@@ -1719,14 +1708,13 @@ function AllocateDialog({
         )}
 
         <Field label="Suited for" htmlFor="alloc-occ">
-          <select
+          <Select
             id="alloc-occ"
             value={occFilter}
             onChange={(e) => {
               setOccFilter(e.target.value as OccupationType | "ALL");
               setSelectedBedId(null);
             }}
-            className={inputClass}
           >
             <option value="ALL">All beds</option>
             {Object.values(OccupationType).map((o) => (
@@ -1734,7 +1722,7 @@ function AllocateDialog({
                 {o.charAt(0) + o.slice(1).toLowerCase()}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
 
         {beds === null ? (
@@ -2289,15 +2277,14 @@ function AddChargeDialog({
           />
         </Field>
         <Field label="Frequency" htmlFor="charge-frequency">
-          <select
+          <Select
             id="charge-frequency"
-            className={inputClass}
             value={frequency}
             onChange={(e) => setFrequency(e.target.value as ChargeFrequency)}
           >
             <option value={ChargeFrequency.ONE_TIME}>One-time</option>
             <option value={ChargeFrequency.MONTHLY}>Every month</option>
-          </select>
+          </Select>
         </Field>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>
@@ -2495,7 +2482,7 @@ function ExitDialog({
               </div>
               {rows.map((row, i) => (
                 <div key={i} className="flex gap-2">
-                  <input
+                  <Input
                     value={row.reason}
                     onChange={(e) =>
                       setRows((r) =>
@@ -2505,9 +2492,9 @@ function ExitDialog({
                       )
                     }
                     placeholder="Reason"
-                    className={inputClass}
+                    aria-label="Deduction reason"
                   />
-                  <input
+                  <Input
                     type="number"
                     min={0}
                     value={row.rupees}
@@ -2519,7 +2506,8 @@ function ExitDialog({
                       )
                     }
                     placeholder="₹"
-                    className={cn(inputClass, "w-28")}
+                    aria-label="Deduction amount in rupees"
+                    className="w-28"
                   />
                   <Button
                     type="button"
@@ -2702,13 +2690,13 @@ function DocViewerDialog({
         {isPending && confirm === "reupload" && (
           <div className="space-y-3 rounded-lg border border-border bg-muted/50 p-4">
             <p className="text-sm font-medium">Ask for re-upload</p>
-            <textarea
+            <Textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Tell the resident what to fix so they can re-upload…"
               rows={3}
               maxLength={500}
-              className={inputClass}
+              aria-label="Re-upload note for the resident"
             />
             <div className="flex gap-2">
               <Button
@@ -2765,18 +2753,6 @@ function BackLink() {
   );
 }
 
-function ListSkeleton() {
-  return (
-    <div className="space-y-3 py-1">
-      {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="h-12 animate-pulse rounded bg-muted" />
-      ))}
-    </div>
-  );
-}
-
 function EmptyRow({ text }: { text: string }) {
-  return (
-    <p className="py-8 text-center text-sm text-muted-foreground">{text}</p>
-  );
+  return <EmptyState compact title={text} className="py-8" />;
 }

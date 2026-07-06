@@ -10,12 +10,14 @@ import {
   LogOut,
   type LucideIcon,
   Megaphone,
+  Menu,
   Repeat,
   Settings,
   ShieldCheck,
   UsersRound,
   UtensilsCrossed,
   Wallet,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -64,6 +66,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pgName = branding?.name ?? "Basera";
   const nav = NAV.filter((item) => !item.ownerOnly || isOwner);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Reflect the current PG's name in the browser tab. Keyed on `pathname` too:
   // App Router can reset document.title to the root metadata on client-side
@@ -72,92 +75,208 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (branding?.name) document.title = `${branding.name} · Basera`;
   }, [branding?.name, pathname]);
 
+  // The drawer is navigation chrome — close it whenever the route changes.
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
+
+  // Escape closes the drawer; body scroll locks while it's open.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawerOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [drawerOpen]);
+
   function switchPg() {
     exitPg();
     router.replace("/pgs");
   }
 
-  return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Sidebar */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-card md:flex overflow-y-auto">
-        <div className="flex h-16 items-center gap-2.5 border-b border-border px-5">
-          {branding?.logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={branding.logoUrl}
-              alt={pgName}
-              className="h-8 w-8 rounded-md object-cover"
-            />
-          ) : (
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-brand text-brand-foreground">
-              <Building2 className="h-4 w-4" />
-            </div>
-          )}
-          <span className="truncate font-semibold">{pgName}</span>
+  const brandMark = (
+    <div className="flex min-w-0 items-center gap-2.5">
+      {branding?.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={branding.logoUrl}
+          alt={pgName}
+          className="h-8 w-8 shrink-0 rounded-md object-cover"
+        />
+      ) : (
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand text-brand-foreground">
+          <Building2 className="h-4 w-4" />
         </div>
+      )}
+      <span className="truncate font-semibold tracking-tight">{pgName}</span>
+    </div>
+  );
 
-        <nav className="flex-1 space-y-0.5 p-3">
-          {nav.map((item) => {
-            const active = pathname.startsWith(item.href);
-            const Icon = item.icon;
-            if (!item.ready) {
-              return (
-                <div
-                  key={item.href}
-                  className="flex cursor-not-allowed items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground/50"
-                  title="Coming soon"
-                >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                  <span className="ml-auto text-[10px] uppercase tracking-wide">
-                    soon
-                  </span>
-                </div>
-              );
-            }
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-brand text-brand-foreground"
-                    : "text-foreground hover:bg-muted",
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
+  const navList = (
+    <nav aria-label="Main navigation" className="flex-1 space-y-0.5 p-3">
+      {nav.map((item) => {
+        const active = pathname.startsWith(item.href);
+        const Icon = item.icon;
+        if (!item.ready) {
+          return (
+            <div
+              key={item.href}
+              className="flex cursor-not-allowed items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground/50"
+              title="Coming soon"
+            >
+              <Icon className="h-4 w-4" />
+              {item.label}
+              <span className="ml-auto text-[10px] uppercase tracking-wide">
+                soon
+              </span>
+            </div>
+          );
+        }
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
+              active
+                ? "bg-brand/10 text-brand"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <Icon
+              className={cn(
+                "h-4 w-4 shrink-0 transition-colors",
+                active
+                  ? "text-brand"
+                  : "text-muted-foreground group-hover:text-foreground",
+              )}
+            />
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+
+  return (
+    <div className="flex h-dvh overflow-hidden">
+      {/* Static sidebar (≥ md) */}
+      <aside className="hidden w-60 shrink-0 flex-col overflow-y-auto border-r border-border bg-card md:flex lg:w-64">
+        <div className="flex h-16 shrink-0 items-center border-b border-border px-5">
+          {brandMark}
+        </div>
+        {navList}
       </aside>
+
+      {/* Slide-over drawer (< md) */}
+      {drawerOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div
+            className="absolute inset-0 bg-black/50 animate-fade-in"
+            aria-hidden
+            onClick={() => setDrawerOpen(false)}
+          />
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
+            className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col overflow-y-auto border-r border-border bg-card shadow-xl animate-slide-in-left"
+          >
+            <div className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border pl-5 pr-3">
+              {brandMark}
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Close navigation"
+                onClick={() => setDrawerOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            {navList}
+            <div className="shrink-0 space-y-1 border-t border-border p-3">
+              {isOwner && (
+                <button
+                  type="button"
+                  onClick={switchPg}
+                  className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <Repeat className="h-4 w-4" />
+                  Switch PG
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setConfirmingLogout(true)}
+                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign out
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex h-16 items-center justify-between border-b border-border bg-card px-5">
-          <div className="flex items-center gap-2 md:hidden">
-            <Building2 className="h-5 w-5 text-brand" />
-            <span className="font-semibold">{pgName}</span>
+        <header className="flex h-16 shrink-0 items-center gap-2 border-b border-border bg-card/95 px-4 backdrop-blur sm:px-5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            aria-label="Open navigation"
+            onClick={() => setDrawerOpen(true)}
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          <div className="flex min-w-0 items-center gap-2 md:hidden">
+            <span className="truncate font-semibold tracking-tight">
+              {pgName}
+            </span>
           </div>
           <div className="ml-auto flex items-center gap-1">
             {isOwner && (
-              <Button variant="ghost" size="sm" onClick={switchPg}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={switchPg}
+                className="hidden sm:inline-flex"
+              >
                 <Repeat className="h-4 w-4" />
                 Switch PG
               </Button>
             )}
             <NotificationBell />
-            <Button variant="ghost" size="sm" onClick={() => setConfirmingLogout(true)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setConfirmingLogout(true)}
+              className="hidden sm:inline-flex"
+            >
               <LogOut className="h-4 w-4" />
               Sign out
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Sign out"
+              onClick={() => setConfirmingLogout(true)}
+              className="sm:hidden"
+            >
+              <LogOut className="h-4 w-4" />
             </Button>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-5 md:p-8">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           <div className="mx-auto w-full max-w-6xl">{children}</div>
         </main>
       </div>
@@ -254,6 +373,7 @@ function NotificationBell() {
         variant="ghost"
         size="icon"
         aria-label={`Notifications${total > 0 ? ` (${total})` : ""}`}
+        aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
         <Bell className="h-4 w-4" />
@@ -265,7 +385,7 @@ function NotificationBell() {
       </Button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-lg border border-border bg-card shadow-lg">
+        <div className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-border bg-card shadow-lg animate-pop-in">
           <div className="border-b border-border px-4 py-3">
             <p className="text-sm font-semibold">Needs attention</p>
           </div>

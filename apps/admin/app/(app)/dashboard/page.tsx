@@ -22,6 +22,9 @@ import { RevenueBarChart } from "@/components/charts/revenue-bar";
 import { StatCard } from "@/components/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -83,12 +86,12 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          {branding?.name ? `Overview for ${branding.name}` : "Overview of your PG"}
-        </p>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        description={
+          branding?.name ? `Overview for ${branding.name}` : "Overview of your PG"
+        }
+      />
 
       {loadFailed && (
         <p className="text-sm text-muted-foreground">
@@ -430,11 +433,7 @@ function ChartSkeleton({ rows = 5 }: { rows?: number }) {
   return (
     <div className="space-y-2 py-2">
       {Array.from({ length: rows }).map((_, i) => (
-        <div
-          key={i}
-          className="h-8 animate-pulse rounded bg-muted"
-          style={{ width: `${60 + (i % 3) * 15}%` }}
-        />
+        <Skeleton key={i} className="h-8" style={{ width: `${60 + (i % 3) * 15}%` }} />
       ))}
     </div>
   );
@@ -444,14 +443,12 @@ function PanelSkeleton() {
   return (
     <div className="space-y-3 py-1">
       {[0, 1, 2].map((i) => (
-        <div key={i} className="h-10 animate-pulse rounded bg-muted" />
+        <Skeleton key={i} className="h-10" />
       ))}
     </div>
   );
 }
 
 function EmptyRow({ text }: { text: string }) {
-  return (
-    <p className="py-6 text-center text-sm text-muted-foreground">{text}</p>
-  );
+  return <EmptyState compact title={text} />;
 }
