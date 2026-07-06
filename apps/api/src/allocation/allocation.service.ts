@@ -367,10 +367,15 @@ export class AllocationService {
         )
         .innerJoin(users, eq(users.id, bookings.residentId))
         .where(eq(beds.status, BedStatus.RESERVED));
+      // Prefer reserved-free-after beds for short stays: their capacity would
+      // otherwise sit idle until the incoming resident's move-in, so filling
+      // them first keeps truly-vacant beds open for long-term placements. Emit
+      // reserved beds ahead of the vacant ones already in `result`.
+      const reservedBeds: EligibleBed[] = [];
       for (const r of reserved) {
         const moveInStr = istDateString(r.moveInDate);
         if (checkOut && moveInStr <= checkOut) continue; // guest must leave first
-        result.push({
+        reservedBeds.push({
           bedId: r.bedId,
           bedLabel: r.bedLabel,
           roomLabel: r.roomLabel,
@@ -383,6 +388,7 @@ export class AllocationService {
           occupantName: r.occupantName,
         });
       }
+      result.unshift(...reservedBeds);
     } else {
       // OCCUPIED beds whose resident is leaving on/before the planned move-in
       // (an unspecified exit date is included — the manager decides).

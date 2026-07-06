@@ -142,6 +142,12 @@ describe("short-term stays (e2e)", () => {
     expect(byId.get(bedVacant)).toBe("VACANT");
     expect(byId.get(bedReserved)).toBe("RESERVED_FREE_AFTER");
     expect(byId.has(bedOccupied)).toBe(false);
+    // Reserved-free-after beds are emitted before vacant ones so a short stay
+    // fills idle reserved capacity first, leaving vacant beds for long-term use.
+    const kinds = res.body.map((b: { kind: string }) => b.kind);
+    expect(kinds.indexOf("RESERVED_FREE_AFTER")).toBeLessThan(
+      kinds.indexOf("VACANT"),
+    );
   });
 
   it("eligible-beds for a long-term resident: vacant + leaving-soon before move-in", async () => {

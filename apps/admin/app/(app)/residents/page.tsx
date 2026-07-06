@@ -1627,7 +1627,10 @@ function AllocateDialog({
 
   // Filter by the room's occupation preference (null pref → "OTHER" only; "ALL"
   // → everything), then order so nearly-full rooms come first to fill rooms up
-  // faster: VACANT beds first, then ascending beds-remaining, then room/bed.
+  // faster: then ascending beds-remaining, then room/bed. The primary key
+  // depends on the resident — a short stay prefers RESERVED_FREE_AFTER beds
+  // (idle reserved capacity, freed before check-out) so truly-vacant beds stay
+  // open for long-term placements; a long-term placement prefers VACANT beds.
   const visibleBeds = useMemo(() => {
     if (!beds) return [];
     const filtered =
@@ -1639,14 +1642,18 @@ function AllocateDialog({
                 b.occupationPreference === null
               : b.occupationPreference === occFilter,
           );
+    const rank = (b: EligibleBed) =>
+      isShortStay
+        ? Number(b.kind === "RESERVED_FREE_AFTER")
+        : Number(b.kind === "VACANT");
     return [...filtered].sort(
       (a, b) =>
-        Number(b.kind === "VACANT") - Number(a.kind === "VACANT") ||
+        rank(b) - rank(a) ||
         a.bedsRemaining - b.bedsRemaining ||
         a.roomLabel.localeCompare(b.roomLabel) ||
         a.bedLabel.localeCompare(b.bedLabel),
     );
-  }, [beds, occFilter]);
+  }, [beds, occFilter, isShortStay]);
 
   const selectedBed = beds?.find((b) => b.bedId === selectedBedId) ?? null;
   // A long-term placement becomes a live allocation only on a vacant bed with a
