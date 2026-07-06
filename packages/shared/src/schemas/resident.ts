@@ -123,6 +123,9 @@ export const residentSummarySchema = z.object({
   roomLabel: z.string().nullable(),
   floorLabel: z.string().nullable(),
   buildingName: z.string().nullable(),
+  // The current room's monthly rent (what invoicing actually bills) — null
+  // when unallocated. Live, not a snapshot: reflects room-rent edits instantly.
+  currentRentPaise: z.number().int().nullable(),
   kycStatus: z.nativeEnum(KycStatus),
   // For an UPCOMING resident the bed is held via a PENDING booking (no live
   // allocation yet), so `bedLabel` is null. These surface that held bed +

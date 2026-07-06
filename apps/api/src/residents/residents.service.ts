@@ -221,6 +221,7 @@ export class ResidentsService {
         bedLabel: beds.label,
         bedId: beds.id,
         roomCapacity: rooms.capacity,
+        currentRentPaise: rooms.monthlyRentPaise,
         roomLabel: rooms.label,
         floorLabel: floors.label,
         buildingName: buildings.name,
@@ -295,6 +296,7 @@ type ResidentRow = {
   bedLabel: string | null;
   bedId: string | null;
   roomCapacity: number | null;
+  currentRentPaise: number | null;
   roomLabel: string | null;
   floorLabel: string | null;
   buildingName: string | null;
@@ -354,6 +356,7 @@ function toSummary(r: ResidentRow): ResidentSummary {
     bedLabel: r.bedLabel,
     bedId: r.bedId,
     roomCapacity: r.roomCapacity ?? null,
+    currentRentPaise: r.currentRentPaise ?? null,
     roomLabel: r.roomLabel,
     floorLabel: r.floorLabel,
     buildingName: r.buildingName,

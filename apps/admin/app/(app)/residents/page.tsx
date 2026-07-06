@@ -1022,7 +1022,7 @@ function ResidentDetail({ id }: { id: string }) {
           </div>
 
           {/* At-a-glance tiles */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <div className="rounded-lg border border-border bg-muted/30 p-3">
               <p className="text-xs font-medium text-muted-foreground">
                 Bed / Room
@@ -1038,6 +1038,24 @@ function ResidentDetail({ id }: { id: string }) {
                   : "Unallocated"}
               </p>
             </div>
+            {!isShortStay && (
+              <div className="rounded-lg border border-border bg-muted/30 p-3">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Monthly rent
+                </p>
+                <p
+                  className={cn(
+                    "mt-1 text-base font-semibold tabular-nums",
+                    resident.currentRentPaise == null &&
+                      "text-muted-foreground",
+                  )}
+                >
+                  {resident.currentRentPaise != null
+                    ? formatPaise(resident.currentRentPaise)
+                    : "Unallocated"}
+                </p>
+              </div>
+            )}
             <div className="rounded-lg border border-border bg-muted/30 p-3">
               <p className="text-xs font-medium text-muted-foreground">
                 Rent outstanding
