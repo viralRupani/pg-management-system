@@ -24,7 +24,7 @@ export default function LoginPage() {
   const [step, setStep] = useState<Step>("slug");
   const [pgCode, setPgCode] = useState("");
   const [pgName, setPgName] = useState("");
-  const [phoneE164, setPhoneE164] = useState("");
+  const [phone, setPhone] = useState("");
 
   // Already signed in (e.g. opened /login with a session) → go to the app.
   useEffect(() => {
@@ -48,8 +48,8 @@ export default function LoginPage() {
         pgCode={pgCode}
         pgName={pgName}
         onBack={() => setStep("slug")}
-        onDone={(e164) => {
-          setPhoneE164(e164);
+        onDone={(p) => {
+          setPhone(p);
           setStep("otp");
         }}
       />
@@ -59,7 +59,7 @@ export default function LoginPage() {
     <OtpStep
       pgCode={pgCode}
       pgName={pgName}
-      phone={phoneE164}
+      phone={phone}
       onVerified={(tokens) => {
         signIn(tokens);
         router.replace("/home");
@@ -146,24 +146,24 @@ function PhoneStep({
   pgCode: string;
   pgName: string;
   onBack: () => void;
-  onDone: (e164: string) => void;
+  onDone: (phone: string) => void;
 }) {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const valid = INDIAN_PHONE_REGEX.test(phone);
-  // Residents are registered with the +91 country code; OTP lookup matches the
-  // phone exactly — send the canonical +91 form, not the bare 10 digits.
-  const e164 = `+91${phone}`;
+  // Phones are stored as the bare 10 digits (no country code) — send exactly
+  // that so the OTP lookup matches the stored number. The 🇮🇳 +91 label is
+  // cosmetic.
 
   async function onSend() {
     if (!valid) return;
     setLoading(true);
     setError(null);
     try {
-      await api.auth.requestResidentOtp({ pgCode, phone: e164 });
-      onDone(e164);
+      await api.auth.requestResidentOtp({ pgCode, phone });
+      onDone(phone);
     } catch (err) {
       setError(toMessage(err, "Could not send the code. Try again."));
     } finally {

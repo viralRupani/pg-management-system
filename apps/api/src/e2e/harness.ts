@@ -181,7 +181,10 @@ export async function createHarness(): Promise<Harness> {
       pgCode: slug,
       phone,
     });
-    const code = await redis.get(`otp:${tenantId}:${phone}`);
+    // The API stores phones (and the OTP Redis key) as the bare 10 digits — the
+    // `indianPhone` schema strips any `+91` on the way in. Mirror that here so
+    // the key matches whether the caller passed a bare or `+91`-prefixed number.
+    const code = await redis.get(`otp:${tenantId}:${normalizePhone(phone)}`);
     if (!code) throw new Error(`no OTP in Redis for ${phone}`);
     const res = await req("post", "/auth/resident/otp/verify", undefined, {
       pgCode: slug,
@@ -195,7 +198,7 @@ export async function createHarness(): Promise<Harness> {
   }
 
   function getOtp(tenantId: string, phone: string): Promise<string | null> {
-    return redis.get(`otp:${tenantId}:${phone}`);
+    return redis.get(`otp:${tenantId}:${normalizePhone(phone)}`);
   }
 
   function getPwResetToken(email: string): Promise<string | null> {
@@ -225,7 +228,12 @@ export async function createHarness(): Promise<Harness> {
   };
 }
 
-/** Unique-ish phone generator for resident seeding. */
+/** Strip the optional `+91` prefix — phones are stored/keyed as bare digits. */
+function normalizePhone(phone: string): string {
+  return phone.replace(/^\+91/, "");
+}
+
+/** Unique-ish phone generator for resident seeding (bare 10 digits). */
 export function randomPhone(): string {
-  return "+9198" + String(Math.floor(10000000 + Math.random() * 80000000));
+  return "98" + String(Math.floor(10000000 + Math.random() * 80000000));
 }

@@ -472,11 +472,14 @@ function RegisterDialog({
             <Input
               id="r-phone"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) =>
+                setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))
+              }
               required
               inputMode="tel"
-              pattern="(\+91)?[6-9]\d{9}"
-              title="A valid 10-digit Indian mobile number, optionally prefixed with +91"
+              pattern="[6-9]\d{9}"
+              maxLength={10}
+              title="A valid 10-digit Indian mobile number"
               placeholder="9876543210"
             />
           </Field>

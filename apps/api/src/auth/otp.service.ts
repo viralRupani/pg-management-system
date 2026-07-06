@@ -4,7 +4,13 @@ import Redis from "ioredis";
 import { REDIS } from "../redis/redis.module";
 import { ENV, type AppEnv } from "../config/env";
 
-/** Pluggable SMS sender. Console stub for local dev; swap MSG91/Twilio later. */
+/**
+ * Pluggable SMS sender. Console stub for local dev; swap MSG91/Twilio later.
+ * NOTE: `phone` here is the bare 10-digit number (we don't store the country
+ * code — see `packages/shared/.../phone.ts`). A real provider needs E.164, so
+ * re-add `+91` at send time inside the driver — that seam is the single correct
+ * place for the country code.
+ */
 export interface SmsProvider {
   send(phone: string, message: string): Promise<void>;
 }

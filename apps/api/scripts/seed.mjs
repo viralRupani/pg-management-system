@@ -292,7 +292,7 @@ async function main() {
   console.log("Creating Viral's PG (empty)…");
   await createPG(
     "Viral's PG Homes", "viral-pg", "#6366F1",
-    "Viral Manager", "viral-manager@yopmail.com", "+919800000001",
+    "Viral Manager", "viral-manager@yopmail.com", "9800000001",
   );
   console.log("✓ Viral's PG: viral-manager@yopmail.com (empty)");
 
@@ -300,7 +300,7 @@ async function main() {
   console.log("Creating Shreyank's PG…");
   const { tenantId, mgrUserId } = await createPG(
     "Shreyank's Residency", "shreyank-pg", "#10B981",
-    "Shreyank Manager", "shreyank-manager@yopmail.com", "+919800000002",
+    "Shreyank Manager", "shreyank-manager@yopmail.com", "9800000002",
   );
 
   // Building
@@ -376,7 +376,7 @@ async function main() {
 
   for (let i = 0; i < 230; i++) {
     const userId = randomUUID();
-    const phone  = `+91800000${String(i + 1).padStart(4, "0")}`;
+    const phone  = `800000${String(i + 1).padStart(4, "0")}`;
 
     userRows.push({
       id: userId,

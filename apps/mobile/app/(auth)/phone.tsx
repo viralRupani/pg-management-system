@@ -21,20 +21,19 @@ export default function PhoneScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const valid = INDIAN_PHONE_REGEX.test(phone);
-  // Residents are registered with the +91 country code (the admin/seed
-  // convention), and OTP lookup matches the phone exactly — so send the
-  // canonical +91 form, not the bare 10 digits.
-  const e164 = `+91${phone}`;
+  // Phones are stored as the bare 10 digits (no country code) — send exactly
+  // that so the OTP lookup matches the stored number. The 🇮🇳 +91 label below
+  // is cosmetic.
 
   async function onSend() {
     if (!valid) return;
     setLoading(true);
     setError(null);
     try {
-      await api.auth.requestResidentOtp({ pgCode, phone: e164 });
+      await api.auth.requestResidentOtp({ pgCode, phone });
       router.push({
         pathname: '/(auth)/otp',
-        params: { pgCode, pgName, phone: e164 },
+        params: { pgCode, pgName, phone },
       });
     } catch (err) {
       setError(toMessage(err, 'Could not send the code. Try again.'));
