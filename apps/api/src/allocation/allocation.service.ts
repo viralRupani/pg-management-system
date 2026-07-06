@@ -35,6 +35,7 @@ import { istParts, istPeriod, istStartOfDayUtc } from "../common/ist-date";
 import { freeBed } from "../db/free-bed";
 import { isUniqueViolation } from "../db/pg-errors";
 import { prorateSegment } from "../rent/rent.proration";
+import { InvoiceScheduleService } from "../rent/invoice-schedule.service";
 
 /** Drizzle transaction handle (the arg to `db.transaction(async (tx) => …)`). */
 type Tx = Parameters<
@@ -51,7 +52,10 @@ type Tx = Parameters<
 export class AllocationService {
   private readonly logger = new Logger(AllocationService.name);
 
-  constructor(private readonly ctx: TenantContextService) {}
+  constructor(
+    private readonly ctx: TenantContextService,
+    private readonly invoiceSchedule: InvoiceScheduleService,
+  ) {}
 
   async allocate(input: AllocateBedInput): Promise<{ id: string }> {
     const tenantId = this.ctx.currentTenantId()!;
@@ -71,15 +75,18 @@ export class AllocationService {
       );
     if (!resident) throw new NotFoundException("Resident not found");
 
+    const startDate = input.startDate ? new Date(input.startDate) : new Date();
+
+    let result: { id: string };
     try {
-      return await db.transaction(async (tx) => {
+      result = await db.transaction(async (tx) => {
         const [alloc] = await tx
           .insert(allocations)
           .values({
             tenantId,
             bedId: input.bedId,
             residentId: input.residentId,
-            startDate: input.startDate ? new Date(input.startDate) : new Date(),
+            startDate,
           })
           .returning();
 
@@ -97,6 +104,23 @@ export class AllocationService {
         );
       throw err;
     }
+
+    // Live move-in after the PG's scheduled generation moment for this period has
+    // already passed → the tenant-wide run has already skipped this resident, so
+    // bill them now. Best-effort: a failure here (its own savepoint rolls back)
+    // must never fail the allocation itself.
+    try {
+      await this.invoiceSchedule.generateForResidentIfDue(
+        input.residentId,
+        startDate,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Late-join invoice generation failed for resident ${input.residentId}: ${err}`,
+      );
+    }
+
+    return result;
   }
 
   /** End the resident's active allocation and free the bed. */

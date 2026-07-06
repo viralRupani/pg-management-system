@@ -132,4 +132,46 @@ export class InvoiceScheduleService {
     );
     return res.generated;
   }
+
+  /**
+   * Generate the current-period invoice for a SINGLE just-allocated resident when
+   * the PG's scheduled generation moment for that period has already passed — i.e.
+   * the resident moved in (registered + bed-assigned live) after the automatic run
+   * for the month would have fired, so the tenant-wide run has already skipped
+   * them and won't re-bill them this month. Called best-effort from
+   * `AllocationService.allocate`.
+   *
+   * Fires only when a schedule exists (a manual-only PG has no "scheduled date",
+   * so its manager controls generation) AND the schedule's IST moment for the
+   * resident's join period is at/behind `now` (if the moment is still ahead, the
+   * normal tenant-wide run will pick this resident up on schedule — nothing to do
+   * here). Idempotent via `generateMonthly` (skips a resident who already has a
+   * live invoice this period), so it never double-bills alongside `runDue`.
+   *
+   * Crucially it does NOT stamp `lastRunPeriod`: that flag gates the tenant-wide
+   * `runDue`, and suppressing the whole PG's monthly run to cover one late joiner
+   * would be wrong. Scoped generation and the monthly run stay independent.
+   */
+  async generateForResidentIfDue(
+    residentId: string,
+    startDate: Date,
+    now: Date = new Date(),
+  ): Promise<number> {
+    const db = this.ctx.db();
+    const [row] = await db.select().from(invoiceSchedules).limit(1);
+    if (!row) return 0; // manual-only PG — the manager controls generation
+
+    const period = istPeriod(startDate);
+    const moment = istMomentUtc(period, row.dayOfMonth, row.hour, row.minute);
+    if (now < moment) return 0; // scheduled run for this period hasn't fired yet
+
+    const res = await this.rent.generateMonthly({
+      period,
+      residentIds: [residentId],
+    });
+    this.logger.log(
+      `late-join invoice for resident ${residentId} tenant ${row.tenantId} ${period}: ${res.generated} generated`,
+    );
+    return res.generated;
+  }
 }

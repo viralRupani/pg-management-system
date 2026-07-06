@@ -146,15 +146,20 @@ describe("invoice schedule (e2e)", () => {
 
     it("a freshly created schedule does not fire for the current month", async () => {
       // pgA's schedule was created for a past day, so lastRunPeriod was seeded to
-      // the current period — the once-per-period guard blocks a same-month run.
+      // the current period — the once-per-period guard blocks a same-month
+      // tenant-wide run. Assert the DISPATCH adds nothing (before == after): the
+      // resident may already have a late-join invoice from allocation time (the
+      // schedule moment has passed, so AllocationService bills them on the spot),
+      // which is orthogonal to what this test verifies about the dispatcher guard.
+      const before = (await h.req("get", "/invoices", mgr)).body.total;
       const res = await h.req(
         "post",
         "/platform/jobs/dispatch-scheduled-invoices",
         h.platformToken(),
       );
       expect(res.status).toBe(201);
-      const invoices = await h.req("get", "/invoices", mgr);
-      expect(invoices.body.total).toBe(0);
+      const after = (await h.req("get", "/invoices", mgr)).body.total;
+      expect(after).toBe(before);
     });
 
     it("fires when due and is idempotent on re-run", async () => {
