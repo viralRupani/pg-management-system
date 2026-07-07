@@ -11,15 +11,33 @@
 > business context see root `CLAUDE.md`; the API is the only trust boundary
 > (`apps/api/CLAUDE.md`).
 >
-> **UI architecture:** shared NativeWind primitives in `components/ui/` (Button,
-> Input, Card, Badge + `status.ts` mappers, Row/Ricon, Appbar, EmptyState,
-> Skeleton, Chip, Fab, Sheet, Avatar, Screen). Theming: `tailwind.config.js`
-> `brand.*` → CSS vars; defaults in `global.css`; `ThemeProvider`
-> (`components/theme-provider.tsx`) repaints via `vars()`; `Sheet` re-applies the
-> palette because RN Modals portal out of the root tree. Auth state:
-> `lib/auth.tsx` over the SecureStore token store. Read hooks + query keys:
-> `lib/queries.ts`. Uploads: `lib/upload.ts` (`pickImage` + best-effort presigned
-> PUT — see the dev-stub caveat there).
+> **UI architecture (2026-07 redesign — light + dark, Inter, animated):**
+> `lib/tokens.ts` is the design-token source of truth: EVERY color (neutrals,
+> semantic status, white-label brand) is a CSS var, resolved per
+> `(scheme, accent)` — `themeVars()` feeds NativeWind `vars()`, `resolveTokens()`
+> gives flat JS colors for icons/tints (never hard-code a hex in app code; the
+> exit check is `grep -rn "#[0-9a-f]\{6\}" app components` → only lib/ hits).
+> `ThemeProvider` (`components/theme-provider.tsx`) resolves the scheme
+> (system-following + manual override on the More screen, persisted under the
+> SecureStore key `pg_resident_scheme`), exposes `useTokens()`/`useThemeVars()`,
+> owns the StatusBar, and applies the var set on the root View. **RN Modals
+> portal out of the root tree: every Modal root MUST apply `useThemeVars()`**
+> (see `components/ui/sheet.tsx` — it also needs its own GestureHandlerRootView).
+> `lib/theme.ts` re-exports the brand seam; `brandPalette(accent, scheme)` has a
+> dark variant that contrast-lifts arbitrary tenant accents. Typography = Inter
+> (`@expo-google-fonts/inter`, splash-held in `_layout.tsx`, system-font
+> fallback) rendered via `AppText` (`components/ui/text.tsx`) — raw `<Text>`
+> can't select Inter files. Primitives in `components/ui/`: Button, Input
+> (focus/error states), Card, Badge + `status.ts`, Row/Ricon (`tone` prop),
+> Appbar, EmptyState, ErrorState (use on every `isError` branch), shimmer
+> Skeleton, Chip, Fab, Sheet (spring + pan-to-dismiss), Segmented, SectionHeader,
+> OtpInput (auto-submit), CalendarSheet (pure-JS, theme-aware), PressableScale
+> (all tappables), toast (`toast.success/error/info` — replaces success/info
+> Alerts; `Alert.alert` only for destructive confirms + blocking errors; close a
+> Sheet BEFORE toasting), `lib/haptics.ts`. Auth state: `lib/auth.tsx` over the
+> SecureStore token store. Read hooks + query keys: `lib/queries.ts`. Uploads:
+> `lib/upload.ts` (`pickImage` + best-effort presigned PUT — see the dev-stub
+> caveat there). The old `design/pg-app-ui-prototype.html` is superseded.
 
 ## Who uses this
 **Residents** of a single PG — one tenant, one phone. The manager web app
@@ -70,32 +88,48 @@ and adds an `@/*` path alias.
 ```
 app/                       expo-router file-based routes
   _layout.tsx              ROOT: imports global.css; providers stack —
-                           SafeAreaProvider → QueryClientProvider → ThemeProvider
-                           → AuthProvider → Stack; hydrates SecureStore tokens
-                           before rendering routes
-  (auth)/                  login flow: slug → phone → OTP
+                           GestureHandlerRootView → SafeAreaProvider →
+                           QueryClientProvider → AuthProvider → ThemeProvider →
+                           Stack + ToastHost; hydrates SecureStore tokens AND
+                           loads Inter (splash-held, system-font fallback via
+                           lib/fonts.ts setInterLoaded) before rendering routes
+  (auth)/                  login flow: slug → phone → OTP (auto-submit)
   (tabs)/                  swipeable bottom-tab nav + every feature screen
                            (home, rent, complaints, kyc, deposit, announcements,
                            mess, notifications, more)
 components/
   ui/                      shared NativeWind primitives (Button, Input, Card,
-                           Badge + status.ts, Row/Ricon, Appbar, EmptyState,
-                           Skeleton, Chip, Fab, Sheet, Avatar, Screen)
-  theme-provider.tsx       repaints brand palette via vars() (Sheet re-applies it —
-                           RN Modals portal out of root)
+                           Badge + status.ts, Row/Ricon (tone prop), Appbar,
+                           EmptyState, ErrorState, shimmer Skeleton, Chip, Fab,
+                           Sheet, Segmented, SectionHeader, OtpInput,
+                           CalendarSheet, PressableScale, AppText, toast,
+                           Avatar, Screen)
+  theme-provider.tsx       resolves (scheme, accent) → applies the FULL token
+                           var set via vars(); useTokens()/useThemeVars();
+                           every Modal root re-applies useThemeVars() — RN
+                           Modals portal out of root
 lib/
   api.ts                   PgApiClient singleton + SecureStore-backed TokenStore
                            (in-memory cache for SYNC reads + async persist +
-                           hydrateTokens()) + decodeToken/currentUser; mirrors
-                           apps/admin/lib/api.ts (localStorage → expo-secure-store)
+                           hydrateTokens()) + decodeToken/currentUser + persisted
+                           accent/scheme; mirrors apps/admin/lib/api.ts
+                           (localStorage → expo-secure-store)
   auth.tsx                 AuthProvider over the SecureStore token store
   queries.ts               read hooks + query keys (TanStack Query)
   query.ts                 TanStack QueryClient (retry 1, staleTime 30s)
-  theme.ts                 pre-auth branding seam (DEFAULT_BRAND + readableForeground)
+  tokens.ts                DESIGN-TOKEN SOURCE OF TRUTH: light+dark neutrals +
+                           semantics, scheme-aware brandPalette (dark contrast-
+                           lift), themeVars()/resolveTokens()
+  theme.ts                 pre-auth branding seam (re-exports from tokens.ts)
+  fonts.ts                 Inter family registry + loaded flag (AppText reads it)
+  haptics.ts               best-effort haptics (selection/tap/success/error)
   upload.ts                pickImage + best-effort presigned PUT (dev-stub caveat)
   utils.ts                 cn(), formatPaise (₹ from paise), ymd() local-date helper
-global.css                 @tailwind directives + brand CSS-var defaults (imported in _layout)
-tailwind.config.js         NativeWind preset + `brand` color token (teal #0d9488)
+global.css                 @tailwind directives + LIGHT defaults for all token
+                           vars (pre-provider fallback only; imported in _layout)
+tailwind.config.js         NativeWind preset; EVERY color → var(--…) (no fixed
+                           hexes; alpha modifiers don't work on hex vars — use
+                           the -dim/-line tokens)
 babel.config.js            babel-preset-expo (jsxImportSource: nativewind) + nativewind/babel
 metro.config.js            pnpm-monorepo aware (watchFolders=root, nodeModulesPaths)
                            + withNativeWind. See the inline note: do NOT set

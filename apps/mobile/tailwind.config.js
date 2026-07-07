@@ -2,12 +2,14 @@
 // NativeWind v4 is built on Tailwind CSS v3 (the admin web app uses Tailwind v4
 // with @theme — different surface, deliberately).
 //
-// The `brand` palette is white-label: it resolves to CSS variables whose
-// defaults live in global.css (:root) and which ThemeProvider repaints at
-// runtime from GET /branding/:slug (lib/theme.ts derives the soft/deep tints
-// from a single accent hex). Status + neutral tokens are FIXED (never themed) —
-// they carry semantic meaning (amber=pending, green=ok, red=bad, blue=in-flight)
-// and mirror the design prototype in apps/mobile/design.
+// EVERY color resolves to a CSS variable — one theming mechanism for both the
+// white-label brand accent AND light/dark mode. lib/tokens.ts holds the actual
+// hex values per scheme; ThemeProvider applies the full var set at runtime via
+// NativeWind vars() (and Sheet re-applies it on Modal roots, which portal
+// outside the root tree). global.css seeds the light defaults pre-provider.
+//
+// NOTE: Tailwind alpha modifiers (e.g. `border-danger/30`) do NOT work on
+// hex-valued vars — use the explicit `-dim`/`-line` tokens instead.
 module.exports = {
   content: [
     './app/**/*.{js,jsx,ts,tsx}',
@@ -17,36 +19,70 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // White-label accent (repaints at runtime via CSS vars).
+        // White-label accent (repaints at runtime; dark-scheme-aware).
         brand: {
           DEFAULT: 'var(--brand)',
           foreground: 'var(--brand-foreground)',
-          soft: 'var(--brand-soft)', // ~12% tint — soft fills
-          softer: 'var(--brand-softer)', // ~20% tint — pressed chips
-          line: 'var(--brand-line)', // ~30% tint — borders
-          deep: 'var(--brand-deep)', // darkened — icons on soft
+          'foreground-dim': 'var(--brand-foreground-dim)', // muted text on brand fills
+          soft: 'var(--brand-soft)', // soft fills
+          softer: 'var(--brand-softer)', // pressed chips
+          line: 'var(--brand-line)', // borders
+          deep: 'var(--brand-deep)', // icons/text on soft (lightened in dark)
         },
-        // Neutrals (design prototype scale).
-        ink: '#111827',
-        ink2: '#6b7280',
-        ink3: '#9ca3af',
-        ink4: '#c7ccd4',
-        surface: '#ffffff',
-        surface2: '#f8fafc',
-        page: '#f3f4f6',
-        line: '#e9ebef',
-        line2: '#f1f2f5',
-        // Fixed semantic status palettes (text / bg / dot).
-        amber: { DEFAULT: '#b45309', bg: '#fff7ed', dot: '#f59e0b' },
-        success: { DEFAULT: '#15803d', bg: '#ecfdf3', dot: '#22c55e' },
-        danger: { DEFAULT: '#b91c1c', bg: '#fef2f2', dot: '#ef4444' },
-        info: { DEFAULT: '#1d4ed8', bg: '#eff6ff', dot: '#3b82f6' },
+        // Neutrals (scheme-swapped by ThemeProvider).
+        ink: 'var(--ink)',
+        ink2: 'var(--ink2)',
+        ink3: 'var(--ink3)',
+        ink4: 'var(--ink4)',
+        surface: 'var(--surface)',
+        surface2: 'var(--surface2)',
+        page: 'var(--page)',
+        line: 'var(--line)',
+        line2: 'var(--line2)',
+        // Semantic status palettes (text / bg / dot / line) — fixed per scheme,
+        // never tenant-themed.
+        amber: {
+          DEFAULT: 'var(--amber)',
+          bg: 'var(--amber-bg)',
+          dot: 'var(--amber-dot)',
+          line: 'var(--amber-line)',
+        },
+        success: {
+          DEFAULT: 'var(--success)',
+          bg: 'var(--success-bg)',
+          dot: 'var(--success-dot)',
+          line: 'var(--success-line)',
+        },
+        danger: {
+          DEFAULT: 'var(--danger)',
+          bg: 'var(--danger-bg)',
+          dot: 'var(--danger-dot)',
+          line: 'var(--danger-line)',
+        },
+        info: {
+          DEFAULT: 'var(--info)',
+          bg: 'var(--info-bg)',
+          dot: 'var(--info-dot)',
+          line: 'var(--info-line)',
+        },
       },
       borderRadius: {
-        btn: '12px',
-        card: '18px',
-        sheet: '22px',
+        btn: '14px',
+        field: '14px',
+        tile: '16px',
+        card: '20px',
+        sheet: '28px',
         pill: '999px',
+      },
+      fontFamily: {
+        // Inter static weights (loaded in app/_layout.tsx). RN selects fonts by
+        // family name, not weight — these aliases are for raw <Text> spots;
+        // AppText (components/ui/text.tsx) is the preferred surface.
+        regular: ['Inter_400Regular'],
+        medium: ['Inter_500Medium'],
+        semibold: ['Inter_600SemiBold'],
+        bold: ['Inter_700Bold'],
+        heavy: ['Inter_800ExtraBold'],
       },
     },
   },

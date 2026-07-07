@@ -1,15 +1,28 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { RefreshControl, ScrollView, View } from 'react-native';
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useTokens } from '@/components/theme-provider';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { PressableScale } from '@/components/ui/pressable-scale';
+import { SectionHeader } from '@/components/ui/section-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { invoiceStatus } from '@/components/ui/status';
+import { AppText } from '@/components/ui/text';
 import {
   useAnnouncements,
   useComplaints,
@@ -30,6 +43,15 @@ import { cn, formatDate, formatPaise, timeAgo, ymd } from '@/lib/utils';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const tokens = useTokens();
+  // The pager keeps all tabs mounted, so track focus explicitly for StatusBar.
+  const [isFocused, setIsFocused] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      setIsFocused(true);
+      return () => setIsFocused(false);
+    }, []),
+  );
   const today = useMemo(() => ymd(new Date()), []);
   const invoices = useInvoices();
   const announcements = useAnnouncements();
@@ -107,6 +129,11 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-brand">
+      {/* The brand header sits behind the status bar — match its foreground.
+          Only while focused: the pager keeps all tabs mounted. */}
+      {isFocused ? (
+        <StatusBar style={tokens.statusBarOnBrand} />
+      ) : null}
       <ScrollView
         className="bg-brand"
         showsVerticalScrollIndicator={false}
@@ -115,7 +142,9 @@ export default function HomeScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#ffffff"
+            tintColor={tokens.brandForeground}
+            colors={[tokens.brand]}
+            progressBackgroundColor={tokens.surface}
           />
         }
       >
@@ -123,29 +152,43 @@ export default function HomeScreen() {
         <View className="bg-brand px-5 pb-14 pt-2">
           <View className="flex-row items-center justify-between">
             <View className="flex-1 pr-3">
-              <Text className="text-[13px] text-brand-foreground/80">
+              <AppText variant="sub" className="text-brand-foreground-dim">
                 {greeting()} 👋
-              </Text>
-              <Text
-                className="mt-0.5 text-[23px] font-extrabold text-brand-foreground"
+              </AppText>
+              <AppText
+                variant="title"
+                weight="heavy"
+                className="mt-0.5 text-[23px] text-brand-foreground"
                 numberOfLines={1}
               >
                 {name}
-              </Text>
+              </AppText>
             </View>
             <View className="flex-row items-center gap-2.5">
-              <Pressable
+              <PressableScale
                 onPress={() => router.push('/notifications')}
-                className="h-10 w-10 items-center justify-center rounded-full bg-white/15 active:opacity-70"
+                pressedScale={0.9}
+                accessibilityRole="button"
+                accessibilityLabel={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+                className="h-10 w-10 items-center justify-center rounded-full bg-white/15"
               >
-                <Ionicons name="notifications-outline" size={20} color="#fff" />
+                <Ionicons
+                  name="notifications-outline"
+                  size={20}
+                  color={tokens.brandForeground}
+                />
                 {unread > 0 ? (
                   <View className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border border-brand bg-danger-dot" />
                 ) : null}
-              </Pressable>
-              <Pressable onPress={() => router.push('/(tabs)/more')} className="active:opacity-70">
+              </PressableScale>
+              <PressableScale
+                onPress={() => router.push('/(tabs)/more')}
+                pressedScale={0.9}
+                accessibilityRole="button"
+                accessibilityLabel="Profile"
+              >
                 <Avatar name={name} size={40} className="border-2 border-white/25" />
-              </Pressable>
+              </PressableScale>
             </View>
           </View>
         </View>
@@ -153,35 +196,55 @@ export default function HomeScreen() {
         {/* Page sheet — everything below sits on the neutral page background */}
         <View className="flex-1 gap-4 bg-page px-4 pb-8 pt-2">
           {/* Floating rent card (primary action) */}
-          <View className="-mt-12">
-            <Card className={cn(isOverdue && 'border-danger/40')}>
+          <Animated.View entering={FadeInDown.duration(350)} className="-mt-12">
+            <Card className={cn(isOverdue && 'border-danger-line')}>
               {invoices.isLoading ? (
                 <View className="gap-3">
                   <Skeleton className="h-3 w-24" />
                   <Skeleton className="h-8 w-40" />
                   <Skeleton className="h-3 w-28" />
                 </View>
+              ) : invoices.isError ? (
+                <View className="flex-row items-center gap-3">
+                  <Ionicons name="cloud-offline-outline" size={24} color={tokens.danger} />
+                  <View className="flex-1">
+                    <AppText variant="body" weight="semibold">
+                      Couldn&apos;t load your rent
+                    </AppText>
+                    <AppText variant="sub" className="text-[12px]">
+                      Pull down to retry.
+                    </AppText>
+                  </View>
+                  <Button
+                    title="Retry"
+                    variant="ghost"
+                    size="sm"
+                    onPress={() => invoices.refetch()}
+                  />
+                </View>
               ) : dueInvoice && rentBadge ? (
                 <>
                   <View className="flex-row items-center justify-between">
-                    <Text className="text-[11px] font-bold uppercase tracking-wider text-ink3">
+                    <AppText variant="caption" className="uppercase tracking-wider">
                       {formatPeriod(dueInvoice.period)} · Rent
-                    </Text>
+                    </AppText>
                     <Badge label={rentBadge.label} variant={rentBadge.variant} />
                   </View>
                   <View className="mt-2 flex-row items-end justify-between">
                     <View>
-                      <Text className="text-[30px] font-extrabold text-ink">
+                      <AppText variant="display" className="text-[32px] leading-[38px]">
                         {formatPaise(dueInvoice.amountPaise)}
-                      </Text>
-                      <Text
-                        className={cn(
-                          'mt-0.5 text-[13px]',
-                          isOverdue ? 'font-semibold text-danger' : 'text-ink2',
-                        )}
-                      >
-                        Due {formatDate(dueInvoice.dueDate)}
-                      </Text>
+                      </AppText>
+                      <View className="mt-1 flex-row items-center gap-1.5">
+                        {isOverdue ? <PulseDot /> : null}
+                        <AppText
+                          variant="sub"
+                          weight={isOverdue ? 'semibold' : 'regular'}
+                          className={isOverdue ? 'text-danger' : 'text-ink2'}
+                        >
+                          Due {formatDate(dueInvoice.dueDate)}
+                        </AppText>
+                      </View>
                     </View>
                     <Button
                       title="Pay now"
@@ -192,19 +255,19 @@ export default function HomeScreen() {
                 </>
               ) : (
                 <View className="flex-row items-center gap-3">
-                  <Ionicons name="checkmark-circle" size={26} color="#15803d" />
+                  <Ionicons name="checkmark-circle" size={26} color={tokens.success} />
                   <View className="flex-1">
-                    <Text className="text-[15px] font-semibold text-ink">
+                    <AppText variant="body" weight="semibold">
                       You&apos;re all paid up.
-                    </Text>
-                    <Text className="text-[12px] text-ink2">
+                    </AppText>
+                    <AppText variant="sub" className="text-[12px]">
                       No rent due right now.
-                    </Text>
+                    </AppText>
                   </View>
                 </View>
               )}
             </Card>
-          </View>
+          </Animated.View>
 
           {/* At a glance */}
           <View className="flex-row gap-3">
@@ -236,76 +299,66 @@ export default function HomeScreen() {
 
           {/* Announcements — recent ones inline; always shows a "See all" entry */}
           <View className="gap-2">
-            <View className="flex-row items-center justify-between px-1">
-              <Text className="text-[13px] font-bold text-ink">📣 Notices</Text>
-              <Pressable
-                onPress={() => router.push('/announcements')}
-                className="active:opacity-70"
-              >
-                <Text className="text-[13px] font-semibold text-brand-deep">
-                  See all ›
-                </Text>
-              </Pressable>
-            </View>
+            <SectionHeader
+              title="Notices"
+              action="See all"
+              onAction={() => router.push('/announcements')}
+            />
             {recentAnnouncements.length > 0 ? (
               recentAnnouncements.map((a) => (
-                <Pressable
+                <PressableScale
                   key={a.id}
+                  pressedScale={0.99}
                   onPress={() => router.push('/announcements')}
-                  className="active:opacity-70"
                 >
                   <Card>
                     <View className="flex-row items-start justify-between gap-2">
-                      <Text
-                        className="flex-1 text-[15px] font-bold text-ink"
+                      <AppText
+                        variant="body"
+                        weight="bold"
+                        className="flex-1"
                         numberOfLines={1}
                       >
                         {a.title}
-                      </Text>
-                      <Text className="shrink-0 text-[11px] text-ink3">
+                      </AppText>
+                      <AppText variant="caption" className="shrink-0">
                         {timeAgo(a.createdAt)}
-                      </Text>
+                      </AppText>
                     </View>
-                    <Text
-                      className="mt-1 text-[13px] leading-5 text-ink2"
-                      numberOfLines={2}
-                    >
+                    <AppText variant="sub" className="mt-1 leading-5" numberOfLines={2}>
                       {a.body}
-                    </Text>
+                    </AppText>
                   </Card>
-                </Pressable>
+                </PressableScale>
               ))
             ) : (
-              <Pressable
+              <PressableScale
+                pressedScale={0.99}
                 onPress={() => router.push('/announcements')}
-                className="active:opacity-70"
               >
                 <Card className="flex-row items-center justify-between bg-page">
                   <View className="flex-row items-center gap-2.5">
-                    <Ionicons name="megaphone-outline" size={18} color="#9ca3af" />
-                    <Text className="text-[13px] text-ink3">
+                    <Ionicons name="megaphone-outline" size={18} color={tokens.ink3} />
+                    <AppText variant="sub" className="text-ink3">
                       No new notices in the last 2 days
-                    </Text>
+                    </AppText>
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                  <Ionicons name="chevron-forward" size={16} color={tokens.ink3} />
                 </Card>
-              </Pressable>
+              </PressableScale>
             )}
           </View>
 
           {/* Today's mess */}
-          <Pressable
-            onPress={() => router.push('/menu')}
-            className="active:opacity-70"
-          >
+          <PressableScale pressedScale={0.99} onPress={() => router.push('/menu')}>
             <Card>
               <View className="flex-row items-center justify-between">
-                <Text className="text-[11px] font-bold uppercase tracking-wider text-ink3">
+                <AppText variant="caption" className="uppercase tracking-wider">
                   🍽️ Today&apos;s mess
-                </Text>
-                <Text className="text-[12px] font-semibold text-brand-deep">
+                </AppText>
+                <AppText variant="label" className="text-[12px] text-brand-deep">
                   Full menu ›
-                </Text>
+                </AppText>
               </View>
               <View className="mt-2.5 gap-2.5">
                 <MealRow label="Breakfast" items={meal(MealType.BREAKFAST)} first />
@@ -313,11 +366,24 @@ export default function HomeScreen() {
                 <MealRow label="Dinner" items={meal(MealType.DINNER)} />
               </View>
             </Card>
-          </Pressable>
+          </PressableScale>
         </View>
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+/** Slow-blinking dot for the overdue state. */
+function PulseDot() {
+  const opacity = useSharedValue(1);
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(withTiming(0.25, { duration: 650 }), withTiming(1, { duration: 650 })),
+      -1,
+    );
+  }, [opacity]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return <Animated.View style={style} className="h-2 w-2 rounded-full bg-danger-dot" />;
 }
 
 /** One compact stat in the "at a glance" strip. */
@@ -336,27 +402,30 @@ function GlanceTile({
   loading?: boolean;
   onPress: () => void;
 }) {
+  const tokens = useTokens();
   return (
-    <Pressable onPress={onPress} className="flex-1 active:opacity-70">
+    <PressableScale onPress={onPress} accessibilityRole="button" className="flex-1">
       <Card className="gap-2">
         <View className="h-9 w-9 items-center justify-center rounded-[11px] bg-brand-soft">
-          <Ionicons name={icon} size={18} color="#0b7d73" />
+          <Ionicons name={icon} size={18} color={tokens.brandDeep} />
         </View>
         {loading ? (
           <Skeleton className="h-4 w-12" />
         ) : (
-          <Text
-            className={cn('text-[15px] font-extrabold', tone)}
+          <AppText
+            variant="body"
+            weight="heavy"
+            className={cn(tone)}
             numberOfLines={1}
           >
             {value}
-          </Text>
+          </AppText>
         )}
-        <Text className="text-[11px] font-medium text-ink2" numberOfLines={1}>
+        <AppText variant="caption" weight="medium" className="text-ink2" numberOfLines={1}>
           {label}
-        </Text>
+        </AppText>
       </Card>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -377,10 +446,12 @@ function MealRow({
           : 'flex-row justify-between border-t border-line2 pt-2.5'
       }
     >
-      <Text className="text-[13px] font-semibold text-ink2">{label}</Text>
-      <Text className="flex-1 text-right text-[13px] text-ink" numberOfLines={1}>
+      <AppText variant="sub" weight="semibold">
+        {label}
+      </AppText>
+      <AppText variant="sub" className="flex-1 text-right text-ink" numberOfLines={1}>
         {items ?? '—'}
-      </Text>
+      </AppText>
     </View>
   );
 }

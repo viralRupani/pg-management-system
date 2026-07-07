@@ -45,6 +45,7 @@ export const API_BASE_URL = (
 const ACCESS_KEY = 'pg_resident_access';
 const REFRESH_KEY = 'pg_resident_refresh';
 const ACCENT_KEY = 'pg_resident_accent';
+const SCHEME_KEY = 'pg_resident_scheme';
 
 // SecureStore is async, but @pg/api-client's TokenStore is synchronous (the admin
 // app backs it with localStorage). We mirror the tokens in memory so reads are
@@ -59,15 +60,21 @@ let cache: { access: string | null; refresh: string | null } = {
 // re-apply on startup, else the palette falls back to the DEFAULT_BRAND default.
 let accentCache: string | null = null;
 
-/** Load persisted tokens + accent into the in-memory cache. Call once before gating. */
+// Light/dark preference ('system' | 'light' | 'dark') — a device preference,
+// deliberately NOT cleared on logout (unlike the accent, it isn't per-PG).
+let schemeCache: string | null = null;
+
+/** Load persisted tokens + accent + scheme into the in-memory cache. Call once before gating. */
 export async function hydrateTokens(): Promise<void> {
-  const [access, refresh, accent] = await Promise.all([
+  const [access, refresh, accent, scheme] = await Promise.all([
     storageGet(ACCESS_KEY),
     storageGet(REFRESH_KEY),
     storageGet(ACCENT_KEY),
+    storageGet(SCHEME_KEY),
   ]);
   cache = { access, refresh };
   accentCache = accent;
+  schemeCache = scheme;
 }
 
 /** The persisted brand accent hex, or null if none themed yet (sync read). */
@@ -79,6 +86,17 @@ export function getPersistedAccent(): string | null {
 export function setPersistedAccent(hex: string): void {
   accentCache = hex;
   storageSet(ACCENT_KEY, hex);
+}
+
+/** The persisted color-scheme preference, or null (sync read; validated by ThemeProvider). */
+export function getPersistedScheme(): string | null {
+  return schemeCache;
+}
+
+/** Persist the color-scheme preference ('system' | 'light' | 'dark'). */
+export function setPersistedScheme(preference: string): void {
+  schemeCache = preference;
+  storageSet(SCHEME_KEY, preference);
 }
 
 const secureTokenStore: TokenStore = {

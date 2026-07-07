@@ -5,16 +5,21 @@ import * as Sharing from 'expo-sharing';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Image, Pressable, Text, View } from 'react-native';
+import { Alert, Image, View } from 'react-native';
 
+import { useTokens } from '@/components/theme-provider';
 import { Appbar } from '@/components/ui/appbar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { PressableScale } from '@/components/ui/pressable-scale';
 import { Screen } from '@/components/ui/screen';
+import { Segmented } from '@/components/ui/segmented';
 import { Sheet } from '@/components/ui/sheet';
 import { invoiceStatus } from '@/components/ui/status';
+import { AppText } from '@/components/ui/text';
+import { toast } from '@/components/ui/toast';
 import { api } from '@/lib/api';
 import { qk, useInvoiceCharges, useInvoices, usePaymentInfo } from '@/lib/queries';
 import { InvoiceStatus, PaymentMethod } from '@pg/shared';
@@ -31,6 +36,7 @@ import { formatDate, formatPaise, toMessage } from '@/lib/utils';
 export default function InvoiceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const tokens = useTokens();
   const { data } = useInvoices();
   const invoice = data?.find((i) => i.id === id);
 
@@ -94,7 +100,9 @@ export default function InvoiceDetailScreen() {
     return (
       <Screen scroll={false}>
         <Appbar title="Invoice" />
-        <Text className="px-4 text-ink2">Invoice not found.</Text>
+        <AppText variant="body" className="px-4 text-ink2">
+          Invoice not found.
+        </AppText>
       </Screen>
     );
   }
@@ -158,12 +166,12 @@ export default function InvoiceDetailScreen() {
         });
       }
       await queryClient.invalidateQueries({ queryKey: qk.invoices });
+      // Close the sheet BEFORE toasting — the Modal sits above the root tree.
       resetSheet();
-      Alert.alert(
-        'Submitted',
+      toast.success(
         isCash
-          ? 'Your manager will confirm the cash payment and mark it paid.'
-          : 'Your payment is awaiting manager approval.',
+          ? 'Submitted — your manager will confirm the cash payment.'
+          : 'Payment submitted for review.',
       );
     } catch (err) {
       Alert.alert('Could not submit', toMessage(err, 'Please try again.'));
@@ -176,80 +184,75 @@ export default function InvoiceDetailScreen() {
     <Screen contentClassName="gap-4">
       <Appbar title="Invoice" />
 
+      {/* Amount hero */}
       <Card>
         <View className="flex-row items-center justify-between">
-          <Text className="text-[15px] font-bold text-ink">
-            {formatPeriod(invoice.period)}
-          </Text>
+          <AppText variant="caption" className="uppercase tracking-wider">
+            {formatPeriod(invoice.period)} · Rent
+          </AppText>
           {deleted ? (
             <Badge label="Cancelled" variant="neutral" />
           ) : (
             <Badge label={status.label} variant={status.variant} />
           )}
         </View>
-        <View className="my-3 h-px bg-line2" />
-        {charges && charges.length > 0 ? (
-          <View className="mb-3 gap-1.5">
-            {/* "Rent & adjustments" is the remainder — it also covers proration
-                and any transfer/carry-forward corrections. */}
-            <View className="flex-row items-center justify-between">
-              <Text className="text-[13px] text-ink2">Rent &amp; adjustments</Text>
-              <Text className="text-[13px] text-ink">
-                {formatPaise(
-                  invoice.amountPaise -
-                    charges.reduce((s, c) => s + c.amountPaise, 0),
-                )}
-              </Text>
-            </View>
-            {charges.map((c) => (
-              <View
-                key={c.id}
-                className="flex-row items-center justify-between"
-              >
-                <Text className="text-[13px] text-ink2">{c.label}</Text>
-                <Text className="text-[13px] text-ink">
-                  {formatPaise(c.amountPaise)}
-                </Text>
-              </View>
-            ))}
-            <View className="my-1.5 h-px bg-line2" />
-          </View>
-        ) : null}
-        <View className="flex-row items-center justify-between">
-          <Text className="text-[13px] text-ink2">Total payable</Text>
-          <Text className="text-[22px] font-extrabold text-ink">
-            {formatPaise(invoice.amountPaise)}
-          </Text>
-        </View>
-        <Text className="mt-1 text-[13px] text-ink2">
+        <AppText variant="display" className="mt-2 text-[34px] leading-[40px]">
+          {formatPaise(invoice.amountPaise)}
+        </AppText>
+        <AppText variant="sub" className="mt-0.5">
           Due {formatDate(invoice.dueDate)}
-        </Text>
+        </AppText>
+
+        {charges && charges.length > 0 ? (
+          <>
+            <View className="my-3 h-px bg-line2" />
+            <View className="gap-1.5">
+              {/* "Rent & adjustments" is the remainder — it also covers proration
+                  and any transfer/carry-forward corrections. */}
+              <View className="flex-row items-center justify-between">
+                <AppText variant="sub">Rent &amp; adjustments</AppText>
+                <AppText variant="sub" className="text-ink">
+                  {formatPaise(
+                    invoice.amountPaise -
+                      charges.reduce((s, c) => s + c.amountPaise, 0),
+                  )}
+                </AppText>
+              </View>
+              {charges.map((c) => (
+                <View key={c.id} className="flex-row items-center justify-between">
+                  <AppText variant="sub">{c.label}</AppText>
+                  <AppText variant="sub" className="text-ink">
+                    {formatPaise(c.amountPaise)}
+                  </AppText>
+                </View>
+              ))}
+            </View>
+          </>
+        ) : null}
       </Card>
 
       {deleted ? (
         <Card className="bg-surface2">
-          <Text className="text-[11px] font-bold uppercase tracking-wider text-ink3">
+          <AppText variant="caption" className="uppercase tracking-wider">
             Invoice cancelled
-          </Text>
-          <Text className="mt-1.5 text-[13px] leading-5 text-ink2">
+          </AppText>
+          <AppText variant="sub" className="mt-1.5 leading-5">
             Your manager cancelled this invoice
             {invoice.deletedReason ? `: ${invoice.deletedReason}` : '.'} Nothing
             is owed — no payment is needed.
-          </Text>
+          </AppText>
         </Card>
-      ) : null}
-
-      {deleted ? null : (
-      <Card className="bg-surface2">
-        <Text className="text-[11px] font-bold uppercase tracking-wider text-ink3">
-          How to pay
-        </Text>
-        <Text className="mt-1.5 text-[13px] leading-5 text-ink2">
-          Pay the amount to your PG by UPI or in cash. For UPI, submit a
-          screenshot or your reference number; for cash, just tap “Paid by cash”.
-          Your manager reviews and approves it.
-        </Text>
-      </Card>
+      ) : (
+        <Card className="bg-surface2">
+          <AppText variant="caption" className="uppercase tracking-wider">
+            How to pay
+          </AppText>
+          <AppText variant="sub" className="mt-1.5 leading-5">
+            Pay the amount to your PG by UPI or in cash. For UPI, submit a
+            screenshot or your reference number; for cash, just tap “Paid by cash”.
+            Your manager reviews and approves it.
+          </AppText>
+        </Card>
       )}
 
       {payable ? (
@@ -263,105 +266,96 @@ export default function InvoiceDetailScreen() {
         subtitle={`How did you pay ${formatPaise(invoice.amountPaise)}?`}
       >
         {paymentInfo?.upiQrUrl ? (
-          <View className="items-center rounded-btn border border-line bg-surface2 p-4 gap-3">
-            <Text className="text-[11px] font-bold uppercase tracking-wider text-ink3">
+          <View className="items-center gap-3 rounded-tile border border-line bg-surface2 p-4">
+            <AppText variant="caption" className="uppercase tracking-wider">
               Scan to pay
-            </Text>
+            </AppText>
             <Image
               source={{ uri: paymentInfo.upiQrUrl }}
               className="h-48 w-48 rounded-lg"
               resizeMode="contain"
             />
-            <Text className="text-[12px] text-ink3 text-center">
+            <AppText variant="sub" className="text-center text-ink3">
               Scan with your UPI app, or save the QR to your gallery and pay from there.
-            </Text>
+            </AppText>
             <View className="w-full gap-1.5">
               <View className="flex-row gap-2">
-                <Pressable
+                <QrAction
+                  icon="download-outline"
+                  label={saving ? 'Opening…' : 'Save to gallery'}
+                  disabled={saving || sharing}
                   onPress={saveQrToGallery}
+                />
+                <QrAction
+                  icon="share-outline"
+                  label={sharing ? 'Opening…' : 'Share'}
                   disabled={saving || sharing}
-                  className="flex-1 flex-row items-center justify-center gap-1.5 rounded-btn border border-line bg-surface py-2.5 active:opacity-60 disabled:opacity-40"
-                >
-                  <Ionicons name="download-outline" size={16} color="#0b7d73" />
-                  <Text className="text-[13px] font-semibold text-brand">
-                    {saving ? 'Opening…' : 'Save to gallery'}
-                  </Text>
-                </Pressable>
-                <Pressable
                   onPress={shareQrCode}
-                  disabled={saving || sharing}
-                  className="flex-1 flex-row items-center justify-center gap-1.5 rounded-btn border border-line bg-surface py-2.5 active:opacity-60 disabled:opacity-40"
-                >
-                  <Ionicons name="share-outline" size={16} color="#0b7d73" />
-                  <Text className="text-[13px] font-semibold text-brand">
-                    {sharing ? 'Opening…' : 'Share'}
-                  </Text>
-                </Pressable>
+                />
               </View>
-              <Text className="text-center text-[11px] text-ink3">
+              <AppText variant="caption" className="text-center">
                 Save the QR to your gallery, then open it from your UPI app.
-              </Text>
+              </AppText>
             </View>
           </View>
         ) : null}
 
-        <View className="flex-row gap-3">
-          <MethodOption
-            icon="phone-portrait-outline"
-            label="Pay by UPI"
-            selected={method === PaymentMethod.UPI}
-            onPress={() => setMethod(PaymentMethod.UPI)}
-          />
-          <MethodOption
-            icon="cash-outline"
-            label="Paid by cash"
-            selected={isCash}
-            onPress={() => setMethod(PaymentMethod.CASH)}
-          />
-        </View>
+        <Segmented<PaymentMethod>
+          options={[
+            { label: 'Pay by UPI', value: PaymentMethod.UPI },
+            { label: 'Paid by cash', value: PaymentMethod.CASH },
+          ]}
+          value={method}
+          onChange={setMethod}
+        />
 
         {isCash ? (
-          <View className="rounded-btn border border-line bg-surface2 p-3">
-            <Text className="text-[13px] leading-5 text-ink2">
+          <View className="rounded-tile border border-line bg-surface2 p-3">
+            <AppText variant="sub" className="leading-5">
               You paid your manager in cash. Submit this so they can confirm
               receipt and mark the invoice paid. No screenshot needed.
-            </Text>
+            </AppText>
           </View>
         ) : (
           // Grouped panel so the screenshot pickers + reference read as proof
           // belonging to the UPI choice above — not a peer set of boxes.
-          <View className="gap-3 rounded-btn border border-line bg-surface2 p-3.5">
-            <Text className="text-[11px] font-bold uppercase tracking-wider text-ink3">
+          <View className="gap-3 rounded-tile border border-line bg-surface2 p-3.5">
+            <AppText variant="caption" className="uppercase tracking-wider">
               Add payment proof
-            </Text>
+            </AppText>
             {picked ? (
-              <View className="flex-row items-center gap-3 rounded-btn border border-line bg-surface p-3">
+              <View className="flex-row items-center gap-3 rounded-tile border border-line bg-surface p-3">
                 <Image source={{ uri: picked.uri }} className="h-12 w-12 rounded-lg" />
-                <Text className="flex-1 text-[13px] text-ink" numberOfLines={1}>
+                <AppText variant="sub" className="flex-1 text-ink" numberOfLines={1}>
                   {picked.fileName}
-                </Text>
-                <Pressable onPress={() => setPicked(null)}>
-                  <Ionicons name="close-circle" size={22} color="#9ca3af" />
-                </Pressable>
+                </AppText>
+                <PressableScale
+                  onPress={() => setPicked(null)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove screenshot"
+                  className="h-9 w-9 items-center justify-center"
+                >
+                  <Ionicons name="close-circle" size={22} color={tokens.ink3} />
+                </PressableScale>
               </View>
             ) : (
               <View className="gap-2">
-                <Text className="text-[13px] text-ink2">
-                  Upload a screenshot of your UPI payment.
-                </Text>
+                <AppText variant="sub">Upload a screenshot of your UPI payment.</AppText>
                 <View className="flex-row gap-3">
                   <PickButton icon="image-outline" label="Gallery" onPress={() => choose('library')} />
                   <PickButton icon="camera-outline" label="Camera" onPress={() => choose('camera')} />
                 </View>
-                <Text className="text-center text-[12px] text-ink3">
+                <AppText variant="caption" className="text-center text-[12px]">
                   JPG, PNG or WebP · max {MAX_UPLOAD_LABEL}
-                </Text>
+                </AppText>
               </View>
             )}
 
             <View className="flex-row items-center gap-3">
               <View className="h-px flex-1 bg-line" />
-              <Text className="text-[12px] font-medium text-ink3">OR enter reference</Text>
+              <AppText variant="caption" className="text-[12px]">
+                OR enter reference
+              </AppText>
               <View className="h-px flex-1 bg-line" />
             </View>
 
@@ -372,12 +366,8 @@ export default function InvoiceDetailScreen() {
               placeholder="e.g. 4012 3456 7890"
               autoCapitalize="characters"
               autoCorrect={false}
+              hint="Can't screenshot? Copy the UPI transaction / reference ID (UTR) from your UPI app's payment history."
             />
-            <Text className="-mt-1 text-[12px] leading-4 text-ink3">
-              Can&apos;t screenshot? GPay/PhonePe block it on some screens. Open the
-              payment in your UPI app&apos;s history and copy the UPI transaction /
-              reference ID (UTR).
-            </Text>
           </View>
         )}
 
@@ -392,6 +382,33 @@ export default function InvoiceDetailScreen() {
   );
 }
 
+function QrAction({
+  icon,
+  label,
+  disabled,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  const tokens = useTokens();
+  return (
+    <PressableScale
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-btn border border-line bg-surface py-2.5 ${disabled ? 'opacity-40' : ''}`}
+    >
+      <Ionicons name={icon} size={16} color={tokens.brandDeep} />
+      <AppText variant="label" className="text-brand-deep">
+        {label}
+      </AppText>
+    </PressableScale>
+  );
+}
+
 function PickButton({
   icon,
   label,
@@ -401,42 +418,18 @@ function PickButton({
   label: string;
   onPress: () => void;
 }) {
+  const tokens = useTokens();
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
-      className="flex-1 flex-row items-center justify-center gap-2 rounded-btn border border-line bg-surface py-3.5 active:opacity-60"
+      accessibilityRole="button"
+      className="min-h-[48px] flex-1 flex-row items-center justify-center gap-2 rounded-btn border border-line bg-surface py-3"
     >
-      <Ionicons name={icon} size={20} color="#0b7d73" />
-      <Text className="text-[13px] font-semibold text-ink2">{label}</Text>
-    </Pressable>
-  );
-}
-
-function MethodOption({
-  icon,
-  label,
-  selected,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      className={`flex-1 items-center gap-2 rounded-btn border py-4 active:opacity-70 ${
-        selected ? 'border-brand bg-brand-soft' : 'border-line bg-surface'
-      }`}
-    >
-      <Ionicons name={icon} size={24} color={selected ? '#0b7d73' : '#9ca3af'} />
-      <Text
-        className={`text-[13px] font-semibold ${selected ? 'text-brand' : 'text-ink3'}`}
-      >
+      <Ionicons name={icon} size={20} color={tokens.brandDeep} />
+      <AppText variant="label" className="text-ink2">
         {label}
-      </Text>
-    </Pressable>
+      </AppText>
+    </PressableScale>
   );
 }
 

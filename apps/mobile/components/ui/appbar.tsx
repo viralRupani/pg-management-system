@@ -1,6 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { View } from 'react-native';
+
+import { useTokens } from '@/components/theme-provider';
+import { PressableScale } from '@/components/ui/pressable-scale';
+import { AppText } from '@/components/ui/text';
 
 /**
  * Secondary-screen header (design `.appbar`): circular back button, centered-ish
@@ -16,17 +20,21 @@ export function Appbar({
   onBack?: () => void;
 }) {
   const router = useRouter();
+  const tokens = useTokens();
   return (
     <View className="flex-row items-center gap-3 px-4 pb-3 pt-1">
-      <Pressable
+      <PressableScale
         onPress={onBack ?? (() => router.back())}
-        className="h-9 w-9 items-center justify-center rounded-full border border-line bg-surface active:opacity-60"
+        pressedScale={0.9}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        className="h-10 w-10 items-center justify-center rounded-full border border-line bg-surface"
       >
-        <Ionicons name="chevron-back" size={20} color="#111827" />
-      </Pressable>
-      <Text className="flex-1 text-[19px] font-bold text-ink" numberOfLines={1}>
+        <Ionicons name="chevron-back" size={20} color={tokens.ink} />
+      </PressableScale>
+      <AppText variant="heading" className="flex-1 text-[19px]" numberOfLines={1}>
         {title}
-      </Text>
+      </AppText>
       {action}
     </View>
   );

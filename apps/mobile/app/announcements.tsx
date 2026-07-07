@@ -1,18 +1,20 @@
-import { RefreshControl, Text, View } from 'react-native';
+import { RefreshControl, View } from 'react-native';
 
 import { Appbar } from '@/components/ui/appbar';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Screen } from '@/components/ui/screen';
 import { ListSkeleton } from '@/components/ui/skeleton';
+import { AppText } from '@/components/ui/text';
 import { useAnnouncements } from '@/lib/queries';
 import { formatDate, timeAgo } from '@/lib/utils';
 
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
 
 export default function AnnouncementsScreen() {
-  const { data, isLoading, isFetching, refetch } = useAnnouncements();
+  const { data, isLoading, isError, isFetching, refetch } = useAnnouncements();
   const items = data?.items ?? [];
 
   return (
@@ -24,6 +26,8 @@ export default function AnnouncementsScreen() {
 
       {isLoading ? (
         <ListSkeleton />
+      ) : isError ? (
+        <ErrorState title="Couldn't load announcements" onRetry={() => refetch()} />
       ) : !items.length ? (
         <EmptyState
           icon="megaphone-outline"
@@ -34,20 +38,28 @@ export default function AnnouncementsScreen() {
         items.map((a) => {
           const isNew = Date.now() - new Date(a.createdAt).getTime() <= TWO_DAYS_MS;
           return (
-            <Card key={a.id} className={isNew ? 'border-brand/40' : undefined}>
+            <Card key={a.id} className={isNew ? 'border-brand-line' : undefined}>
+              {/* Accent rail for fresh notices */}
+              {isNew ? (
+                <View className="absolute bottom-3 left-0 top-3 w-[3px] rounded-full bg-brand" />
+              ) : null}
               <View className="flex-row items-center justify-between">
                 <View className="flex-row items-center gap-2">
-                  <Text className="text-[11px] font-bold uppercase tracking-wider text-ink3">
+                  <AppText variant="caption" className="uppercase tracking-wider">
                     📣 Notice
-                  </Text>
+                  </AppText>
                   {isNew && <Badge label="New" variant="info" />}
                 </View>
-                <Text className="text-[12px] text-ink3">
+                <AppText variant="caption" className="text-[12px]">
                   {isNew ? timeAgo(a.createdAt) : formatDate(a.createdAt)}
-                </Text>
+                </AppText>
               </View>
-              <Text className="mt-1.5 text-[15px] font-bold text-ink">{a.title}</Text>
-              <Text className="mt-1 text-[13px] leading-5 text-ink2">{a.body}</Text>
+              <AppText variant="body" weight="bold" className="mt-1.5">
+                {a.title}
+              </AppText>
+              <AppText variant="sub" className="mt-1 leading-5">
+                {a.body}
+              </AppText>
             </Card>
           );
         })

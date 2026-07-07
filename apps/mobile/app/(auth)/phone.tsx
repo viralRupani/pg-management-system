@@ -1,10 +1,11 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 
 import { AuthShell, PgBrandHeader } from '@/components/auth-shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { AppText } from '@/components/ui/text';
 import { api } from '@/lib/api';
 import { INDIAN_PHONE_REGEX } from '@pg/shared';
 import { toMessage } from '@/lib/utils';
@@ -59,17 +60,16 @@ export default function PhoneScreen() {
         placeholder="98765 43210"
         keyboardType="number-pad"
         autoFocus
-        prefix={<Text className="text-[16px] font-semibold text-ink2">🇮🇳 +91</Text>}
+        prefix={
+          <AppText variant="body" weight="semibold" className="text-[16px] text-ink2">
+            🇮🇳 +91
+          </AppText>
+        }
         onSubmitEditing={onSend}
         returnKeyType="go"
+        error={error ?? undefined}
+        hint="Standard SMS rates may apply."
       />
-      {error ? (
-        <Text className="mt-2 text-[13px] text-danger">{error}</Text>
-      ) : (
-        <Text className="mt-2 text-[13px] text-ink3">
-          Standard SMS rates may apply.
-        </Text>
-      )}
       <Button
         title="Send OTP"
         onPress={onSend}

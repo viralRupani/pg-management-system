@@ -1,16 +1,20 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View } from 'react-native';
 
 import { AuthShell, PgBrandHeader } from '@/components/auth-shell';
 import { Button } from '@/components/ui/button';
+import { OtpInput } from '@/components/ui/otp-input';
+import { AppText } from '@/components/ui/text';
+import { PressableScale } from '@/components/ui/pressable-scale';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { haptics } from '@/lib/haptics';
 import { cn, toMessage } from '@/lib/utils';
 
 const RESEND_SECONDS = 30;
 
-/** Step 3: 6-digit OTP entry + resend countdown → verify → tokens → app. */
+/** Step 3: 6-digit OTP entry (auto-submits on the last digit) + resend countdown. */
 export default function OtpScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
@@ -24,7 +28,6 @@ export default function OtpScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(RESEND_SECONDS);
-  const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (seconds <= 0) return;
@@ -32,16 +35,19 @@ export default function OtpScreen() {
     return () => clearTimeout(t);
   }, [seconds]);
 
-  async function onVerify() {
-    if (code.length !== 6) return;
+  async function onVerify(submitted?: string) {
+    const otp = submitted ?? code;
+    if (otp.length !== 6 || loading) return;
     setLoading(true);
     setError(null);
     try {
-      const tokens = await api.auth.verifyResidentOtp({ pgCode, phone, code });
+      const tokens = await api.auth.verifyResidentOtp({ pgCode, phone, code: otp });
+      haptics.success();
       signIn(tokens);
       router.replace('/home');
     } catch (err) {
       setError(toMessage(err, 'Incorrect or expired code. Try again.'));
+      setCode('');
       setLoading(false);
     }
   }
@@ -65,66 +71,41 @@ export default function OtpScreen() {
       subtitle={`Sent to ${phone}`}
       header={<PgBrandHeader name={pgName} />}
     >
-      <Pressable onPress={() => inputRef.current?.focus()}>
-        <View className="flex-row justify-between">
-          {Array.from({ length: 6 }).map((_, i) => {
-            const char = code[i] ?? '';
-            const isCurrent = i === code.length;
-            return (
-              <View
-                key={i}
-                className={cn(
-                  'h-[58px] w-[48px] items-center justify-center rounded-[13px] border-[1.5px]',
-                  char
-                    ? 'border-brand'
-                    : isCurrent
-                      ? 'border-brand bg-brand-soft'
-                      : 'border-line',
-                )}
-              >
-                <Text className="text-[22px] font-bold text-ink">{char}</Text>
-              </View>
-            );
-          })}
-        </View>
-      </Pressable>
-
-      {/* Off-screen single input driving the cells. */}
-      <TextInput
-        ref={inputRef}
+      <OtpInput
         value={code}
-        onChangeText={(t) => {
-          setCode(t.replace(/[^\d]/g, '').slice(0, 6));
+        onChange={(t) => {
+          setCode(t);
           setError(null);
         }}
-        keyboardType="number-pad"
-        maxLength={6}
-        autoFocus
-        caretHidden
-        className="absolute h-px w-px opacity-0"
+        onComplete={(otp) => onVerify(otp)}
+        error={Boolean(error)}
       />
 
       {error ? (
-        <Text className="mt-3 text-[13px] text-danger">{error}</Text>
+        <AppText variant="sub" className="mt-3 text-danger">
+          {error}
+        </AppText>
       ) : null}
 
       <View className="mt-4 flex-row items-center gap-1.5">
-        <Text className="text-[13px] text-ink3">Didn&apos;t get it?</Text>
-        <Pressable onPress={onResend} disabled={seconds > 0}>
-          <Text
-            className={cn(
-              'text-[13px] font-semibold',
-              seconds > 0 ? 'text-ink3' : 'text-brand-deep',
-            )}
+        <AppText variant="sub" className="text-ink3">
+          Didn&apos;t get it?
+        </AppText>
+        <PressableScale onPress={onResend} disabled={seconds > 0} accessibilityRole="button">
+          <AppText
+            variant="label"
+            className={cn(seconds > 0 ? 'text-ink3' : 'text-brand-deep')}
           >
-            {seconds > 0 ? `Resend in 0:${String(seconds).padStart(2, '0')}` : 'Resend code'}
-          </Text>
-        </Pressable>
+            {seconds > 0
+              ? `Resend in 0:${String(seconds).padStart(2, '0')}`
+              : 'Resend code'}
+          </AppText>
+        </PressableScale>
       </View>
 
       <Button
         title="Verify & continue"
-        onPress={onVerify}
+        onPress={() => onVerify()}
         loading={loading}
         disabled={code.length !== 6}
         className="mt-6"

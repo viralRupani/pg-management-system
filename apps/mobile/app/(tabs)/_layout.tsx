@@ -4,19 +4,27 @@ import {
   type MaterialTopTabBarProps,
 } from '@react-navigation/material-top-tabs';
 import { withLayoutContext } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { useEffect } from 'react';
+import { Pressable, View } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useTheme } from '@/components/theme-provider';
+import { useTokens } from '@/components/theme-provider';
+import { AppText } from '@/components/ui/text';
+import { haptics } from '@/lib/haptics';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
-/** Bottom-tab routes, in bar order, with their icon. */
-const TAB_ICONS: Record<string, IoniconName> = {
-  home: 'home-outline',
-  rent: 'wallet-outline',
-  complaints: 'chatbubble-ellipses-outline',
-  more: 'person-outline',
+/** Bottom-tab routes, in bar order, with outline (idle) + filled (active) icons. */
+const TAB_ICONS: Record<string, { idle: IoniconName; active: IoniconName }> = {
+  home: { idle: 'home-outline', active: 'home' },
+  rent: { idle: 'wallet-outline', active: 'wallet' },
+  complaints: { idle: 'chatbubble-ellipses-outline', active: 'chatbubble-ellipses' },
+  more: { idle: 'person-outline', active: 'person' },
 };
 
 const { Navigator } = createMaterialTopTabNavigator();
@@ -25,9 +33,8 @@ const MaterialTopTabs = withLayoutContext(Navigator);
 
 /**
  * The 4 resident tabs. Material Top Tabs gives us finger-tracking swipe between
- * adjacent tabs; we pin the bar to the bottom and render a custom bar so it looks
- * identical to the old `expo-router` bottom-tabs bar (stacked icon + label, PG
- * accent active tint, top border).
+ * adjacent tabs; we pin the bar to the bottom and render a custom bar (stacked
+ * icon + label, animated soft pill behind the active icon, PG accent tint).
  */
 export default function TabsLayout() {
   return (
@@ -47,9 +54,72 @@ export default function TabsLayout() {
   );
 }
 
+function TabItem({
+  route,
+  label,
+  focused,
+  onPress,
+}: {
+  route: string;
+  label: string;
+  focused: boolean;
+  onPress: () => void;
+}) {
+  const tokens = useTokens();
+  const progress = useSharedValue(focused ? 1 : 0);
+
+  useEffect(() => {
+    progress.value = withSpring(focused ? 1 : 0, { damping: 16, stiffness: 260 });
+  }, [focused, progress]);
+
+  const pillStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ scaleX: 0.6 + progress.value * 0.4 }],
+  }));
+
+  const icons = TAB_ICONS[route];
+  const color = focused ? tokens.brandDeep : tokens.ink3;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={focused ? { selected: true } : {}}
+      accessibilityLabel={label}
+      style={{ flex: 1, alignItems: 'center', paddingVertical: 7, minHeight: 52 }}
+    >
+      <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <Animated.View
+          style={[
+            pillStyle,
+            {
+              position: 'absolute',
+              width: 52,
+              height: 30,
+              borderRadius: 999,
+              backgroundColor: tokens.brandSoft,
+            },
+          ]}
+        />
+        <View style={{ height: 30, justifyContent: 'center' }}>
+          <Ionicons name={focused ? icons.active : icons.idle} color={color} size={22} />
+        </View>
+      </View>
+      <AppText
+        variant="caption"
+        weight={focused ? 'semibold' : 'medium'}
+        className="mt-0.5"
+        style={{ color }}
+      >
+        {label}
+      </AppText>
+    </Pressable>
+  );
+}
+
 /** Instagram-style bottom bar; the pager underneath provides the swipe. */
 function BottomBar({ state, descriptors, navigation }: MaterialTopTabBarProps) {
-  const { accent } = useTheme();
+  const tokens = useTokens();
   const insets = useSafeAreaInsets();
 
   return (
@@ -57,14 +127,13 @@ function BottomBar({ state, descriptors, navigation }: MaterialTopTabBarProps) {
       style={{
         flexDirection: 'row',
         borderTopWidth: 1,
-        borderTopColor: '#e9ebef',
-        backgroundColor: '#ffffff',
+        borderTopColor: tokens.line,
+        backgroundColor: tokens.surface,
         paddingBottom: insets.bottom,
       }}
     >
       {state.routes.map((route, index) => {
         const focused = state.index === index;
-        const color = focused ? accent : '#9ca3af';
         const { options } = descriptors[route.key];
         const label =
           typeof options.title === 'string' ? options.title : route.name;
@@ -76,30 +145,19 @@ function BottomBar({ state, descriptors, navigation }: MaterialTopTabBarProps) {
             canPreventDefault: true,
           });
           if (!focused && !event.defaultPrevented) {
+            haptics.selection();
             navigation.navigate(route.name);
           }
         };
 
         return (
-          <Pressable
+          <TabItem
             key={route.key}
+            route={route.name}
+            label={label}
+            focused={focused}
             onPress={onPress}
-            accessibilityRole="button"
-            accessibilityState={focused ? { selected: true } : {}}
-            style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }}
-          >
-            <Ionicons name={TAB_ICONS[route.name]} color={color} size={24} />
-            <Text
-              style={{
-                color,
-                fontSize: 11,
-                fontWeight: '600',
-                marginTop: 2,
-              }}
-            >
-              {label}
-            </Text>
-          </Pressable>
+          />
         );
       })}
     </View>

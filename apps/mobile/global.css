@@ -3,16 +3,48 @@
 @tailwind utilities;
 
 /*
- * White-label accent defaults (teal — matches the "Sunrise PG" demo). These are
- * the fallback values for the `brand` palette in tailwind.config.js; the
- * ThemeProvider repaints them at runtime from GET /branding/:slug. The soft/deep
- * tints are pre-derived from the default accent (see lib/theme.ts:brandPalette).
+ * LIGHT-scheme defaults for every design token — a pre-provider fallback only.
+ * ThemeProvider always applies the full runtime set (lib/tokens.ts themeVars)
+ * for the resolved scheme + tenant accent; these values just prevent an
+ * unstyled first frame. Brand defaults = teal (Sunrise PG demo), pre-derived
+ * from lib/tokens.ts brandPalette('#0d9488', 'light').
  */
 :root {
+  /* brand (white-label) */
   --brand: #0d9488;
   --brand-foreground: #ffffff;
+  --brand-foreground-dim: #c3e4e1;
   --brand-soft: #e0f1ef;
   --brand-softer: #c6e6e2;
   --brand-line: #9bd0ca;
-  --brand-deep: #0b7d73;
+  --brand-deep: #0b8278;
+
+  /* neutrals */
+  --page: #f5f6f8;
+  --surface: #ffffff;
+  --surface2: #eef0f3;
+  --line: #e6e8ec;
+  --line2: #f0f1f4;
+  --ink: #16181d;
+  --ink2: #5c6470;
+  --ink3: #9aa1ab;
+  --ink4: #c9ced6;
+
+  /* semantic status */
+  --amber: #b45309;
+  --amber-bg: #fef3e2;
+  --amber-dot: #f59e0b;
+  --amber-line: #f6d7a6;
+  --success: #15803d;
+  --success-bg: #e9f9ef;
+  --success-dot: #22c55e;
+  --success-line: #b8e8c9;
+  --danger: #b91c1c;
+  --danger-bg: #fdeeee;
+  --danger-dot: #ef4444;
+  --danger-line: #f4c2c2;
+  --info: #1d4ed8;
+  --info-bg: #e9f1fe;
+  --info-dot: #3b82f6;
+  --info-line: #bdd4fa;
 }

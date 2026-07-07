@@ -2,13 +2,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Image, Pressable, Text, View } from 'react-native';
+import { Alert, Image, View } from 'react-native';
 
+import { useTokens } from '@/components/theme-provider';
 import { Appbar } from '@/components/ui/appbar';
 import { Button } from '@/components/ui/button';
 import { COMPLAINT_CATEGORIES } from '@/components/ui/categories';
 import { Input } from '@/components/ui/input';
+import { PressableScale } from '@/components/ui/pressable-scale';
 import { Screen } from '@/components/ui/screen';
+import { AppText } from '@/components/ui/text';
+import { toast } from '@/components/ui/toast';
 import { api } from '@/lib/api';
 import { qk } from '@/lib/queries';
 import { ComplaintCategory } from '@pg/shared';
@@ -30,6 +34,7 @@ const ENTRIES = Object.entries(COMPLAINT_CATEGORIES) as [
 export default function NewComplaintScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const tokens = useTokens();
   const [category, setCategory] = useState<ComplaintCategory | null>(null);
   const [description, setDescription] = useState('');
   const [photo, setPhoto] = useState<PickedImage | null>(null);
@@ -65,6 +70,7 @@ export default function NewComplaintScreen() {
         photoKey,
       });
       await queryClient.invalidateQueries({ queryKey: qk.complaints });
+      toast.success('Complaint submitted — your manager will pick it up.');
       router.back();
     } catch (err) {
       Alert.alert('Could not submit', toMessage(err, 'Please try again.'));
@@ -78,33 +84,38 @@ export default function NewComplaintScreen() {
       <Appbar title="Raise a complaint" />
 
       <View className="gap-2">
-        <Text className="text-[13px] font-semibold text-ink2">Category</Text>
+        <AppText variant="label" className="text-ink2">
+          Category
+        </AppText>
         <View className="flex-row flex-wrap gap-2.5">
           {ENTRIES.map(([value, meta]) => {
             const selected = category === value;
             return (
-              <Pressable
+              <PressableScale
                 key={value}
                 onPress={() => setCategory(value)}
+                haptic="selection"
+                pressedScale={0.94}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
                 className={cn(
-                  'w-[30%] items-center gap-2 rounded-btn border py-4 active:opacity-70',
+                  'w-[30%] items-center gap-2 rounded-tile border py-4',
                   selected ? 'border-brand bg-brand-soft' : 'border-line bg-surface',
                 )}
               >
                 <Ionicons
                   name={meta.icon}
                   size={22}
-                  color={selected ? '#0b7d73' : '#6b7280'}
+                  color={selected ? tokens.brandDeep : tokens.ink2}
                 />
-                <Text
-                  className={cn(
-                    'text-[12px] font-medium',
-                    selected ? 'text-brand-deep' : 'text-ink2',
-                  )}
+                <AppText
+                  variant="caption"
+                  weight="medium"
+                  className={cn('text-[12px]', selected ? 'text-brand-deep' : 'text-ink2')}
                 >
                   {meta.label}
-                </Text>
-              </Pressable>
+                </AppText>
+              </PressableScale>
             );
           })}
         </View>
@@ -116,37 +127,39 @@ export default function NewComplaintScreen() {
         onChangeText={setDescription}
         placeholder="Describe the issue…"
         multiline
+        hint={
+          description.trim().length > 0 && description.trim().length < 3
+            ? 'A few more words help your manager act faster.'
+            : undefined
+        }
       />
 
       <View className="gap-2">
-        <Text className="text-[13px] font-semibold text-ink2">Photo (optional)</Text>
-        <Text className="text-[12px] text-ink3">JPG, PNG or WebP · max {MAX_UPLOAD_LABEL}</Text>
+        <AppText variant="label" className="text-ink2">
+          Photo (optional)
+        </AppText>
+        <AppText variant="caption" className="text-[12px]">
+          JPG, PNG or WebP · max {MAX_UPLOAD_LABEL}
+        </AppText>
         {photo ? (
-          <View className="flex-row items-center gap-3 rounded-btn border border-line bg-surface2 p-3">
+          <View className="flex-row items-center gap-3 rounded-tile border border-line bg-surface2 p-3">
             <Image source={{ uri: photo.uri }} className="h-12 w-12 rounded-lg" />
-            <Text className="flex-1 text-[13px] text-ink" numberOfLines={1}>
+            <AppText variant="sub" className="flex-1 text-ink" numberOfLines={1}>
               {photo.fileName}
-            </Text>
-            <Pressable onPress={() => setPhoto(null)}>
-              <Ionicons name="close-circle" size={22} color="#9ca3af" />
-            </Pressable>
+            </AppText>
+            <PressableScale
+              onPress={() => setPhoto(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Remove photo"
+              className="h-9 w-9 items-center justify-center"
+            >
+              <Ionicons name="close-circle" size={22} color={tokens.ink3} />
+            </PressableScale>
           </View>
         ) : (
           <View className="flex-row gap-3">
-            <Pressable
-              onPress={() => selectPhoto('library')}
-              className="flex-1 flex-row items-center justify-center gap-2 rounded-btn border border-dashed border-line py-4 active:opacity-60"
-            >
-              <Ionicons name="image-outline" size={20} color="#6b7280" />
-              <Text className="text-[13px] font-semibold text-ink2">Gallery</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => selectPhoto('camera')}
-              className="flex-1 flex-row items-center justify-center gap-2 rounded-btn border border-dashed border-line py-4 active:opacity-60"
-            >
-              <Ionicons name="camera-outline" size={20} color="#6b7280" />
-              <Text className="text-[13px] font-semibold text-ink2">Camera</Text>
-            </Pressable>
+            <AttachButton icon="image-outline" label="Gallery" onPress={() => selectPhoto('library')} />
+            <AttachButton icon="camera-outline" label="Camera" onPress={() => selectPhoto('camera')} />
           </View>
         )}
       </View>
@@ -158,5 +171,29 @@ export default function NewComplaintScreen() {
         disabled={!valid}
       />
     </Screen>
+  );
+}
+
+function AttachButton({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  const tokens = useTokens();
+  return (
+    <PressableScale
+      onPress={onPress}
+      accessibilityRole="button"
+      className="min-h-[52px] flex-1 flex-row items-center justify-center gap-2 rounded-tile border border-dashed border-line py-4"
+    >
+      <Ionicons name={icon} size={20} color={tokens.ink2} />
+      <AppText variant="label" className="text-ink2">
+        {label}
+      </AppText>
+    </PressableScale>
   );
 }

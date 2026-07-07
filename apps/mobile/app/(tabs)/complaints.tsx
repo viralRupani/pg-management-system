@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { RefreshControl, ScrollView, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Badge } from '@/components/ui/badge';
@@ -8,10 +8,12 @@ import { Card } from '@/components/ui/card';
 import { categoryMeta } from '@/components/ui/categories';
 import { Chip, ChipRow } from '@/components/ui/chip';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Fab } from '@/components/ui/fab';
 import { Row, Ricon } from '@/components/ui/row';
 import { ListSkeleton } from '@/components/ui/skeleton';
 import { complaintStatus } from '@/components/ui/status';
+import { AppText } from '@/components/ui/text';
 import { useComplaints } from '@/lib/queries';
 import { ComplaintStatus } from '@pg/shared';
 import { timeAgo } from '@/lib/utils';
@@ -25,7 +27,7 @@ const FILTERS = [
 
 export default function ComplaintsScreen() {
   const router = useRouter();
-  const { data, isLoading, isFetching, refetch } = useComplaints();
+  const { data, isLoading, isError, isFetching, refetch } = useComplaints();
   const [filter, setFilter] = useState<string>('ALL');
 
   const items =
@@ -33,9 +35,9 @@ export default function ComplaintsScreen() {
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-page">
-      <Text className="px-4 pb-3 pt-1 text-[25px] font-extrabold text-ink">
+      <AppText variant="title" weight="heavy" className="px-4 pb-3 pt-1 text-[25px]">
         Complaints
-      </Text>
+      </AppText>
 
       <View className="pb-3">
         <ChipRow>
@@ -57,6 +59,8 @@ export default function ComplaintsScreen() {
       >
         {isLoading ? (
           <ListSkeleton />
+        ) : isError ? (
+          <ErrorState title="Couldn't load complaints" onRetry={() => refetch()} />
         ) : !items?.length ? (
           <EmptyState
             icon="chatbubble-ellipses-outline"
@@ -86,7 +90,10 @@ export default function ComplaintsScreen() {
         )}
       </ScrollView>
 
-      <Fab onPress={() => router.push('/complaints/new')} />
+      <Fab
+        onPress={() => router.push('/complaints/new')}
+        accessibilityLabel="Raise a complaint"
+      />
     </SafeAreaView>
   );
 }

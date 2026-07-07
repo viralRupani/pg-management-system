@@ -1,28 +1,35 @@
 import { useRouter } from 'expo-router';
-import { RefreshControl, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { RefreshControl, View } from 'react-native';
 
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Row, Ricon } from '@/components/ui/row';
+import { ErrorState } from '@/components/ui/error-state';
+import { Row, Ricon, type RiconTone } from '@/components/ui/row';
 import { Screen } from '@/components/ui/screen';
+import { Segmented } from '@/components/ui/segmented';
 import { ListSkeleton } from '@/components/ui/skeleton';
 import { invoiceStatus } from '@/components/ui/status';
+import { AppText } from '@/components/ui/text';
 import { useInvoices } from '@/lib/queries';
 import { InvoiceStatus, type InvoiceSummary } from '@pg/shared';
 import { formatDate, formatPaise } from '@/lib/utils';
 
-const RICON: Record<string, { name: 'time-outline' | 'checkmark-done' | 'alert-circle-outline'; bg: string; color: string }> = {
-  [InvoiceStatus.PENDING]: { name: 'time-outline', bg: 'bg-amber-bg', color: '#b45309' },
-  [InvoiceStatus.OVERDUE]: { name: 'alert-circle-outline', bg: 'bg-danger-bg', color: '#b91c1c' },
-  [InvoiceStatus.PAID]: { name: 'checkmark-done', bg: 'bg-success-bg', color: '#15803d' },
-  [InvoiceStatus.WAIVED]: { name: 'checkmark-done', bg: 'bg-page', color: '#6b7280' },
+const RICON: Record<string, { name: 'time-outline' | 'checkmark-done' | 'alert-circle-outline'; tone: RiconTone }> = {
+  [InvoiceStatus.PENDING]: { name: 'time-outline', tone: 'amber' },
+  [InvoiceStatus.OVERDUE]: { name: 'alert-circle-outline', tone: 'danger' },
+  [InvoiceStatus.PAID]: { name: 'checkmark-done', tone: 'success' },
+  [InvoiceStatus.WAIVED]: { name: 'checkmark-done', tone: 'neutral' },
 };
+
+type Filter = 'all' | 'due' | 'paid';
 
 export default function RentScreen() {
   const router = useRouter();
-  const { data, isLoading, isFetching, refetch } = useInvoices();
+  const { data, isLoading, isError, isFetching, refetch } = useInvoices();
+  const [filter, setFilter] = useState<Filter>('all');
 
   const due = data?.find(
     (i) =>
@@ -31,15 +38,49 @@ export default function RentScreen() {
         i.status === InvoiceStatus.OVERDUE),
   );
 
+  const filtered = useMemo(() => {
+    const list = data ?? [];
+    if (filter === 'due') {
+      return list.filter(
+        (i) =>
+          !i.deletedAt &&
+          (i.status === InvoiceStatus.PENDING || i.status === InvoiceStatus.OVERDUE),
+      );
+    }
+    if (filter === 'paid') {
+      return list.filter((i) => !i.deletedAt && i.status === InvoiceStatus.PAID);
+    }
+    return list;
+  }, [data, filter]);
+
+  // Group by year so long histories stay scannable.
+  const byYear = useMemo(() => {
+    const groups = new Map<string, InvoiceSummary[]>();
+    for (const inv of filtered) {
+      const year = inv.period.slice(0, 4);
+      const list = groups.get(year) ?? [];
+      list.push(inv);
+      groups.set(year, list);
+    }
+    return [...groups.entries()];
+  }, [filtered]);
+
   return (
     <Screen
       contentClassName="gap-4"
       refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} />}
     >
-      <Text className="text-[25px] font-extrabold text-ink">Rent</Text>
+      <AppText variant="title" weight="heavy" className="text-[25px]">
+        Rent
+      </AppText>
 
       {isLoading ? (
         <ListSkeleton />
+      ) : isError ? (
+        <ErrorState
+          title="Couldn't load invoices"
+          onRetry={() => refetch()}
+        />
       ) : !data?.length ? (
         <EmptyState
           icon="wallet-outline"
@@ -50,15 +91,15 @@ export default function RentScreen() {
         <>
           {due ? (
             <Card className="bg-brand">
-              <Text className="text-[11px] font-bold uppercase tracking-wider text-brand-foreground/80">
+              <AppText variant="caption" className="uppercase tracking-wider text-brand-foreground-dim">
                 Current due
-              </Text>
-              <Text className="mt-1 text-[40px] font-extrabold text-brand-foreground">
+              </AppText>
+              <AppText variant="display" className="mt-1 text-[40px] leading-[46px] text-brand-foreground">
                 {formatPaise(due.amountPaise)}
-              </Text>
-              <Text className="text-[13px] text-brand-foreground/80">
+              </AppText>
+              <AppText variant="sub" className="text-brand-foreground-dim">
                 Due {formatDate(due.dueDate)}
-              </Text>
+              </AppText>
               <Button
                 title="Pay now"
                 variant="ghost"
@@ -68,19 +109,42 @@ export default function RentScreen() {
             </Card>
           ) : null}
 
-          <Card padded={false} className="px-4">
-            <Text className="pt-4 text-[13px] font-bold uppercase tracking-wider text-ink3">
-              History
-            </Text>
-            {data.map((inv, i) => (
-              <InvoiceRow
-                key={inv.id}
-                invoice={inv}
-                first={i === 0}
-                onPress={() => router.push(`/invoices/${inv.id}`)}
-              />
-            ))}
-          </Card>
+          <Segmented<Filter>
+            options={[
+              { label: 'All', value: 'all' },
+              { label: 'Due', value: 'due' },
+              { label: 'Paid', value: 'paid' },
+            ]}
+            value={filter}
+            onChange={setFilter}
+          />
+
+          {!filtered.length ? (
+            <EmptyState
+              icon="funnel-outline"
+              title="Nothing here"
+              description="No invoices match this filter."
+            />
+          ) : (
+            byYear.map(([year, invoices]) => (
+              <Card key={year} padded={false} className="px-4">
+                <AppText
+                  variant="caption"
+                  className="pt-4 uppercase tracking-wider"
+                >
+                  {year}
+                </AppText>
+                {invoices.map((inv, i) => (
+                  <InvoiceRow
+                    key={inv.id}
+                    invoice={inv}
+                    first={i === 0}
+                    onPress={() => router.push(`/invoices/${inv.id}`)}
+                  />
+                ))}
+              </Card>
+            ))
+          )}
         </>
       )}
     </Screen>
@@ -103,7 +167,7 @@ function InvoiceRow({
     <Row
       first={first}
       onPress={onPress}
-      leading={<Ricon name={r.name} className={r.bg} color={r.color} />}
+      leading={<Ricon name={r.name} tone={r.tone} />}
       title={formatPeriod(invoice.period)}
       subtitle={deleted ? 'Cancelled' : formatPaise(invoice.amountPaise)}
       trailing={

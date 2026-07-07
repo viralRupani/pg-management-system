@@ -1,7 +1,5 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
 
 import { AuthShell } from '@/components/auth-shell';
 import { Button } from '@/components/ui/button';
@@ -58,17 +56,9 @@ export default function SlugScreen() {
         className="tracking-[2px]"
         onSubmitEditing={onContinue}
         returnKeyType="go"
+        error={error ?? undefined}
+        hint="Don't have it? Ask your PG manager."
       />
-      {error ? (
-        <Text className="mt-2 text-[13px] text-danger">{error}</Text>
-      ) : (
-        <View className="mt-2 flex-row items-center gap-1.5">
-          <Ionicons name="information-circle-outline" size={15} color="#9ca3af" />
-          <Text className="text-[13px] text-ink3">
-            Don&apos;t have it? Ask your PG manager.
-          </Text>
-        </View>
-      )}
       <Button
         title="Continue"
         onPress={onContinue}
