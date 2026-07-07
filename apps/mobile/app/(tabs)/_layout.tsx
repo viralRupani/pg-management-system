@@ -145,7 +145,7 @@ function BottomBar({ state, descriptors, navigation }: MaterialTopTabBarProps) {
             canPreventDefault: true,
           });
           if (!focused && !event.defaultPrevented) {
-            haptics.selection();
+            haptics.tap(); // Light impact — a touch stronger than the selection tick
             navigation.navigate(route.name);
           }
         };
