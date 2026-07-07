@@ -26,6 +26,12 @@ export const invoiceSummarySchema = z.object({
   amountPaise: z.number().int(),
   dueDate: z.string(),
   status: z.nativeEnum(InvoiceStatus),
+  // Derived (not a stored invoice status): true when a payment for this invoice
+  // is currently SUBMITTED and awaiting the manager's review. The invoice itself
+  // stays PENDING/OVERDUE, so a rejection needs no revert — the flag simply drops
+  // back to false. Drives the resident app's "Under review" state (the invoice is
+  // pulled out of the "due" card while a payment sits in review).
+  underReview: z.boolean(),
   // Soft-delete (void): non-null when the invoice has been cancelled by a
   // manager; `deletedReason` is the required note shown over the invoice.
   deletedAt: z.string().nullable(),

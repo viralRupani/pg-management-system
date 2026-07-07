@@ -11,17 +11,25 @@ import { Row, Ricon, type RiconTone } from '@/components/ui/row';
 import { Screen } from '@/components/ui/screen';
 import { Segmented } from '@/components/ui/segmented';
 import { ListSkeleton } from '@/components/ui/skeleton';
-import { invoiceStatus } from '@/components/ui/status';
+import { invoiceBadge } from '@/components/ui/status';
 import { AppText } from '@/components/ui/text';
 import { useInvoices } from '@/lib/queries';
 import { InvoiceStatus, type InvoiceSummary } from '@pg/shared';
 import { formatDate, formatPaise } from '@/lib/utils';
 
-const RICON: Record<string, { name: 'time-outline' | 'checkmark-done' | 'alert-circle-outline'; tone: RiconTone }> = {
+type RiconName = 'time-outline' | 'checkmark-done' | 'alert-circle-outline' | 'hourglass-outline';
+
+const RICON: Record<string, { name: RiconName; tone: RiconTone }> = {
   [InvoiceStatus.PENDING]: { name: 'time-outline', tone: 'amber' },
   [InvoiceStatus.OVERDUE]: { name: 'alert-circle-outline', tone: 'danger' },
   [InvoiceStatus.PAID]: { name: 'checkmark-done', tone: 'success' },
   [InvoiceStatus.WAIVED]: { name: 'checkmark-done', tone: 'neutral' },
+};
+
+// A payment awaiting review outranks the invoice's own PENDING/OVERDUE icon.
+const REVIEW_RICON: { name: RiconName; tone: RiconTone } = {
+  name: 'hourglass-outline',
+  tone: 'info',
 };
 
 type Filter = 'all' | 'due' | 'paid';
@@ -32,12 +40,15 @@ export default function RentScreen() {
   const [filter, setFilter] = useState<Filter>('all');
 
   // Oldest unpaid first, so the card shows the current month before next month.
+  // An invoice with a payment under review is pulled out — the card surfaces the
+  // next rent the resident still needs to pay, not one already awaiting approval.
   const due = useMemo(
     () =>
       (data ?? [])
         .filter(
           (i) =>
             !i.deletedAt &&
+            !i.underReview &&
             (i.status === InvoiceStatus.PENDING ||
               i.status === InvoiceStatus.OVERDUE),
         )
@@ -169,8 +180,11 @@ function InvoiceRow({
   onPress: () => void;
 }) {
   const deleted = Boolean(invoice.deletedAt);
-  const r = RICON[invoice.status] ?? RICON[InvoiceStatus.PENDING];
-  const status = invoiceStatus(invoice.status);
+  const underReview = invoice.underReview && !deleted;
+  const r = underReview
+    ? REVIEW_RICON
+    : RICON[invoice.status] ?? RICON[InvoiceStatus.PENDING];
+  const status = invoiceBadge(invoice.status, underReview);
   return (
     <Row
       first={first}

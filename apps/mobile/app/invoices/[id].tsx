@@ -17,7 +17,7 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { Screen } from '@/components/ui/screen';
 import { Segmented } from '@/components/ui/segmented';
 import { Sheet } from '@/components/ui/sheet';
-import { invoiceStatus } from '@/components/ui/status';
+import { invoiceBadge } from '@/components/ui/status';
 import { AppText } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { api } from '@/lib/api';
@@ -107,10 +107,15 @@ export default function InvoiceDetailScreen() {
     );
   }
 
-  const status = invoiceStatus(invoice.status);
   const deleted = Boolean(invoice.deletedAt);
+  const underReview = invoice.underReview && !deleted;
+  const status = invoiceBadge(invoice.status, underReview);
+  // A payment already awaiting review blocks re-submitting until the manager
+  // decides — if they reject it, `underReview` drops and the invoice is payable
+  // again with no state change of its own.
   const payable =
     !deleted &&
+    !underReview &&
     (invoice.status === InvoiceStatus.PENDING ||
       invoice.status === InvoiceStatus.OVERDUE);
 
@@ -241,6 +246,20 @@ export default function InvoiceDetailScreen() {
             {invoice.deletedReason ? `: ${invoice.deletedReason}` : '.'} Nothing
             is owed — no payment is needed.
           </AppText>
+        </Card>
+      ) : underReview ? (
+        <Card className="flex-row items-start gap-3 bg-surface2">
+          <Ionicons name="hourglass-outline" size={20} color={tokens.info} />
+          <View className="flex-1">
+            <AppText variant="caption" className="uppercase tracking-wider">
+              Payment under review
+            </AppText>
+            <AppText variant="sub" className="mt-1.5 leading-5">
+              You&apos;ve submitted a payment for this invoice. Your manager is
+              confirming it — once approved it&apos;ll show as paid. If it&apos;s
+              rejected, you can submit again here.
+            </AppText>
+          </View>
         </Card>
       ) : (
         <Card className="bg-surface2">

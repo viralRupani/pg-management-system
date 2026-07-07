@@ -38,6 +38,17 @@ const DEPOSIT: Record<string, StatusInfo> = {
   [DepositStatus.SETTLED]: { label: 'Settled', variant: 'success' },
 };
 
+/** Shown while a submitted payment awaits the manager's review. Not a stored
+ * invoice status — derived from `InvoiceSummary.underReview` — so it takes
+ * precedence over the PENDING/OVERDUE badge wherever it applies. */
+const UNDER_REVIEW: StatusInfo = { label: 'Under review', variant: 'info' };
+
+/** Badge for an invoice, honoring the derived "under review" flag first. */
+export const invoiceBadge = (
+  status: string,
+  underReview: boolean,
+): StatusInfo => (underReview ? UNDER_REVIEW : invoiceStatus(status));
+
 export const invoiceStatus = (s: string): StatusInfo => INVOICE[s] ?? FALLBACK;
 export const documentStatus = (s: string): StatusInfo => DOCUMENT[s] ?? FALLBACK;
 export const complaintStatus = (s: string): StatusInfo =>

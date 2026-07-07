@@ -405,6 +405,7 @@ export class RentService {
         amountPaise: invoices.amountPaise,
         dueDate: invoices.dueDate,
         status: invoices.status,
+        underReview: this.underReviewSql,
         deletedAt: invoices.deletedAt,
         deletedReason: invoices.deletedReason,
       })
@@ -441,6 +442,7 @@ export class RentService {
         amountPaise: r.amountPaise,
         dueDate: r.dueDate.toISOString(),
         status: r.status as InvoiceStatus,
+        underReview: r.underReview,
         deletedAt: r.deletedAt ? r.deletedAt.toISOString() : null,
         deletedReason: r.deletedReason,
       })),
@@ -462,6 +464,7 @@ export class RentService {
         amountPaise: invoices.amountPaise,
         dueDate: invoices.dueDate,
         status: invoices.status,
+        underReview: this.underReviewSql,
         deletedAt: invoices.deletedAt,
         deletedReason: invoices.deletedReason,
       })
@@ -477,10 +480,20 @@ export class RentService {
       amountPaise: r.amountPaise,
       dueDate: r.dueDate.toISOString(),
       status: r.status as InvoiceStatus,
+      underReview: r.underReview,
       deletedAt: r.deletedAt ? r.deletedAt.toISOString() : null,
       deletedReason: r.deletedReason,
     }));
   }
+
+  /**
+   * Correlated subquery: does this invoice have a payment currently awaiting
+   * review? A derived flag, not a stored invoice status — so a rejected payment
+   * (SUBMITTED → REJECTED) automatically drops the invoice back to plain
+   * PENDING/OVERDUE with no revert logic. Shared by the resident + manager list
+   * mappers.
+   */
+  private readonly underReviewSql = sql<boolean>`exists (select 1 from ${payments} where ${payments.invoiceId} = ${invoices.id} and ${payments.status} = ${PaymentStatus.SUBMITTED})`;
 
   /**
    * Manager: void (soft-delete) an invoice with a mandatory reason. The invoice

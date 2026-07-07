@@ -89,9 +89,19 @@ export default function HomeScreen() {
         .filter(
           (i) =>
             !i.deletedAt &&
+            !i.underReview &&
             (i.status === InvoiceStatus.PENDING ||
               i.status === InvoiceStatus.OVERDUE),
         )
+        .sort((a, b) => a.period.localeCompare(b.period))[0],
+    [invoices.data],
+  );
+  // When nothing is left to pay, an invoice whose payment is awaiting the
+  // manager's review still shouldn't read as "all paid up" — surface it instead.
+  const reviewInvoice = useMemo(
+    () =>
+      (invoices.data ?? [])
+        .filter((i) => !i.deletedAt && i.underReview)
         .sort((a, b) => a.period.localeCompare(b.period))[0],
     [invoices.data],
   );
@@ -261,6 +271,23 @@ export default function HomeScreen() {
                     />
                   </View>
                 </>
+              ) : reviewInvoice ? (
+                <PressableScale
+                  pressedScale={0.99}
+                  onPress={() => router.push(`/invoices/${reviewInvoice.id}`)}
+                  className="flex-row items-center gap-3"
+                >
+                  <Ionicons name="hourglass-outline" size={24} color={tokens.info} />
+                  <View className="flex-1">
+                    <AppText variant="body" weight="semibold">
+                      Payment under review
+                    </AppText>
+                    <AppText variant="sub" className="text-[12px]">
+                      {formatPeriod(reviewInvoice.period)} · your manager is confirming it.
+                    </AppText>
+                  </View>
+                  <Badge label="Under review" variant="info" />
+                </PressableScale>
               ) : (
                 <View className="flex-row items-center gap-3">
                   <Ionicons name="checkmark-circle" size={26} color={tokens.success} />
