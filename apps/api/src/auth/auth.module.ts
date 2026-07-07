@@ -34,6 +34,6 @@ import { MailModule } from "../mail/mail.module";
     OtpService,
     PasswordResetService,
   ],
-  exports: [AuthService],
+  exports: [AuthService, AuthRepository],
 })
 export class AuthModule {}

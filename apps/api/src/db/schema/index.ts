@@ -30,6 +30,8 @@ export * from "./expenses";
 export * from "./billing-snapshots";
 export * from "./short-stays";
 export * from "./invoice-schedules";
+export * from "./tc-versions";
+export * from "./tc-acceptances";
 
 import { tenants } from "./tenants";
 import { owners } from "./owners";
@@ -63,6 +65,8 @@ import { expenses } from "./expenses";
 import { billingSnapshots } from "./billing-snapshots";
 import { shortStays } from "./short-stays";
 import { invoiceSchedules } from "./invoice-schedules";
+import { tcVersions } from "./tc-versions";
+import { tcAcceptances } from "./tc-acceptances";
 
 /** Full schema object passed to drizzle(). */
 export const schema = {
@@ -99,6 +103,9 @@ export const schema = {
   billingSnapshots,
   shortStays,
   invoiceSchedules,
+  // Global (non-tenant) tables — no RLS, on the app_user pool. See RLS_TABLES.
+  tcVersions,
+  tcAcceptances,
 };
 
 /**

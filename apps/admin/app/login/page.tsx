@@ -18,7 +18,7 @@ import { useAuth } from "@/lib/auth";
  * appear after login, painted from GET /tenants/branding.
  */
 export default function LoginPage() {
-  const { login, user, loading } = useAuth();
+  const { login, user, loading, termsPending } = useAuth();
   const router = useRouter();
   const toast = useToast();
   const [email, setEmail] = useState("");
@@ -27,15 +27,18 @@ export default function LoginPage() {
 
   // Already signed in → skip the form (owners land on the PG chooser).
   useEffect(() => {
-    if (!loading && user) router.replace(landingPath(user));
-  }, [user, loading, router]);
+    if (!loading && user) router.replace(landingPath(user, termsPending));
+  }, [user, loading, termsPending, router]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     try {
       await login(email.trim(), password);
-      router.replace(landingPath(currentUser()));
+      // `termsPending` here is the pre-login closure value; the reactive route
+      // guards (which see the freshly-fetched status) are what actually enforce
+      // the T&C gate — this redirect is best-effort.
+      router.replace(landingPath(currentUser(), termsPending));
     } catch (err) {
       toast.error(
         err instanceof ApiError && err.status === 401

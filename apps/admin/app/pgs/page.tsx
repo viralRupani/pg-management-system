@@ -21,7 +21,7 @@ import { Input, Label } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/ui/toast";
-import { api } from "@/lib/api";
+import { api, needsTcAcceptance } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toMessage } from "@/lib/utils";
 
@@ -31,7 +31,8 @@ import { toMessage } from "@/lib/utils";
  * apply. Picking a PG mints a scoped token and enters the dashboard.
  */
 export default function PgsPage() {
-  const { user, loading, isOwner, switchPg, logout } = useAuth();
+  const { user, loading, isOwner, switchPg, logout, termsPending, tcLoading } =
+    useAuth();
   const router = useRouter();
   const toast = useToast();
   const [pgs, setPgs] = useState<OwnerPgSummary[] | null>(null);
@@ -46,12 +47,14 @@ export default function PgsPage() {
     document.title = "Your PGs · Basera";
   }, []);
 
-  // Guard: only signed-in owners belong here.
+  // Guard: only signed-in owners belong here. An owner who hasn't accepted the
+  // latest T&C is gated at this global-token stage (before any PG is chosen).
   useEffect(() => {
-    if (loading) return;
+    if (loading || tcLoading) return;
     if (!user) router.replace("/login");
     else if (!isOwner) router.replace("/dashboard");
-  }, [user, loading, isOwner, router]);
+    else if (needsTcAcceptance(user, termsPending)) router.replace("/terms");
+  }, [user, loading, tcLoading, termsPending, isOwner, router]);
 
   const load = useCallback(async () => {
     try {
@@ -78,7 +81,13 @@ export default function PgsPage() {
     }
   }
 
-  if (loading || !user || !isOwner) {
+  if (
+    loading ||
+    tcLoading ||
+    !user ||
+    !isOwner ||
+    needsTcAcceptance(user, termsPending)
+  ) {
     return (
       <div className="flex min-h-dvh items-center justify-center text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin" />

@@ -97,9 +97,34 @@ export function needsPasswordChange(user: JwtPayload | null): boolean {
   return user?.mustChangePassword === true;
 }
 
-/** Where a freshly-authenticated user should land. */
-export function landingPath(user: JwtPayload | null): string {
+/**
+ * An owner/manager who hasn't accepted the latest published T&C must accept
+ * before using the app. `termsPending` is fetched separately (see auth.tsx);
+ * platform admins have no T&C gate (they publish, they don't accept).
+ */
+export function needsTcAcceptance(
+  user: JwtPayload | null,
+  termsPending: boolean,
+): boolean {
+  return (
+    termsPending &&
+    (user?.role === UserRole.PG_OWNER || user?.role === UserRole.PG_MANAGER)
+  );
+}
+
+/**
+ * Where a freshly-authenticated user should land. Precedence:
+ * login → forced password change → platform-admin console → T&C acceptance →
+ * PG chooser (owner) → dashboard. `landingPath` is pure, so callers thread in
+ * `termsPending` from `useAuth()`; the reactive route guards are authoritative.
+ */
+export function landingPath(
+  user: JwtPayload | null,
+  termsPending = false,
+): string {
   if (!user) return "/login";
   if (needsPasswordChange(user)) return "/change-password";
+  if (user.role === UserRole.PLATFORM_ADMIN) return "/terms-admin";
+  if (needsTcAcceptance(user, termsPending)) return "/terms";
   return needsPgSelection(user) ? "/pgs" : "/dashboard";
 }

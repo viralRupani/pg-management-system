@@ -90,6 +90,8 @@ import type {
   UpsertMenuSlotInput,
   CreateShortStayInput,
   ShortStaySummary,
+  TcStatus,
+  TcVersion,
 } from "@pg/shared";
 import { Http } from "./http";
 import type { ClientConfig } from "./types";
@@ -154,6 +156,24 @@ export class PgApiClient {
     stats: () => this.http.get<DashboardStats>("/dashboard/stats"),
     /** Manager: lightweight pending-action counts (bell badge + alerts panel). */
     alerts: () => this.http.get<DashboardAlerts>("/dashboard/alerts"),
+  };
+
+  /**
+   * Terms & Conditions. Owners/managers read their status + accept; the platform
+   * super-admin lists + publishes versions. `status` fails open server-side, so
+   * it never triggers the 401 → /login path.
+   */
+  readonly terms = {
+    /** Owner/manager: acceptance status for the latest version (fails open). */
+    status: () => this.http.get<TcStatus>("/terms/status"),
+    /** Owner/manager: accept the current latest version (idempotent). */
+    accept: (version: number) =>
+      this.http.post<{ accepted: true }>("/terms/accept", { version }),
+    /** Platform admin: all published versions, newest first. */
+    listVersions: () => this.http.get<TcVersion[]>("/terms/versions"),
+    /** Platform admin: publish a new version (supersedes prior acceptances). */
+    publish: (body: string) =>
+      this.http.post<TcVersion>("/terms/versions", { body }),
   };
 
   /**
