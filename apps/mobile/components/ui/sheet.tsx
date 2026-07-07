@@ -35,12 +35,15 @@ export function Sheet({
   title,
   subtitle,
   children,
+  animated = true,
 }: {
   visible: boolean;
   onClose: () => void;
   title: string;
   subtitle?: string;
   children: React.ReactNode;
+  /** Slide-up + scrim-fade on open/close. Set false to appear/dismiss instantly. */
+  animated?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const themeVars = useThemeVars();
@@ -52,11 +55,16 @@ export function Sheet({
     if (visible) {
       setMounted(true);
       dragY.value = 0;
-      progress.value = withSpring(1, { damping: 24, stiffness: 260 });
+      progress.value = animated ? withSpring(1, { damping: 24, stiffness: 260 }) : 1;
     } else if (mounted) {
-      progress.value = withTiming(0, { duration: 180 }, (finished) => {
-        if (finished) runOnJS(setMounted)(false);
-      });
+      if (animated) {
+        progress.value = withTiming(0, { duration: 180 }, (finished) => {
+          if (finished) runOnJS(setMounted)(false);
+        });
+      } else {
+        progress.value = 0;
+        setMounted(false);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);

@@ -31,15 +31,23 @@ export default function RentScreen() {
   const { data, isLoading, isError, isFetching, refetch } = useInvoices();
   const [filter, setFilter] = useState<Filter>('all');
 
-  const due = data?.find(
-    (i) =>
-      !i.deletedAt &&
-      (i.status === InvoiceStatus.PENDING ||
-        i.status === InvoiceStatus.OVERDUE),
+  // Oldest unpaid first, so the card shows the current month before next month.
+  const due = useMemo(
+    () =>
+      (data ?? [])
+        .filter(
+          (i) =>
+            !i.deletedAt &&
+            (i.status === InvoiceStatus.PENDING ||
+              i.status === InvoiceStatus.OVERDUE),
+        )
+        .sort((a, b) => a.period.localeCompare(b.period))[0],
+    [data],
   );
 
   const filtered = useMemo(() => {
-    const list = data ?? [];
+    // Sort oldest → newest (period is zero-padded YYYY-MM, so lexicographic works).
+    const list = [...(data ?? [])].sort((a, b) => a.period.localeCompare(b.period));
     if (filter === 'due') {
       return list.filter(
         (i) =>

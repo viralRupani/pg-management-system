@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { AppText } from '@/components/ui/text';
@@ -33,12 +39,27 @@ export function Segmented<T extends string>({
   );
   const thumbWidth = width > 0 ? (width - 8) / options.length : 0;
   const x = useSharedValue(index * thumbWidth);
+  // A brief scale pop gives the transition life without any horizontal
+  // overshoot (translateX bounce spills the thumb off-screen at the last tab).
+  const pop = useSharedValue(1);
 
   useEffect(() => {
-    x.value = withSpring(index * thumbWidth, { damping: 22, stiffness: 300 });
-  }, [index, thumbWidth, x]);
+    // Glide the position smoothly — no overshoot, so it never leaves its slot.
+    x.value = withSpring(index * thumbWidth, {
+      damping: 26,
+      stiffness: 240,
+      overshootClamping: true,
+    });
+    // Grows from the thumb's center, so it can't run past the screen edge.
+    pop.value = withSequence(
+      withTiming(1.06, { duration: 110 }),
+      withSpring(1, { damping: 14, stiffness: 260 }),
+    );
+  }, [index, thumbWidth, x, pop]);
 
-  const thumbStyle = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: x.value }, { scale: pop.value }],
+  }));
 
   return (
     <View

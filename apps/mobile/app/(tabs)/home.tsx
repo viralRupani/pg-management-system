@@ -81,11 +81,19 @@ export default function HomeScreen() {
   };
 
   const name = invoices.data?.[0]?.residentName?.split(' ')[0] ?? 'there';
-  const dueInvoice = invoices.data?.find(
-    (i) =>
-      !i.deletedAt &&
-      (i.status === InvoiceStatus.PENDING ||
-        i.status === InvoiceStatus.OVERDUE),
+  // Surface the *earliest* unpaid invoice first (oldest period), so paying it
+  // reveals the next month — not the newest bill ahead of an older unpaid one.
+  const dueInvoice = useMemo(
+    () =>
+      (invoices.data ?? [])
+        .filter(
+          (i) =>
+            !i.deletedAt &&
+            (i.status === InvoiceStatus.PENDING ||
+              i.status === InvoiceStatus.OVERDUE),
+        )
+        .sort((a, b) => a.period.localeCompare(b.period))[0],
+    [invoices.data],
   );
   const isOverdue = dueInvoice?.status === InvoiceStatus.OVERDUE;
   const rentBadge = dueInvoice ? invoiceStatus(dueInvoice.status) : null;
