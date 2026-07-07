@@ -62,7 +62,7 @@ function ComplaintsList({ initialResidentId }: { initialResidentId?: string }) {
   const [items, setItems] = useState<ComplaintSummary[] | null>(null);
   const [total, setTotal] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [filter, setFilter] = useState<Filter>("ALL");
+  const [filter, setFilter] = useState<Filter>("OPEN");
   const [residentId, setResidentId] = useState<string | undefined>(initialResidentId);
   const [page, setPage] = useState(1);
 
