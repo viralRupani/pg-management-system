@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
+  Easing,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
@@ -55,7 +56,12 @@ export function Sheet({
     if (visible) {
       setMounted(true);
       dragY.value = 0;
-      progress.value = animated ? withSpring(1, { damping: 24, stiffness: 260 }) : 1;
+      // Ease the panel up instead of springing it — a spring overshoots past the
+      // resting point (translateY goes negative), which reads as the sheet
+      // "jumping" on open. Timing slides smoothly to rest with no bounce.
+      progress.value = animated
+        ? withTiming(1, { duration: 540, easing: Easing.out(Easing.cubic) })
+        : 1;
     } else if (mounted) {
       if (animated) {
         progress.value = withTiming(0, { duration: 180 }, (finished) => {

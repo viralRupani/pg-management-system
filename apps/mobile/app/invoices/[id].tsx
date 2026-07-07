@@ -280,6 +280,7 @@ export default function InvoiceDetailScreen() {
 
       <Sheet
         visible={sheetOpen}
+        animated={true}
         onClose={resetSheet}
         title="Submit payment"
         subtitle={`How did you pay ${formatPaise(invoice.amountPaise)}?`}

@@ -102,7 +102,7 @@ export default function MoreScreen() {
         onClose={() => setAppearanceOpen(false)}
         title="Appearance"
         subtitle="System follows your phone's light/dark setting."
-        animated={false}
+        animated={true}
       >
         <Segmented<SchemePreference>
           options={[

@@ -151,6 +151,7 @@ export default function DepositScreen() {
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         title="Request move-out"
+        animated={true}
         subtitle="Most PGs require 30 days' notice. Pick your preferred date."
       >
         <View className="gap-2">

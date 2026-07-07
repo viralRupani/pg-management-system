@@ -136,6 +136,7 @@ export default function DocumentsScreen() {
           setChosenType(null);
         }}
         title="Upload a document"
+        animated={true}
         subtitle="Pick the document type, then choose a source."
       >
         <View className="gap-2">

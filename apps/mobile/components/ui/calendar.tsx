@@ -71,7 +71,7 @@ export function CalendarSheet({
   const canGoPrev = !min || month.getTime() > monthStart(min).getTime();
 
   return (
-    <Sheet visible={visible} onClose={onClose} title={title} subtitle={subtitle}>
+    <Sheet visible={visible} animated={true} onClose={onClose} title={title} subtitle={subtitle}>
       {/* Month pager */}
       <View className="flex-row items-center justify-between">
         <PressableScale
