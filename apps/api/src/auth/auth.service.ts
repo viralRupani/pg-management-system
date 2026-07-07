@@ -78,20 +78,16 @@ export class AuthService {
   }
 
   async verifyOtp(input: OtpVerifyInput): Promise<AuthTokens> {
-    console.log(input)
     const tenant = await this.repo.resolveTenantBySlug(input.pgCode);
-    console.log('tenent', tenant)
     if (!tenant) throw new UnauthorizedException("Invalid code");
 
     const ok = await this.otp.verify(tenant.id, input.phone, input.code);
-    console.log('ok', ok)
     if (!ok) throw new UnauthorizedException("Invalid code");
 
     const identity = await this.repo.findResidentIdentity(
       tenant.id,
       input.phone,
     );
-    console.log('identity', identity)
     if (!identity) throw new UnauthorizedException("Invalid code");
 
     return this.issueTokens({
