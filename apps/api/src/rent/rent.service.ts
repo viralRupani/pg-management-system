@@ -16,6 +16,7 @@ import {
   type PaymentSummary,
   PaymentStatus,
   type PresignedUploadResult,
+  type ResidentPayment,
   type SubmitPaymentInput,
 } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
@@ -620,6 +621,71 @@ export class RentService {
       })
       .returning({ id: payments.id });
     return { id: row.id };
+  }
+
+  /**
+   * Resident: the payments THEY submitted against one of THEIR invoices, newest
+   * first. Ownership is enforced via `ownedInvoice` (RLS isolates tenants, not
+   * residents) AND the resident_id filter, so a resident can never read a
+   * co-tenant's proof. The screenshot is presigned inline per row (best-effort —
+   * a missing/expired key yields a null URL, not a 500).
+   */
+  async listMyInvoicePayments(
+    residentId: string,
+    invoiceId: string,
+  ): Promise<ResidentPayment[]> {
+    await this.ownedInvoice(residentId, invoiceId);
+    const rows = await this.ctx
+      .db()
+      .select({
+        id: payments.id,
+        invoiceId: payments.invoiceId,
+        amountPaise: payments.amountPaise,
+        status: payments.status,
+        method: payments.method,
+        referenceId: payments.referenceId,
+        reviewNote: payments.reviewNote,
+        screenshotKey: payments.screenshotKey,
+        createdAt: payments.createdAt,
+      })
+      .from(payments)
+      .where(
+        and(
+          eq(payments.invoiceId, invoiceId),
+          eq(payments.residentId, residentId),
+        ),
+      )
+      .orderBy(desc(payments.createdAt));
+
+    return Promise.all(
+      rows.map(async (r) => ({
+        id: r.id,
+        invoiceId: r.invoiceId,
+        amountPaise: r.amountPaise,
+        status: r.status as PaymentStatus,
+        method: r.method as PaymentMethod,
+        referenceId: r.referenceId,
+        reviewNote: r.reviewNote,
+        screenshotUrl: await this.presignScreenshot(r.screenshotKey),
+        createdAt: r.createdAt.toISOString(),
+      })),
+    );
+  }
+
+  /** Best-effort presign — a missing key or storage hiccup yields null, not a throw. */
+  private async presignScreenshot(key: string | null): Promise<string | null> {
+    if (!key) return null;
+    try {
+      const { downloadUrl } = await this.storage.presignDownload(key);
+      return downloadUrl;
+    } catch (err) {
+      this.logger.warn(
+        `Failed to presign payment screenshot ${key}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    }
   }
 
   /** Manager: payments awaiting/holding review (optionally filtered by status). */

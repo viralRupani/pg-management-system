@@ -37,6 +37,16 @@ export class PaymentsController {
     return this.rent.submitPayment(user.sub, dto);
   }
 
+  /** Resident: the payments THEY submitted for one of THEIR invoices. */
+  @Get("invoice/:invoiceId")
+  @Roles(UserRole.RESIDENT)
+  mineForInvoice(
+    @CurrentUser() user: JwtPayload,
+    @Param("invoiceId") invoiceId: string,
+  ) {
+    return this.rent.listMyInvoicePayments(user.sub, invoiceId);
+  }
+
   // --- Manager ---
   @Get()
   @Roles(UserRole.PG_MANAGER)

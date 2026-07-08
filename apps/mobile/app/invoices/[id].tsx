@@ -18,12 +18,18 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { Screen } from '@/components/ui/screen';
 import { Segmented } from '@/components/ui/segmented';
 import { Sheet } from '@/components/ui/sheet';
-import { invoiceBadge } from '@/components/ui/status';
+import { invoiceBadge, paymentStatus } from '@/components/ui/status';
 import { AppText } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
 import { api } from '@/lib/api';
-import { qk, useInvoiceCharges, useInvoices, usePaymentInfo } from '@/lib/queries';
-import { InvoiceStatus, PaymentMethod } from '@pg/shared';
+import {
+  qk,
+  useInvoiceCharges,
+  useInvoicePayments,
+  useInvoices,
+  usePaymentInfo,
+} from '@/lib/queries';
+import { InvoiceStatus, PaymentMethod, PaymentStatus, type ResidentPayment } from '@pg/shared';
 import {
   MAX_UPLOAD_LABEL,
   contentTypeOf,
@@ -43,6 +49,7 @@ export default function InvoiceDetailScreen() {
 
   const { data: paymentInfo } = usePaymentInfo();
   const { data: charges } = useInvoiceCharges(id);
+  const { data: payments } = useInvoicePayments(id);
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [method, setMethod] = useState<PaymentMethod>(PaymentMethod.UPI);
@@ -182,6 +189,7 @@ export default function InvoiceDetailScreen() {
         });
       }
       await queryClient.invalidateQueries({ queryKey: qk.invoices });
+      await queryClient.invalidateQueries({ queryKey: qk.invoicePayments(invoice.id) });
       // Close the sheet BEFORE toasting — the Modal sits above the root tree.
       resetSheet();
       toast.success(
@@ -247,6 +255,15 @@ export default function InvoiceDetailScreen() {
         ) : null}
       </Card>
 
+      {/* Payment(s) the resident submitted for this invoice — mode (UPI/cash),
+          the UPI reference, and the proof screenshot. Newest first, so the
+          current attempt leads and any earlier rejected try sits below it. */}
+      {payments && payments.length > 0
+        ? payments.map((p, i) => (
+            <PaymentCard key={p.id} payment={p} first={i === 0} />
+          ))
+        : null}
+
       {deleted ? (
         <Card className="bg-surface2">
           <AppText variant="caption" className="uppercase tracking-wider">
@@ -272,7 +289,7 @@ export default function InvoiceDetailScreen() {
             </AppText>
           </View>
         </Card>
-      ) : (
+      ) : payable ? (
         <Card className="bg-surface2">
           <AppText variant="caption" className="uppercase tracking-wider">
             How to pay
@@ -283,7 +300,7 @@ export default function InvoiceDetailScreen() {
             Your manager reviews and approves it.
           </AppText>
         </Card>
-      )}
+      ) : null}
 
       {payable ? (
         <Button title="Submit payment" onPress={() => setSheetOpen(true)} />
@@ -442,6 +459,101 @@ export default function InvoiceDetailScreen() {
         />
       </Sheet>
     </Screen>
+  );
+}
+
+function PaymentCard({
+  payment,
+  first,
+}: {
+  payment: ResidentPayment;
+  first: boolean;
+}) {
+  const badge = paymentStatus(payment.status);
+  const isCash = payment.method === PaymentMethod.CASH;
+  const isRejected = payment.status === PaymentStatus.REJECTED;
+
+  return (
+    <Card>
+      <View className="flex-row items-center justify-between">
+        <AppText variant="caption" className="uppercase tracking-wider">
+          {first ? 'Your payment' : 'Earlier attempt'}
+        </AppText>
+        <Badge label={badge.label} variant={badge.variant} />
+      </View>
+
+      <View className="mt-3 gap-2.5">
+        <DetailRow
+          icon={isCash ? 'cash-outline' : 'phone-portrait-outline'}
+          label="Paid by"
+          value={isCash ? 'Cash' : 'UPI'}
+        />
+        <DetailRow
+          icon="wallet-outline"
+          label="Amount"
+          value={formatPaise(payment.amountPaise)}
+        />
+        {payment.referenceId ? (
+          <DetailRow
+            icon="receipt-outline"
+            label="UPI reference"
+            value={payment.referenceId}
+          />
+        ) : null}
+        <DetailRow
+          icon="time-outline"
+          label="Submitted"
+          value={formatDate(payment.createdAt)}
+        />
+      </View>
+
+      {isRejected && payment.reviewNote ? (
+        <View className="mt-3 rounded-tile border border-line bg-surface2 p-3">
+          <AppText variant="caption" className="uppercase tracking-wider">
+            Reason
+          </AppText>
+          <AppText variant="sub" className="mt-1 leading-5">
+            {payment.reviewNote}
+          </AppText>
+        </View>
+      ) : null}
+
+      {payment.screenshotUrl ? (
+        <View className="mt-3 gap-1.5">
+          <AppText variant="caption" className="uppercase tracking-wider">
+            Payment proof
+          </AppText>
+          <Image
+            source={{ uri: payment.screenshotUrl }}
+            className="h-64 w-full rounded-tile bg-surface2"
+            resizeMode="contain"
+          />
+        </View>
+      ) : null}
+    </Card>
+  );
+}
+
+function DetailRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+}) {
+  const tokens = useTokens();
+  return (
+    <View className="flex-row items-center gap-3">
+      <Ionicons name={icon} size={16} color={tokens.ink3} />
+      <AppText variant="sub" className="flex-1">
+        {label}
+      </AppText>
+      <AppText variant="sub" className="text-ink">
+        {value}
+      </AppText>
+    </View>
   );
 }
 

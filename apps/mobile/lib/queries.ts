@@ -10,6 +10,7 @@ import { api } from '@/lib/api';
 export const qk = {
   invoices: ['invoices', 'mine'] as const,
   invoiceCharges: (id: string) => ['invoices', id, 'charges'] as const,
+  invoicePayments: (id: string) => ['invoices', id, 'payments'] as const,
   deposit: ['deposit', 'mine'] as const,
   documents: ['documents', 'mine'] as const,
   complaints: ['complaints', 'mine'] as const,
@@ -28,6 +29,12 @@ export const useInvoiceCharges = (id: string) =>
   useQuery({
     queryKey: qk.invoiceCharges(id),
     queryFn: () => api.resident.invoices.charges(id),
+  });
+
+export const useInvoicePayments = (id: string) =>
+  useQuery({
+    queryKey: qk.invoicePayments(id),
+    queryFn: () => api.resident.payments.forInvoice(id),
   });
 
 export const useDeposit = () =>

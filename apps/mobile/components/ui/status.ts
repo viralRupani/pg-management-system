@@ -3,6 +3,7 @@ import {
   DepositStatus,
   DocumentStatus,
   InvoiceStatus,
+  PaymentStatus,
 } from '@pg/shared';
 
 import type { BadgeVariant } from './badge';
@@ -38,6 +39,12 @@ const DEPOSIT: Record<string, StatusInfo> = {
   [DepositStatus.SETTLED]: { label: 'Settled', variant: 'success' },
 };
 
+const PAYMENT: Record<string, StatusInfo> = {
+  [PaymentStatus.SUBMITTED]: { label: 'Under review', variant: 'info' },
+  [PaymentStatus.APPROVED]: { label: 'Approved', variant: 'success' },
+  [PaymentStatus.REJECTED]: { label: 'Rejected', variant: 'danger' },
+};
+
 /** Shown while a submitted payment awaits the manager's review. Not a stored
  * invoice status — derived from `InvoiceSummary.underReview` — so it takes
  * precedence over the PENDING/OVERDUE badge wherever it applies. */
@@ -54,3 +61,4 @@ export const documentStatus = (s: string): StatusInfo => DOCUMENT[s] ?? FALLBACK
 export const complaintStatus = (s: string): StatusInfo =>
   COMPLAINT[s] ?? FALLBACK;
 export const depositStatus = (s: string): StatusInfo => DEPOSIT[s] ?? FALLBACK;
+export const paymentStatus = (s: string): StatusInfo => PAYMENT[s] ?? FALLBACK;

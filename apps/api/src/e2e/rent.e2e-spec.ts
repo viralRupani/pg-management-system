@@ -171,6 +171,35 @@ describe("M3 rent loop (e2e)", () => {
     expect(again.status).toBe(409);
   });
 
+  it("a resident reads their own submitted payment for an invoice (mode + proof)", async () => {
+    // inv1 has one APPROVED UPI payment (screenshotKey "shot-1") from above.
+    const res = await h.req("get", `/payments/invoice/${inv1}`, resident1);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    const p = res.body[0];
+    expect(p.method).toBe("UPI");
+    expect(p.status).toBe("APPROVED");
+    // The proof screenshot is presigned inline so the app can render it.
+    expect(typeof p.screenshotUrl).toBe("string");
+    expect(p.screenshotUrl).toContain("shot-1");
+  });
+
+  it("a resident cannot read another resident's invoice payments (404, intra-tenant)", async () => {
+    // Same tenant → RLS does NOT isolate; the ownedInvoice guard + resident_id
+    // filter is what blocks resident2 from reading resident1's proof.
+    const res = await h.req("get", `/payments/invoice/${inv1}`, resident2);
+    expect(res.status).toBe(404);
+  });
+
+  it("a resident of another PG cannot read this PG's invoice payments (404, cross-tenant)", async () => {
+    const pgB = await h.onboardPg("rent-a-other");
+    const phone = randomPhone();
+    await h.registerResident(pgB.managerToken, { name: "Other PG Res", phone });
+    const other = await h.residentLogin(pgB.slug, pgB.id, phone);
+    const res = await h.req("get", `/payments/invoice/${inv1}`, other);
+    expect(res.status).toBe(404);
+  });
+
   it("a resident submits a payment with only a UPI reference (no screenshot)", async () => {
     const submit = await h.req("post", "/payments", resident2, {
       invoiceId: inv2,
@@ -186,6 +215,16 @@ describe("M3 rent loop (e2e)", () => {
     // No screenshot to presign → 404 (not a 500).
     const shot = await h.req("get", `/payments/${submit.body.id}/screenshot`, pgA.managerToken);
     expect(shot.status).toBe(404);
+
+    // The resident's own read exposes the UTR they submitted, with no proof image.
+    const mine = await h.req("get", `/payments/invoice/${inv2}`, resident2);
+    expect(mine.status).toBe(200);
+    const byRef = mine.body.find(
+      (p: { referenceId: string | null }) => p.referenceId === "401234567890",
+    );
+    expect(byRef).toBeDefined();
+    expect(byRef.method).toBe("UPI");
+    expect(byRef.screenshotUrl).toBeNull();
   });
 
   it("a payment with neither screenshot nor reference is rejected (400)", async () => {

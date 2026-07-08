@@ -63,6 +63,7 @@ import type {
   OwnerPgSummary,
   PaymentInfo,
   PaymentSummary,
+  ResidentPayment,
   PaymentUploadUrlInput,
   PresignedUploadResult,
   RecordDepositInput,
@@ -521,6 +522,9 @@ export class PgApiClient {
       /** Record a SUBMITTED payment against an invoice (manager reviews later). */
       submit: (input: SubmitPaymentInput) =>
         this.http.post<{ id: string }>("/payments", input),
+      /** The caller's own payments for one invoice (method, UTR, proof image). */
+      forInvoice: (invoiceId: string) =>
+        this.http.get<ResidentPayment[]>(`/payments/invoice/${invoiceId}`),
     },
     deposits: {
       /** Own deposit + ledger + any pending move-out request. */

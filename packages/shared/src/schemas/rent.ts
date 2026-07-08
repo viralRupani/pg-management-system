@@ -144,6 +144,26 @@ export const paymentSummarySchema = z.object({
 });
 export type PaymentSummary = z.infer<typeof paymentSummarySchema>;
 
+/**
+ * A resident's view of one of their own submitted payments against an invoice.
+ * Unlike the manager `PaymentSummary` (which lists across residents and exposes
+ * only `hasScreenshot`), this is scoped to the caller and inlines a presigned
+ * `screenshotUrl` so the app can render the proof image directly. `reviewNote`
+ * carries the manager's reason when a payment was rejected.
+ */
+export const residentPaymentSchema = z.object({
+  id: z.string().uuid(),
+  invoiceId: z.string().uuid(),
+  amountPaise: z.number().int(),
+  status: z.nativeEnum(PaymentStatus),
+  method: z.nativeEnum(PaymentMethod), // UPI (proof) or CASH (paid in person)
+  referenceId: z.string().nullable(), // UPI reference (UTR), if given
+  reviewNote: z.string().nullable(), // manager's note (e.g. rejection reason)
+  screenshotUrl: z.string().nullable(), // presigned proof image, if attached
+  createdAt: z.string(),
+});
+export type ResidentPayment = z.infer<typeof residentPaymentSchema>;
+
 /** Manager edits a room's rent (deferred from M2; feeds invoice generation). */
 export const updateRoomRentSchema = z.object({
   monthlyRentPaise: z.number().int().min(0),
