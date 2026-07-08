@@ -28,6 +28,13 @@ import {
 } from "@/lib/queries";
 import { cn, formatDate, formatPaise, formatPeriod, timeAgo, ymd } from "@/lib/utils";
 
+const TODAY_MEALS: { type: MealType; label: string }[] = [
+  { type: MealType.BREAKFAST, label: "Breakfast" },
+  { type: MealType.LUNCH, label: "Lunch" },
+  { type: MealType.SNACKS, label: "Snacks" },
+  { type: MealType.DINNER, label: "Dinner" },
+];
+
 export default function HomePage() {
   const router = useRouter();
   const today = useMemo(() => ymd(new Date()), []);
@@ -272,9 +279,20 @@ export default function HomePage() {
               </span>
             </div>
             <div className="mt-2.5 flex flex-col gap-2.5">
-              <MealRow label="Breakfast" items={meal(MealType.BREAKFAST)} first />
-              <MealRow label="Lunch" items={meal(MealType.LUNCH)} />
-              <MealRow label="Dinner" items={meal(MealType.DINNER)} />
+              {(() => {
+                const served = TODAY_MEALS.map((m) => ({
+                  ...m,
+                  items: meal(m.type),
+                })).filter((m) => !!m.items);
+                if (served.length === 0) {
+                  return (
+                    <p className="text-[13px] text-ink2">No menu set for today</p>
+                  );
+                }
+                return served.map((m, i) => (
+                  <MealRow key={m.type} label={m.label} items={m.items} first={i === 0} />
+                ));
+              })()}
             </div>
           </Card>
         </button>

@@ -18,6 +18,7 @@ const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MEALS: { type: MealType; label: string }[] = [
   { type: MealType.BREAKFAST, label: 'Breakfast' },
   { type: MealType.LUNCH, label: 'Lunch' },
+  { type: MealType.SNACKS, label: 'Snacks' },
   { type: MealType.DINNER, label: 'Dinner' },
 ];
 
@@ -119,16 +120,28 @@ export default function MenuScreen() {
                 </AppText>
               </View>
               <View className="flex-1 gap-1.5">
-                {MEALS.map((m) => (
-                  <View key={m.type}>
-                    <AppText variant="caption" weight="bold" className="text-[10px] uppercase tracking-wider">
-                      {m.label}
-                    </AppText>
-                    <AppText variant="sub" className="text-ink" numberOfLines={2}>
-                      {mealFor(dYmd, m.type) ?? '—'}
-                    </AppText>
-                  </View>
-                ))}
+                {(() => {
+                  const served = MEALS.map((m) => ({ ...m, items: mealFor(dYmd, m.type) })).filter(
+                    (m) => !!m.items,
+                  );
+                  if (served.length === 0) {
+                    return (
+                      <AppText variant="sub" className="text-ink2">
+                        No menu set for this day
+                      </AppText>
+                    );
+                  }
+                  return served.map((m) => (
+                    <View key={m.type}>
+                      <AppText variant="caption" weight="bold" className="text-[10px] uppercase tracking-wider">
+                        {m.label}
+                      </AppText>
+                      <AppText variant="sub" className="text-ink" numberOfLines={2}>
+                        {m.items}
+                      </AppText>
+                    </View>
+                  ));
+                })()}
               </View>
             </Card>
           );

@@ -41,6 +41,13 @@ import {
 } from '@pg/shared';
 import { cn, formatDate, formatPaise, timeAgo, ymd } from '@/lib/utils';
 
+const TODAY_MEALS: { type: MealType; label: string }[] = [
+  { type: MealType.BREAKFAST, label: 'Breakfast' },
+  { type: MealType.LUNCH, label: 'Lunch' },
+  { type: MealType.SNACKS, label: 'Snacks' },
+  { type: MealType.DINNER, label: 'Dinner' },
+];
+
 export default function HomeScreen() {
   const router = useRouter();
   const tokens = useTokens();
@@ -396,9 +403,22 @@ export default function HomeScreen() {
                 </AppText>
               </View>
               <View className="mt-2.5 gap-2.5">
-                <MealRow label="Breakfast" items={meal(MealType.BREAKFAST)} first />
-                <MealRow label="Lunch" items={meal(MealType.LUNCH)} />
-                <MealRow label="Dinner" items={meal(MealType.DINNER)} />
+                {(() => {
+                  const served = TODAY_MEALS.map((m) => ({
+                    ...m,
+                    items: meal(m.type),
+                  })).filter((m) => !!m.items);
+                  if (served.length === 0) {
+                    return (
+                      <AppText variant="sub" className="text-ink2">
+                        No menu set for today
+                      </AppText>
+                    );
+                  }
+                  return served.map((m, i) => (
+                    <MealRow key={m.type} label={m.label} items={m.items} first={i === 0} />
+                  ));
+                })()}
               </View>
             </Card>
           </PressableScale>

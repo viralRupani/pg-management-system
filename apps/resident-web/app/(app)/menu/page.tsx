@@ -14,6 +14,7 @@ const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MEALS: { type: MealType; label: string }[] = [
   { type: MealType.BREAKFAST, label: "Breakfast" },
   { type: MealType.LUNCH, label: "Lunch" },
+  { type: MealType.SNACKS, label: "Snacks" },
   { type: MealType.DINNER, label: "Dinner" },
 ];
 
@@ -107,16 +108,29 @@ export default function MenuPage() {
                   </span>
                 </div>
                 <div className="flex flex-1 flex-col gap-1.5">
-                  {MEALS.map((m) => (
-                    <div key={m.type}>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-ink3">
-                        {m.label}
-                      </p>
-                      <p className="line-clamp-2 text-[13px] text-ink">
-                        {mealFor(dYmd, m.type) ?? "—"}
-                      </p>
-                    </div>
-                  ))}
+                  {(() => {
+                    const served = MEALS.map((m) => ({
+                      ...m,
+                      items: mealFor(dYmd, m.type),
+                    })).filter((m) => !!m.items);
+                    if (served.length === 0) {
+                      return (
+                        <p className="text-[13px] text-ink3">
+                          No menu set for this day
+                        </p>
+                      );
+                    }
+                    return served.map((m) => (
+                      <div key={m.type}>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-ink3">
+                          {m.label}
+                        </p>
+                        <p className="line-clamp-2 text-[13px] text-ink">
+                          {m.items}
+                        </p>
+                      </div>
+                    ));
+                  })()}
                 </div>
               </Card>
             );
