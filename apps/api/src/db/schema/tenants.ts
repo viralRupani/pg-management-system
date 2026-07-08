@@ -19,6 +19,9 @@ export const tenants = pgTable("tenants", {
   logoKey: text("logo_url"),
   accentColor: text("accent_color"),
   upiQrKey: text("upi_qr_key"),
+  // The PG's UPI ID / VPA (e.g. `sunrise@okhdfcbank`) residents copy to pay.
+  // Plain text — a public payment handle, not a secret.
+  upiId: text("upi_id"),
   status: text("status").notNull().default("ACTIVE"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

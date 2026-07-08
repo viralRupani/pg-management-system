@@ -112,6 +112,16 @@ function InvoiceDetail() {
     }
   }
 
+  async function copyUpiId() {
+    if (!paymentInfo?.upiId) return;
+    try {
+      await navigator.clipboard.writeText(paymentInfo.upiId);
+      toast.success("UPI ID copied.");
+    } catch {
+      toast.error("Could not copy. Please copy it manually.");
+    }
+  }
+
   async function shareQr() {
     if (!paymentInfo?.upiQrUrl) return;
     setBusyQr(true);
@@ -275,6 +285,28 @@ function InvoiceDetail() {
         title="Submit payment"
         subtitle={`How did you pay ${formatPaise(invoice.amountPaise)}?`}
       >
+        {paymentInfo?.upiId ? (
+          <div className="flex flex-col gap-2 rounded-btn border border-line bg-surface2 p-4">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-ink3">
+              Pay to this UPI ID
+            </span>
+            <button
+              type="button"
+              onClick={copyUpiId}
+              aria-label={`Copy UPI ID ${paymentInfo.upiId}`}
+              className="flex flex-row items-center gap-3 rounded-btn border border-line bg-surface p-3 text-left active:opacity-60"
+            >
+              <span className="flex-1 truncate text-[15px] text-ink">
+                {paymentInfo.upiId}
+              </span>
+              <Icon name="copy-outline" size={20} color="#0b7d73" />
+            </button>
+            <span className="text-[11px] text-ink3">
+              Tap to copy, then pay from any UPI app.
+            </span>
+          </div>
+        ) : null}
+
         {paymentInfo?.upiQrUrl ? (
           <div className="flex flex-col items-center gap-3 rounded-btn border border-line bg-surface2 p-4">
             <span className="text-[11px] font-bold uppercase tracking-wider text-ink3">

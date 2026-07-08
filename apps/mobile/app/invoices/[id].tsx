@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
@@ -50,6 +51,9 @@ export default function InvoiceDetailScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sharing, setSharing] = useState(false);
+  // QR is collapsed by default — most residents just copy the UPI ID; the QR is
+  // a fallback and its 192px image is what made the drawer tall.
+  const [showQr, setShowQr] = useState(false);
 
   async function getCachedQr(): Promise<string> {
     const dest = FileSystem.cacheDirectory + 'upi-qr.png';
@@ -79,6 +83,12 @@ export default function InvoiceDetailScreen() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function copyUpiId() {
+    if (!paymentInfo?.upiId) return;
+    await Clipboard.setStringAsync(paymentInfo.upiId);
+    toast.success('UPI ID copied.');
   }
 
   async function shareQrCode() {
@@ -140,6 +150,7 @@ export default function InvoiceDetailScreen() {
     setMethod(PaymentMethod.UPI);
     setPicked(null);
     setReference('');
+    setShowQr(false);
   }
 
   async function submit() {
@@ -285,41 +296,6 @@ export default function InvoiceDetailScreen() {
         title="Submit payment"
         subtitle={`How did you pay ${formatPaise(invoice.amountPaise)}?`}
       >
-        {paymentInfo?.upiQrUrl ? (
-          <View className="items-center gap-3 rounded-tile border border-line bg-surface2 p-4">
-            <AppText variant="caption" className="uppercase tracking-wider">
-              Scan to pay
-            </AppText>
-            <Image
-              source={{ uri: paymentInfo.upiQrUrl }}
-              className="h-48 w-48 rounded-lg"
-              resizeMode="contain"
-            />
-            <AppText variant="sub" className="text-center text-ink3">
-              Scan with your UPI app, or save the QR to your gallery and pay from there.
-            </AppText>
-            <View className="w-full gap-1.5">
-              <View className="flex-row gap-2">
-                <QrAction
-                  icon="download-outline"
-                  label={saving ? 'Opening…' : 'Save to gallery'}
-                  disabled={saving || sharing}
-                  onPress={saveQrToGallery}
-                />
-                <QrAction
-                  icon="share-outline"
-                  label={sharing ? 'Opening…' : 'Share'}
-                  disabled={saving || sharing}
-                  onPress={shareQrCode}
-                />
-              </View>
-              <AppText variant="caption" className="text-center">
-                Save the QR to your gallery, then open it from your UPI app.
-              </AppText>
-            </View>
-          </View>
-        ) : null}
-
         <Segmented<PaymentMethod>
           options={[
             { label: 'Pay by UPI', value: PaymentMethod.UPI },
@@ -328,6 +304,73 @@ export default function InvoiceDetailScreen() {
           value={method}
           onChange={setMethod}
         />
+
+        {/* Where to send the money — only relevant when paying by UPI. Compact
+            by default: a copiable UPI ID row with the QR tucked behind a toggle. */}
+        {!isCash && (paymentInfo?.upiId || paymentInfo?.upiQrUrl) ? (
+          <View className="gap-2.5 rounded-tile border border-line bg-surface2 p-4">
+            <AppText variant="caption" className="uppercase tracking-wider">
+              Pay to
+            </AppText>
+
+            {paymentInfo?.upiId ? (
+              <PressableScale
+                onPress={copyUpiId}
+                accessibilityRole="button"
+                accessibilityLabel={`Copy UPI ID ${paymentInfo.upiId}`}
+                className="flex-row items-center gap-3 rounded-tile border border-line bg-surface p-3"
+              >
+                <View className="flex-1">
+                  <AppText variant="body" className="text-ink" numberOfLines={1}>
+                    {paymentInfo.upiId}
+                  </AppText>
+                  <AppText variant="caption" className="text-ink3">
+                    Tap to copy
+                  </AppText>
+                </View>
+                <Ionicons name="copy-outline" size={20} color={tokens.brandDeep} />
+              </PressableScale>
+            ) : null}
+
+            {paymentInfo?.upiQrUrl ? (
+              showQr ? (
+                <View className="items-center gap-2.5 pt-0.5">
+                  <Image
+                    source={{ uri: paymentInfo.upiQrUrl }}
+                    className="h-44 w-44 rounded-lg"
+                    resizeMode="contain"
+                  />
+                  <View className="w-full flex-row gap-2">
+                    <QrAction
+                      icon="download-outline"
+                      label={saving ? 'Opening…' : 'Save'}
+                      disabled={saving || sharing}
+                      onPress={saveQrToGallery}
+                    />
+                    <QrAction
+                      icon="share-outline"
+                      label={sharing ? 'Opening…' : 'Share'}
+                      disabled={saving || sharing}
+                      onPress={shareQrCode}
+                    />
+                  </View>
+                </View>
+              ) : (
+                <PressableScale
+                  onPress={() => setShowQr(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Show QR code"
+                  className="flex-row items-center justify-center gap-2 rounded-btn border border-line bg-surface py-2.5"
+                >
+                  <Ionicons name="qr-code-outline" size={16} color={tokens.brandDeep} />
+                  <AppText variant="label" className="text-brand-deep">
+                    Show QR code
+                  </AppText>
+                </PressableScale>
+              )
+            ) : null}
+          </View>
+        ) : null}
 
         {isCash ? (
           <View className="rounded-tile border border-line bg-surface2 p-3">

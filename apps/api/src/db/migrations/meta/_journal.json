@@ -225,6 +225,13 @@
       "when": 1783439555659,
       "tag": "0031_flawless_bloodstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1783520635646,
+      "tag": "0032_dazzling_molten_man",
+      "breakpoints": true
     }
   ]
 }

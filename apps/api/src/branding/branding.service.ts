@@ -80,6 +80,7 @@ export class BrandingService {
       logoUrl,
       accentColor: row.accentColor,
       upiQrUrl,
+      upiId: row.upiId,
     };
   }
 
@@ -91,6 +92,8 @@ export class BrandingService {
     if (input.logoKey !== undefined) patch.logoKey = input.logoKey;
     if (input.accentColor !== undefined) patch.accentColor = input.accentColor;
     if (input.upiQrKey !== undefined) patch.upiQrKey = input.upiQrKey;
+    // Zod has already trimmed a set value; an empty submission arrives as null.
+    if (input.upiId !== undefined) patch.upiId = input.upiId;
 
     const [row] = await this.ctx
       .db()
@@ -168,13 +171,13 @@ export class BrandingService {
     const tenantId = this.ctx.currentTenantId()!;
     const [row] = await this.ctx
       .db()
-      .select({ upiQrKey: tenants.upiQrKey })
+      .select({ upiQrKey: tenants.upiQrKey, upiId: tenants.upiId })
       .from(tenants)
       .where(eq(tenants.id, tenantId));
     if (!row) throw new NotFoundException("PG not found");
     const upiQrUrl = row.upiQrKey
       ? (await this.storage.presignDownload(row.upiQrKey)).downloadUrl
       : null;
-    return { upiQrUrl };
+    return { upiQrUrl, upiId: row.upiId };
   }
 }

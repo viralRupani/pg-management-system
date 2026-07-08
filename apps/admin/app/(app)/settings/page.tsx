@@ -10,6 +10,7 @@ import {
 } from "@pg/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/dialog";
 import { Input, Label } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -48,7 +49,8 @@ export default function SettingsPage() {
             name={branding.name}
             onSaved={refreshBranding}
           />
-          <UpiQrCard
+          <UpiCard
+            upiId={branding.upiId}
             upiQrUrl={branding.upiQrUrl}
             onSaved={refreshBranding}
           />
@@ -354,16 +356,32 @@ function PgCodeCard({ onSaved }: { onSaved: () => Promise<void> | void }) {
   );
 }
 
-/** UPI QR code: presign → POST bytes → PATCH the returned key → refetch branding. */
-function UpiQrCard({
+// Lenient VPA check mirroring `upiVpa` in @pg/shared — an `@` with non-empty
+// sides. Display-only handle (no gateway), so this just catches typos.
+const UPI_ID_RE = /^[^\s@]+@[^\s@]+$/;
+
+/**
+ * UPI payment details residents see on their pay screen: a copiable UPI ID and
+ * an optional QR code. The UPI ID follows the seed→dirty→save form pattern (like
+ * IdentityCard); the QR is the immediate presign → POST bytes → PATCH key flow.
+ */
+function UpiCard({
+  upiId: savedUpiId,
   upiQrUrl,
   onSaved,
 }: {
+  upiId: string | null;
   upiQrUrl: string | null;
   onSaved: () => Promise<void> | void;
 }) {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [upiId, setUpiId] = useState("");
+  const [savingUpiId, setSavingUpiId] = useState(false);
+  const [upiIdSaved, setUpiIdSaved] = useState(false);
+  // Confirm dialog: changing where residents send money is high-stakes, so we
+  // show the old → new UPI ID and require an explicit confirm before saving.
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -378,6 +396,37 @@ function UpiQrCard({
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
+
+  // (Re)seed the UPI ID field whenever the canonical value changes.
+  useEffect(() => {
+    setUpiId(savedUpiId ?? "");
+  }, [savedUpiId]);
+
+  const upiTrimmed = upiId.trim();
+  const upiDirty = upiTrimmed !== (savedUpiId ?? "");
+  // Valid to save when empty (clears it) or a well-formed VPA.
+  const upiValid = upiTrimmed === "" || UPI_ID_RE.test(upiTrimmed);
+
+  const saveUpiId = async () => {
+    if (!upiDirty || !upiValid) return;
+    setSavingUpiId(true);
+    setUpiIdSaved(false);
+    try {
+      // Empty clears it to null; otherwise send the trimmed VPA.
+      await api.branding.update({ upiId: upiTrimmed === "" ? null : upiTrimmed });
+      await onSaved();
+      setConfirmOpen(false);
+      setUpiIdSaved(true);
+    } catch (err) {
+      toast.error(toMessage(err, "Could not save the UPI ID."));
+    } finally {
+      setSavingUpiId(false);
+    }
+  };
+
+  // Whether this change sets, replaces, or clears the UPI ID — drives the copy.
+  const isClearing = upiTrimmed === "";
+  const isFirstTime = (savedUpiId ?? "") === "";
 
   const pick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
@@ -439,12 +488,56 @@ function UpiQrCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>UPI QR Code</CardTitle>
+        <CardTitle>UPI payment</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-6">
+        <div className="space-y-1.5 max-w-md">
+          <Label htmlFor="upi-id">UPI ID</Label>
+          <p className="text-sm text-muted-foreground">
+            Residents can copy this on the payment screen to pay from any UPI app.
+          </p>
+          <div className="flex flex-wrap items-start gap-2">
+            <div className="min-w-48 flex-1 space-y-1.5">
+              <Input
+                id="upi-id"
+                value={upiId}
+                onChange={(e) => {
+                  setUpiId(e.target.value);
+                  setUpiIdSaved(false);
+                }}
+                placeholder="sunrise-pg@okhdfcbank"
+                className="font-mono"
+                autoCapitalize="none"
+                spellCheck={false}
+                maxLength={255}
+              />
+              {!upiValid && (
+                <p className="text-xs text-danger">
+                  Enter a valid UPI ID like name@bank.
+                </p>
+              )}
+            </div>
+            <Button
+              type="button"
+              onClick={() => setConfirmOpen(true)}
+              disabled={!upiDirty || !upiValid}
+            >
+              {isClearing ? "Remove UPI ID" : "Save UPI ID"}
+            </Button>
+          </div>
+          {upiIdSaved && !upiDirty && (
+            <span className="inline-flex items-center gap-1 text-sm text-success">
+              <Check className="h-4 w-4" />
+              Saved
+            </span>
+          )}
+        </div>
+
+        <div className="h-px bg-border" />
+
         <p className="text-sm text-muted-foreground">
-          Residents see this QR code on the payment screen so they know where to
-          send money. Upload your UPI QR code screenshot or the QR from your UPI app.
+          Residents also see this QR code on the payment screen so they know where
+          to send money. Upload your UPI QR code screenshot or the QR from your UPI app.
         </p>
         <div className="flex flex-col items-start gap-4 sm:flex-row">
           <div className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-muted">
@@ -491,6 +584,77 @@ function UpiQrCard({
           </div>
         </div>
       </CardContent>
+
+      <Dialog
+        open={confirmOpen}
+        onClose={() => {
+          if (!savingUpiId) setConfirmOpen(false);
+        }}
+        title={
+          isClearing
+            ? "Remove UPI ID?"
+            : isFirstTime
+              ? "Set UPI ID?"
+              : "Change UPI ID?"
+        }
+        description="Residents pay to this UPI ID. Double-check it before confirming."
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmOpen(false)}
+              disabled={savingUpiId}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={isClearing ? "danger" : "primary"}
+              onClick={saveUpiId}
+              loading={savingUpiId}
+            >
+              {savingUpiId
+                ? "Saving…"
+                : isClearing
+                  ? "Remove UPI ID"
+                  : "Confirm change"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Current UPI ID
+            </p>
+            <p className="break-all rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-sm">
+              {savedUpiId ?? (
+                <span className="font-sans text-muted-foreground">Not set</span>
+              )}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              New UPI ID
+            </p>
+            <p
+              className={cn(
+                "break-all rounded-md border px-3 py-2 font-mono text-sm",
+                isClearing
+                  ? "border-danger/40 bg-danger/5"
+                  : "border-brand/40 bg-brand/5",
+              )}
+            >
+              {isClearing ? (
+                <span className="font-sans text-danger">
+                  Removed — residents won&apos;t see a UPI ID
+                </span>
+              ) : (
+                upiTrimmed
+              )}
+            </p>
+          </div>
+        </div>
+      </Dialog>
     </Card>
   );
 }

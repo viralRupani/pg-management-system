@@ -4,6 +4,18 @@ import { indianPhone } from "./phone";
 import { contentTypeField } from "./upload";
 
 /**
+ * A UPI ID / VPA (e.g. `sunrise-pg@okhdfcbank`, `9876543210@paytm`). This system
+ * has NO payment gateway — the resident just copies this into their own UPI app,
+ * so validation is deliberately lenient (typo-catching, not parsing): a single
+ * `@` with non-empty sides. Trimmed; an empty string on update clears it to null.
+ */
+export const upiVpa = z
+  .string()
+  .trim()
+  .max(255)
+  .regex(/^[^\s@]+@[^\s@]+$/, "Enter a valid UPI ID like name@bank");
+
+/**
  * Tenant onboarding — creates a PG org plus its first manager.
  * Used by the platform-admin path (cross-tenant).
  */
@@ -39,6 +51,8 @@ export const tenantBrandingSchema = z.object({
   accentColor: z.string().nullable(),
   // Presigned download URL for the UPI QR code image (null if not configured).
   upiQrUrl: z.string().url().nullable(),
+  // The PG's UPI ID / VPA residents can copy to pay (null if not configured).
+  upiId: z.string().nullable(),
 });
 export type TenantBranding = z.infer<typeof tenantBrandingSchema>;
 
@@ -57,6 +71,8 @@ export const updateBrandingSchema = z
       .nullable()
       .optional(),
     upiQrKey: z.string().min(1).nullable().optional(),
+    // A valid VPA to set it, or null to clear it.
+    upiId: upiVpa.nullable().optional(),
   })
   .refine((d) => Object.keys(d).length > 0, {
     message: "At least one branding field is required",
@@ -99,6 +115,8 @@ export type UpiQrUploadUrlInput = z.infer<typeof upiQrUploadUrlSchema>;
 /** Resident-accessible payment destination info for the active tenant. */
 export const paymentInfoSchema = z.object({
   upiQrUrl: z.string().url().nullable(),
+  // The PG's UPI ID / VPA the resident can copy into their UPI app (null if unset).
+  upiId: z.string().nullable(),
 });
 export type PaymentInfo = z.infer<typeof paymentInfoSchema>;
 

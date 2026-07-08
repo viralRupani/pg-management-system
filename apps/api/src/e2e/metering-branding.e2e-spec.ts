@@ -180,6 +180,40 @@ describe("M6 metering & branding (e2e)", () => {
       expect(pub.body.logoUrl).toContain(key);
     });
 
+    it("UPI ID round-trips: set → public branding + resident payment-info; bad VPA 400; null clears", async () => {
+      // Set a valid VPA.
+      const set = await h.req("patch", "/tenants/branding", pgA.managerToken, {
+        upiId: "sunrise-pg@okhdfcbank",
+      });
+      expect(set.status).toBe(200);
+      expect(set.body.upiId).toBe("sunrise-pg@okhdfcbank");
+
+      // Public branding read reflects it.
+      const pub = await h.req("get", `/branding/${pgA.slug}`);
+      expect(pub.body.upiId).toBe("sunrise-pg@okhdfcbank");
+
+      // A resident sees it on the payment-info endpoint they pay from.
+      const phone = randomPhone();
+      await h.registerResident(pgA.managerToken, { name: "Payer", phone });
+      const resToken = await h.residentLogin(pgA.slug, pgA.id, phone);
+      const info = await h.req("get", "/tenant/payment-info", resToken);
+      expect(info.status).toBe(200);
+      expect(info.body.upiId).toBe("sunrise-pg@okhdfcbank");
+
+      // A malformed VPA (no `@`) is rejected.
+      const bad = await h.req("patch", "/tenants/branding", pgA.managerToken, {
+        upiId: "not-a-vpa",
+      });
+      expect(bad.status).toBe(400);
+
+      // Null clears it back to unset.
+      const clear = await h.req("patch", "/tenants/branding", pgA.managerToken, {
+        upiId: null,
+      });
+      expect(clear.status).toBe(200);
+      expect(clear.body.upiId).toBeNull();
+    });
+
     it("a resident cannot edit branding (403)", async () => {
       const phone = randomPhone();
       await h.registerResident(pgA.managerToken, { name: "Res", phone });
