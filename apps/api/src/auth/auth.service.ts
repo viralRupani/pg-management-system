@@ -19,10 +19,14 @@ import {
   UserRole,
 } from "@pg/shared";
 import { ENV, type AppEnv } from "../config/env";
+import { TenantContextService } from "../db/tenant-context";
 import { AuthRepository } from "./auth.repository";
 import { OtpService } from "./otp.service";
 import { PasswordResetService } from "./password-reset.service";
 import { MailService } from "../mail/mail.service";
+
+/** Shown when a moved-out / exited resident tries to (re)authenticate. */
+const RESIDENT_INACTIVE = "This account is no longer active";
 
 /** Roles that authenticate with an email + password (and can reset it). */
 const PASSWORD_ROLES: readonly UserRole[] = [
@@ -40,6 +44,7 @@ export class AuthService {
     private readonly reset: PasswordResetService,
     private readonly jwt: JwtService,
     private readonly mail: MailService,
+    private readonly ctx: TenantContextService,
     @Inject(ENV) private readonly env: AppEnv,
   ) {}
 
@@ -90,8 +95,17 @@ export class AuthService {
     );
     if (!identity) throw new UnauthorizedException("Invalid code");
 
+    // The manager may have moved this resident out (bed released) or settled
+    // their exit since the OTP was requested. A departed resident must not be
+    // able to enter the app even with a valid code.
+    const residentId = identity.userId ?? identity.id;
+    const hasAccess = await this.ctx.run(tenant.id, () =>
+      this.repo.residentHasAccess(this.ctx.db(), residentId),
+    );
+    if (!hasAccess) throw new UnauthorizedException(RESIDENT_INACTIVE);
+
     return this.issueTokens({
-      sub: identity.userId ?? identity.id,
+      sub: residentId,
       tenantId: tenant.id,
       role: UserRole.RESIDENT,
     });
@@ -119,6 +133,18 @@ export class AuthService {
         payload.tenantId,
       );
       if (!identity) {
+        throw new UnauthorizedException("Account is no longer active");
+      }
+    }
+
+    // Same idea for residents: a resident the manager moved out (or exited)
+    // still holds a valid 30-day refresh token. Re-check bed-allocation on
+    // refresh so their access dies at the access-TTL boundary, not 30 days on.
+    if (payload.role === UserRole.RESIDENT && payload.tenantId) {
+      const hasAccess = await this.ctx.run(payload.tenantId, () =>
+        this.repo.residentHasAccess(this.ctx.db(), payload.sub),
+      );
+      if (!hasAccess) {
         throw new UnauthorizedException("Account is no longer active");
       }
     }
