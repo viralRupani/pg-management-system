@@ -2,6 +2,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { and, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
@@ -37,6 +38,7 @@ import {
 } from "../storage/storage.module";
 import { istPeriod, istStartOfDayUtc } from "../common/ist-date";
 import { prorateSegment } from "./rent.proration";
+import { NotificationsService } from "../notifications/notifications.service";
 
 /**
  * The rent loop. RLS isolates tenants; it does NOT isolate residents within a
@@ -46,9 +48,12 @@ import { prorateSegment } from "./rent.proration";
  */
 @Injectable()
 export class RentService {
+  private readonly logger = new Logger(RentService.name);
+
   constructor(
     private readonly ctx: TenantContextService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -700,7 +705,7 @@ export class RentService {
     note?: string,
   ): Promise<{ status: PaymentStatus }> {
     const db = this.ctx.db();
-    return db.transaction(async (tx) => {
+    const reviewed = await db.transaction(async (tx) => {
       // (1) Conditional flip FIRST: only a SUBMITTED payment can be decided.
       // A concurrent/repeat review matches 0 rows and bails before any side
       // effect — not select-then-update, which races under READ COMMITTED.
@@ -718,7 +723,11 @@ export class RentService {
             eq(payments.status, PaymentStatus.SUBMITTED),
           ),
         )
-        .returning({ invoiceId: payments.invoiceId });
+        .returning({
+          invoiceId: payments.invoiceId,
+          residentId: payments.residentId,
+          amountPaise: payments.amountPaise,
+        });
 
       if (decided.length !== 1) {
         const [exists] = await tx
@@ -760,8 +769,45 @@ export class RentService {
         if (paid.length !== 1)
           throw new ConflictException("Invoice is already paid or cancelled");
       }
-      return { status: decision };
+      return { status: decision, payment: decided[0] };
     });
+
+    // Best-effort resident notification — the review is already committed, so a
+    // notification failure must not surface as a failed approve/reject (mirrors
+    // the announcements fan-out). Tenant context is still active here (the
+    // interceptor wraps the whole handler), so notify() writes under RLS.
+    try {
+      const [inv] = await this.ctx
+        .db()
+        .select({ period: invoices.period })
+        .from(invoices)
+        .where(eq(invoices.id, reviewed.payment.invoiceId));
+      const period = inv?.period ?? "";
+      const rupees = (reviewed.payment.amountPaise / 100).toFixed(2);
+      if (decision === PaymentStatus.APPROVED) {
+        await this.notifications.notify(reviewed.payment.residentId, {
+          type: "PAYMENT_APPROVED",
+          title: "Payment approved",
+          body: `Your payment of ₹${rupees} for ${period} was approved.`,
+        });
+      } else {
+        await this.notifications.notify(reviewed.payment.residentId, {
+          type: "PAYMENT_REJECTED",
+          title: "Payment rejected",
+          body: note
+            ? `Your payment of ₹${rupees} for ${period} was rejected: ${note}`
+            : `Your payment of ₹${rupees} for ${period} was rejected.`,
+        });
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Payment ${paymentId} ${decision.toLowerCase()} but resident notification failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+
+    return { status: reviewed.status };
   }
 
   /** Fetch an invoice that belongs to this resident, or 404. */

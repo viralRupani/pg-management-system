@@ -157,6 +157,15 @@ describe("M3 rent loop (e2e)", () => {
     expect(statuses[0]).toBe("PENDING");
     expect(statuses.at(-1)).toBe("PAID");
 
+    // The resident is notified that their payment was approved.
+    const feed = await h.req("get", "/notifications", resident1);
+    expect(feed.status).toBe(200);
+    const approved = feed.body.find(
+      (n: { type: string }) => n.type === "PAYMENT_APPROVED",
+    );
+    expect(approved).toBeDefined();
+    expect(approved.title).toBe("Payment approved");
+
     // Double-approve is blocked by the review guard.
     const again = await h.req("post", `/payments/${paymentId}/approve`, pgA.managerToken);
     expect(again.status).toBe(409);
@@ -200,6 +209,15 @@ describe("M3 rent loop (e2e)", () => {
     const all = await h.req("get", "/invoices", pgA.managerToken);
     const invoice2 = all.body.items.find((i: { id: string }) => i.id === inv2);
     expect(invoice2.status).toBe("PENDING"); // rejection does not pay the invoice
+
+    // The resident is notified of the rejection, note included.
+    const feed = await h.req("get", "/notifications", resident2);
+    const rejected = feed.body.find(
+      (n: { type: string }) => n.type === "PAYMENT_REJECTED",
+    );
+    expect(rejected).toBeDefined();
+    expect(rejected.title).toBe("Payment rejected");
+    expect(rejected.body).toContain("Screenshot unreadable");
   });
 
   it("an invoice cannot be double-paid by approving a second payment for it", async () => {

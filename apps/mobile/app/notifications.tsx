@@ -18,7 +18,10 @@ import type { NotificationSummary } from '@pg/shared';
 const ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   ANNOUNCEMENT: 'megaphone-outline',
   RENT: 'wallet-outline',
+  RENT_REMINDER: 'wallet-outline',
   PAYMENT: 'wallet-outline',
+  PAYMENT_APPROVED: 'checkmark-circle-outline',
+  PAYMENT_REJECTED: 'close-circle-outline',
   COMPLAINT: 'chatbubble-ellipses-outline',
   KYC: 'document-text-outline',
   DOCUMENT: 'document-text-outline',
