@@ -54,6 +54,7 @@ export default function SettingsPage() {
             upiQrUrl={branding.upiQrUrl}
             onSaved={refreshBranding}
           />
+          <ReferralCard />
           <ChangePasswordCard />
         </>
       )}
@@ -655,6 +656,121 @@ function UpiCard({
           </div>
         </div>
       </Dialog>
+    </Card>
+  );
+}
+
+/**
+ * Refer & earn: the flat discount a referring resident gets off one month's
+ * rent once the resident they referred is allocated a bed. Not part of
+ * `useAuth().branding`, so this card self-fetches. Empty input clears the
+ * setting (referrals stop qualifying going forward; past ones are untouched).
+ */
+function ReferralCard() {
+  const toast = useToast();
+  const [savedPaise, setSavedPaise] = useState<number | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [rupees, setRupees] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await api.referrals.getSettings();
+        if (cancelled) return;
+        setSavedPaise(s.discountPaise);
+        setRupees(s.discountPaise != null ? String(s.discountPaise / 100) : "");
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const trimmed = rupees.trim();
+  const savedRupees = savedPaise != null ? String(savedPaise / 100) : "";
+  const dirty = trimmed !== savedRupees;
+  const isClearing = trimmed === "";
+  const valid = isClearing || (Number(trimmed) > 0 && !Number.isNaN(Number(trimmed)));
+
+  const save = async () => {
+    if (!dirty || !valid) return;
+    setSaving(true);
+    setSaved(false);
+    try {
+      if (isClearing) {
+        await api.referrals.deleteSettings();
+        setSavedPaise(null);
+      } else {
+        const { discountPaise } = await api.referrals.setSettings({
+          discountPaise: Math.round(Number(trimmed) * 100),
+        });
+        setSavedPaise(discountPaise);
+      }
+      setSaved(true);
+    } catch (err) {
+      toast.error(toMessage(err, "Could not save the referral discount."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Refer &amp; earn</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-1.5 max-w-md">
+          <Label htmlFor="referral-discount">Discount per referral (₹)</Label>
+          <p className="text-sm text-muted-foreground">
+            When a resident refers someone who gets a bed, the referrer gets
+            this much off one month&apos;s rent on their next invoice. Leave
+            blank to turn refer &amp; earn off.
+          </p>
+          {loaded && (
+            <div className="flex flex-wrap items-start gap-2">
+              <div className="min-w-40 flex-1 space-y-1.5">
+                <Input
+                  id="referral-discount"
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={rupees}
+                  onChange={(e) => {
+                    setRupees(e.target.value);
+                    setSaved(false);
+                  }}
+                  placeholder="e.g. 500"
+                />
+                {!valid && (
+                  <p className="text-xs text-danger">
+                    Enter a positive amount, or leave blank to disable.
+                  </p>
+                )}
+              </div>
+              <Button
+                type="button"
+                onClick={save}
+                loading={saving}
+                disabled={!dirty || !valid}
+              >
+                {isClearing ? "Turn off" : "Save"}
+              </Button>
+            </div>
+          )}
+          {saved && !dirty && (
+            <span className="inline-flex items-center gap-1 text-sm text-success">
+              <Check className="h-4 w-4" />
+              Saved
+            </span>
+          )}
+        </div>
+      </CardContent>
     </Card>
   );
 }

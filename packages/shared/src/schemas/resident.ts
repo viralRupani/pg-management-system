@@ -37,6 +37,11 @@ export const registerResidentSchema = z
     isShortStay: z.boolean().default(false),
     shortStayCheckOutDate: z.string().date().optional(),
     shortStayPerDayChargePaise: z.number().int().min(0).optional(),
+    // Refer & earn: the resident (must already exist in this PG) who referred
+    // this one. Only meaningful for long-term residents — a short-stay guest
+    // never gets an `allocations` row, so a referral tied to one could never
+    // qualify for a discount.
+    referredByUserId: z.string().uuid().optional(),
   })
   .superRefine((d, ctx) => {
     const fields = [
@@ -90,6 +95,13 @@ export const registerResidentSchema = z
           code: z.ZodIssueCode.custom,
           path: ["shortStayPerDayChargePaise"],
           message: "Per-day charge is required for a short stay",
+        });
+      }
+      if (d.referredByUserId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["referredByUserId"],
+          message: "A short-stay guest can't be recorded as a referral",
         });
       }
     } else if (d.age == null) {
@@ -153,6 +165,9 @@ export const residentSummarySchema = z.object({
   // `createdAt` is the registration timestamp (ISO) — distinct from joinDate.
   createdByName: z.string().nullable(),
   createdAt: z.string(),
+  // Refer & earn: the resident who referred this one (set once at
+  // registration), null if none was recorded.
+  referredByName: z.string().nullable(),
 });
 export type ResidentSummary = z.infer<typeof residentSummarySchema>;
 

@@ -15,6 +15,7 @@ import {
   type InvoiceSummary,
   KycStatus,
   OccupationType,
+  type ReferralSummary,
   type ResidentSummary,
   ResidentStatus,
   type ShortStaySummary,
@@ -46,6 +47,7 @@ import { Select } from "@/components/ui/select";
 import { ListSkeleton, Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
+import { ResidentCombobox } from "@/components/resident-combobox";
 import { api } from "@/lib/api";
 import { cn, formatDate, formatPaise, toMessage } from "@/lib/utils";
 
@@ -363,6 +365,12 @@ function RegisterDialog({
   const [moveInDate, setMoveInDate] = useState("");
   const [checkOutDate, setCheckOutDate] = useState("");
   const [perDayRupees, setPerDayRupees] = useState("");
+  // Refer & earn: only meaningful for long-term residents — a short-stay guest
+  // never gets an `allocations` row, so a referral tied to one could never
+  // qualify for a discount.
+  const [referredByUserId, setReferredByUserId] = useState<string | undefined>(
+    undefined,
+  );
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -380,6 +388,7 @@ function RegisterDialog({
       setMoveInDate(ymdToday());
       setCheckOutDate("");
       setPerDayRupees("");
+      setReferredByUserId(undefined);
     }
   }, [open]);
 
@@ -424,6 +433,7 @@ function RegisterDialog({
                 ? (ecRelation as EmergencyRelation)
                 : undefined,
               emergencyContactPhone: ecTouched ? ecPhone.trim() : undefined,
+              referredByUserId,
             },
       );
       await onDone();
@@ -603,6 +613,14 @@ function RegisterDialog({
                   onChange={(e) => setNativePlace(e.target.value)}
                 />
               </Field>
+              <Field label="Referred by (optional)" htmlFor="r-referred-by">
+                <ResidentCombobox
+                  onChange={setReferredByUserId}
+                  status="ACTIVE"
+                  limit={10}
+                  placeholder="Search referring resident…"
+                />
+              </Field>
             </div>
 
             <div className="space-y-1 border-t border-border pt-4">
@@ -683,6 +701,8 @@ interface DetailData {
   // any — surfaced so the profile can cancel/complete them directly.
   booking: BookingSummary | null;
   shortStay: ShortStaySummary | null;
+  // Refer & earn: every resident this one has referred (qualified + applied).
+  referrals: ReferralSummary[];
 }
 
 function ResidentDetail({ id }: { id: string }) {
@@ -714,6 +734,7 @@ function ResidentDetail({ id }: { id: string }) {
       allTransfers,
       allBookings,
       allShortStays,
+      referrals,
     ] = await Promise.all([
       api.residents.get(id),
       api.documents.list(),
@@ -723,6 +744,7 @@ function ResidentDetail({ id }: { id: string }) {
       api.allocations.transfers.list(),
       api.bookings.list(),
       api.shortStays.list(),
+      api.referrals.listForResident(id),
     ]);
     setData({
       resident,
@@ -741,6 +763,7 @@ function ResidentDetail({ id }: { id: string }) {
         allShortStays.find(
           (s) => s.residentId === id && s.status === "ACTIVE",
         ) ?? null,
+      referrals,
     });
   }, [id]);
 
@@ -757,6 +780,7 @@ function ResidentDetail({ id }: { id: string }) {
           allTransfers,
           allBookings,
           allShortStays,
+          referrals,
         ] = await Promise.all([
           api.residents.get(id),
           api.documents.list(),
@@ -766,6 +790,7 @@ function ResidentDetail({ id }: { id: string }) {
           api.allocations.transfers.list(),
           api.bookings.list(),
           api.shortStays.list(),
+          api.referrals.listForResident(id),
         ]);
         if (cancelled) return;
         setData({
@@ -785,6 +810,7 @@ function ResidentDetail({ id }: { id: string }) {
             allShortStays.find(
               (s) => s.residentId === id && s.status === "ACTIVE",
             ) ?? null,
+          referrals,
         });
       } catch (err) {
         if (!cancelled)
@@ -930,6 +956,7 @@ function ResidentDetail({ id }: { id: string }) {
     transfers,
     booking,
     shortStay,
+    referrals,
   } = data;
   const active = resident.status === "ACTIVE";
   const isShortStay = resident.isShortStay;
@@ -1105,6 +1132,9 @@ function ResidentDetail({ id }: { id: string }) {
               {resident.createdByName
                 ? `Added by ${resident.createdByName} on ${formatDate(resident.createdAt)}`
                 : `Added on ${formatDate(resident.createdAt)}`}
+              {resident.referredByName
+                ? ` · Referred by ${resident.referredByName}`
+                : ""}
             </span>
           </div>
         </CardContent>
@@ -1491,6 +1521,38 @@ function ResidentDetail({ id }: { id: string }) {
             )}
           </CardContent>
         </Card>
+
+        {/* Refer & earn — who this resident has referred, and whether the
+            discount has landed on an invoice yet. */}
+        {referrals.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Referrals</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="divide-y divide-border">
+                {referrals.map((r) => (
+                  <li
+                    key={r.id}
+                    className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{r.referredName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {r.appliedAt
+                          ? `discount applied ${formatDate(r.appliedAt)}`
+                          : "qualified · discount pending next invoice"}
+                      </p>
+                    </div>
+                    <span className="text-sm font-semibold tabular-nums">
+                      -{formatPaise(r.discountPaise)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <AllocateDialog

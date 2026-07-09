@@ -19,6 +19,7 @@ import { TenantContextService } from "../db/tenant-context";
 import { allocations, beds, bookings, deposits, shortStays, users } from "../db/schema";
 import { isUniqueViolation } from "../db/pg-errors";
 import { istStartOfDayUtc } from "../common/ist-date";
+import { qualifyReferralIfAny } from "../referrals/qualify-referral";
 
 /**
  * Future-dated bed bookings. A manager holds a bed for an incoming resident and
@@ -341,6 +342,11 @@ export class BookingsService {
                 eq(users.role, UserRole.RESIDENT),
               ),
             );
+
+          // Refer & earn: this booking activating is this resident's
+          // first-ever allocation, same earn moment as an immediate move-in.
+          await qualifyReferralIfAny(tx, tenantId, b.residentId);
+
           return true;
         });
         if (done) activated++;

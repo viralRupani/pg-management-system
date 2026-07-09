@@ -30,6 +30,7 @@ export * from "./expenses";
 export * from "./billing-snapshots";
 export * from "./short-stays";
 export * from "./invoice-schedules";
+export * from "./referrals";
 export * from "./tc-versions";
 export * from "./tc-acceptances";
 
@@ -65,6 +66,7 @@ import { expenses } from "./expenses";
 import { billingSnapshots } from "./billing-snapshots";
 import { shortStays } from "./short-stays";
 import { invoiceSchedules } from "./invoice-schedules";
+import { referrals } from "./referrals";
 import { tcVersions } from "./tc-versions";
 import { tcAcceptances } from "./tc-acceptances";
 
@@ -103,6 +105,7 @@ export const schema = {
   billingSnapshots,
   shortStays,
   invoiceSchedules,
+  referrals,
   // Global (non-tenant) tables — no RLS, on the app_user pool. See RLS_TABLES.
   tcVersions,
   tcAcceptances,
@@ -144,4 +147,5 @@ export const RLS_TABLES = [
   "billing_snapshots",
   "short_stays",
   "invoice_schedules",
+  "referrals",
 ] as const;

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 /**
  * The PG organization (tenant). This table intentionally has NO RLS:
@@ -22,6 +22,10 @@ export const tenants = pgTable("tenants", {
   // The PG's UPI ID / VPA (e.g. `sunrise@okhdfcbank`) residents copy to pay.
   // Plain text — a public payment handle, not a secret.
   upiId: text("upi_id"),
+  // Refer & earn: flat discount (paise) a referring resident gets off one
+  // month's rent when the resident they referred is allocated a bed. Null =
+  // feature not configured for this PG (referrals never qualify).
+  referralDiscountPaise: integer("referral_discount_paise"),
   status: text("status").notNull().default("ACTIVE"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

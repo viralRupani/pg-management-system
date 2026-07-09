@@ -25,6 +25,7 @@ import { BudgetsModule } from "./budgets/budgets.module";
 import { BrandingModule } from "./branding/branding.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { TermsModule } from "./terms/terms.module";
+import { ReferralsModule } from "./referrals/referrals.module";
 
 @Controller()
 class HealthController {
@@ -62,6 +63,7 @@ class HealthController {
     BrandingModule,
     DashboardModule,
     TermsModule,
+    ReferralsModule,
   ],
   controllers: [HealthController],
 })

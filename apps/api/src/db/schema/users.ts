@@ -71,6 +71,12 @@ export const users = pgTable("users", {
   // manager is soft-deactivated (row kept, credential removed).
   createdByUserId: uuid("created_by_user_id"),
 
+  // Refer & earn: the resident who referred this one, captured once at
+  // registration time and never changed after. Null = not referred / referrer
+  // not recorded. See `referrals` for the earn/apply lifecycle (qualifies when
+  // this resident gets a bed, discount applied on the referrer's next invoice).
+  referredByUserId: uuid("referred_by_user_id"),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -82,6 +88,11 @@ export const users = pgTable("users", {
     columns: [t.createdByUserId, t.tenantId],
     foreignColumns: [t.id, t.tenantId],
     name: "users_created_by_user_id_tenant_id_fk",
+  }),
+  referredByFk: foreignKey({
+    columns: [t.referredByUserId, t.tenantId],
+    foreignColumns: [t.id, t.tenantId],
+    name: "users_referred_by_user_id_tenant_id_fk",
   }),
   // Composite-unique target so child tables (e.g. allocations.residentId) can
   // reference (id, tenant_id) and make cross-tenant references unrepresentable.

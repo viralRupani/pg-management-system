@@ -27,6 +27,7 @@ import {
   invoiceCharges,
   invoices,
   payments,
+  referrals,
   rentAdjustments,
   rooms,
   users,
@@ -280,14 +281,52 @@ export class RentService {
         else chargesByResident.set(c.residentId, [entry]);
       }
 
+      // Refer & earn: a resident's qualified-but-unapplied referral discounts
+      // (they referred someone who has since been allocated a bed) fold in the
+      // SAME way — a signed (negative) contributor to `newTotal`, consumed
+      // exactly once. Keyed by REFERRER, since that's whose invoice it reduces.
+      const referralsByResident = new Map<
+        string,
+        { id: string; discountPaise: number }[]
+      >();
+      const allReferrals = await tx
+        .select({
+          id: referrals.id,
+          referrerId: referrals.referrerId,
+          discountPaise: referrals.discountPaise,
+        })
+        .from(referrals)
+        .where(
+          and(
+            inArray(referrals.referrerId, residentIds),
+            isNull(referrals.appliedToInvoiceId),
+          ),
+        );
+      for (const r of allReferrals) {
+        const entry = { id: r.id, discountPaise: r.discountPaise };
+        const list = referralsByResident.get(r.referrerId);
+        if (list) list.push(entry);
+        else referralsByResident.set(r.referrerId, [entry]);
+      }
+
       for (const inv of inserted) {
         const pending = pendingByResident.get(inv.residentId) ?? [];
         const charges = chargesByResident.get(inv.residentId) ?? [];
-        if (pending.length === 0 && charges.length === 0) continue;
+        const earnedReferrals = referralsByResident.get(inv.residentId) ?? [];
+        if (
+          pending.length === 0 &&
+          charges.length === 0 &&
+          earnedReferrals.length === 0
+        )
+          continue;
 
         const adjSum = pending.reduce((s, a) => s + a.amountPaise, 0);
         const chargeSum = charges.reduce((s, c) => s + c.amountPaise, 0);
-        const newTotal = inv.amountPaise + adjSum + chargeSum;
+        const referralSum = earnedReferrals.reduce(
+          (s, r) => s - r.discountPaise,
+          0,
+        );
+        const newTotal = inv.amountPaise + adjSum + chargeSum + referralSum;
 
         if (pending.length > 0) {
           await tx
@@ -329,6 +368,18 @@ export class RentService {
               .set({ appliedToInvoiceId: inv.id, appliedAt: new Date() })
               .where(inArray(extraCharges.id, oneTimeIds));
           }
+        }
+
+        if (earnedReferrals.length > 0) {
+          await tx
+            .update(referrals)
+            .set({ appliedToInvoiceId: inv.id, appliedAt: new Date() })
+            .where(
+              inArray(
+                referrals.id,
+                earnedReferrals.map((r) => r.id),
+              ),
+            );
         }
 
         if (newTotal >= 0) {
@@ -551,6 +602,10 @@ export class RentService {
       .update(rentAdjustments)
       .set({ appliedToInvoiceId: null, appliedAt: null })
       .where(eq(rentAdjustments.appliedToInvoiceId, invoiceId));
+    await db
+      .update(referrals)
+      .set({ appliedToInvoiceId: null, appliedAt: null })
+      .where(eq(referrals.appliedToInvoiceId, invoiceId));
     // Drop any still-PENDING transfer delta for THIS resident + month: re-generation
     // re-prices the whole month segment-aware (old room + new room), so keeping the
     // delta — which reconciled the now-voided full-old-room invoice — would

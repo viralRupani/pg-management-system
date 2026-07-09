@@ -9,7 +9,13 @@ import {
   PaymentStatus,
 } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
-import { extraCharges, invoiceCharges, invoices, payments } from "../db/schema";
+import {
+  extraCharges,
+  invoiceCharges,
+  invoices,
+  payments,
+  referrals,
+} from "../db/schema";
 import { istPeriod } from "../common/ist-date";
 
 /**
@@ -178,6 +184,12 @@ export class ChargesService {
    * The labelled charge breakdown for one invoice. Managers read any in-tenant
    * invoice's charges; a resident is scoped to their own (RLS isolates tenants,
    * not residents — so we filter by resident id from the JWT).
+   *
+   * Also merges in any referral discount applied to this invoice — refer &
+   * earn deliberately does NOT get its own `invoice_charges` row (that table
+   * is hard-wired to `extra_charges` as its parent); instead it's folded into
+   * the same breakdown shape here so it shows up on the existing resident
+   * invoice-detail UI for free, as a negative ("Referral discount") line.
    */
   async listForInvoice(
     invoiceId: string,
@@ -195,7 +207,7 @@ export class ChargesService {
       .from(invoiceCharges)
       .where(where)
       .orderBy(invoiceCharges.createdAt);
-    return rows.map((r) => ({
+    const charges: InvoiceCharge[] = rows.map((r) => ({
       id: r.id,
       invoiceId: r.invoiceId,
       label: r.label,
@@ -203,5 +215,36 @@ export class ChargesService {
       period: r.period,
       createdAt: r.createdAt.toISOString(),
     }));
+
+    const referralWhere = residentId
+      ? and(
+          eq(referrals.appliedToInvoiceId, invoiceId),
+          eq(referrals.referrerId, residentId),
+        )
+      : eq(referrals.appliedToInvoiceId, invoiceId);
+    const referralRows = await this.ctx
+      .db()
+      .select({
+        id: referrals.id,
+        discountPaise: referrals.discountPaise,
+        appliedAt: referrals.appliedAt,
+        qualifiedAt: referrals.qualifiedAt,
+        period: invoices.period,
+      })
+      .from(referrals)
+      .innerJoin(invoices, eq(invoices.id, referrals.appliedToInvoiceId))
+      .where(referralWhere);
+    const referralCharges: InvoiceCharge[] = referralRows.map((r) => ({
+      id: r.id,
+      invoiceId,
+      label: "Referral discount",
+      amountPaise: -r.discountPaise,
+      period: r.period,
+      createdAt: (r.appliedAt ?? r.qualifiedAt).toISOString(),
+    }));
+
+    return [...charges, ...referralCharges].sort((a, b) =>
+      a.createdAt.localeCompare(b.createdAt),
+    );
   }
 }

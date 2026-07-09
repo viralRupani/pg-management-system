@@ -232,6 +232,13 @@
       "when": 1783520635646,
       "tag": "0032_dazzling_molten_man",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1783610120449,
+      "tag": "0033_black_shadowcat",
+      "breakpoints": true
     }
   ]
 }

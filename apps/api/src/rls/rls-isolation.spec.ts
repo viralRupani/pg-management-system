@@ -20,6 +20,7 @@ import {
   invoices,
   menuConfig,
   menuSlots,
+  referrals,
   rooms,
   schema,
   tenants,
@@ -316,6 +317,42 @@ describe("cross-tenant isolation (RLS gate)", () => {
     );
     expect(bDocs).toHaveLength(0);
     expect(bDeposits).toHaveLength(0);
+  });
+
+  it("scopes referrals across tenants and rejects a cross-tenant referred resident", async () => {
+    // A's resident refers A's other resident.
+    await tcs.run(tenantA, async () =>
+      tcs.db().insert(referrals).values({
+        tenantId: tenantA,
+        referrerId: residentA,
+        referredId: residentA2,
+        discountPaise: 50000,
+      }),
+    );
+
+    const bSees = await tcs.run(tenantB, async () =>
+      tcs.db().select().from(referrals),
+    );
+    expect(bSees).toHaveLength(0);
+
+    const aSees = await tcs.run(tenantA, async () =>
+      tcs.db().select().from(referrals),
+    );
+    expect(aSees).toHaveLength(1);
+
+    // As tenant B, try to record a referral naming tenant A's resident as the
+    // referred party. tenant_id=B passes WITH CHECK, but the composite FK
+    // (referred_id, tenant_id) has no matching (A-resident, B) row -> rejected.
+    await expect(
+      tcs.run(tenantB, async () =>
+        tcs.db().insert(referrals).values({
+          tenantId: tenantB,
+          referrerId: residentA, // another tenant's resident
+          referredId: residentA2, // another tenant's resident
+          discountPaise: 50000,
+        }),
+      ),
+    ).rejects.toThrow();
   });
 
   it("scopes the M5 operations tables across tenants", async () => {

@@ -68,6 +68,9 @@ import type {
   PresignedUploadResult,
   RecordDepositInput,
   RecordExpenseInput,
+  ReferralSettings,
+  ReferralSettingsInput,
+  ReferralSummary,
   RegisterPushTokenInput,
   RegisterResidentInput,
   ResidentListQuery,
@@ -428,6 +431,21 @@ export class PgApiClient {
     /** Labelled breakdown of the extra charges folded into one invoice. */
     forInvoice: (invoiceId: string) =>
       this.http.get<InvoiceCharge[]>(`/invoices/${invoiceId}/charges`),
+  };
+
+  readonly referrals = {
+    /** The PG's configured refer & earn discount (null = not configured). */
+    getSettings: () =>
+      this.http.get<ReferralSettings>("/referrals/settings"),
+    /** Set (or update) the discount a referrer earns off one month's rent. */
+    setSettings: (input: ReferralSettingsInput) =>
+      this.http.put<ReferralSettings>("/referrals/settings", input),
+    /** Clear the discount → referrals stop qualifying going forward. */
+    deleteSettings: () =>
+      this.http.del<ReferralSettings>("/referrals/settings"),
+    /** Every referral a resident has made (qualified + applied history). */
+    listForResident: (residentId: string) =>
+      this.http.get<ReferralSummary[]>("/referrals", { query: { residentId } }),
   };
 
   readonly complaints = {

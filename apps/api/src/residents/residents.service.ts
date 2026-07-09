@@ -50,6 +50,9 @@ const bookedBeds = alias(beds, "booked_beds");
 // self-join needs its own alias to resolve their name.
 const creator = alias(users, "creator");
 
+// Refer & earn: the referring resident is also another `users` row.
+const referrer = alias(users, "referrer");
+
 // The document type that constitutes KYC today. Adding more required types
 // later means rolling the per-resident status up across all of them; for one
 // type the resident's KYC status is just that document's status.
@@ -93,6 +96,26 @@ export class ResidentsService {
     createdByUserId?: string,
   ): Promise<{ id: string }> {
     return db.transaction(async (tx) => {
+      // Refer & earn: the referrer must already be a resident of this tenant
+      // (RLS/composite-FK would reject it anyway, but this gives a clean 404
+      // instead of a raw constraint violation). Never set for short-stay
+      // guests — enforced by Zod already; re-checked here defensively.
+      let referredByUserId: string | null = null;
+      if (input.referredByUserId && !input.isShortStay) {
+        const [referrerRow] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(
+            and(
+              eq(users.id, input.referredByUserId),
+              eq(users.role, UserRole.RESIDENT),
+            ),
+          );
+        if (!referrerRow)
+          throw new NotFoundException("Referring resident not found");
+        referredByUserId = referrerRow.id;
+      }
+
       const [resident] = await tx
         .insert(users)
         .values({
@@ -118,6 +141,7 @@ export class ResidentsService {
           shortStayPerDayChargePaise: input.isShortStay
             ? (input.shortStayPerDayChargePaise ?? null)
             : null,
+          referredByUserId,
         })
         .returning();
 
@@ -236,6 +260,7 @@ export class ResidentsService {
         kycDocStatus: documents.status,
         createdByName: creator.name,
         createdAt: users.createdAt,
+        referredByName: referrer.name,
       })
       .from(users)
       .leftJoin(
@@ -278,6 +303,15 @@ export class ResidentsService {
           eq(creator.id, users.createdByUserId),
           eq(creator.tenantId, users.tenantId),
         ),
+      )
+      // The referring resident (1:1, null if none recorded) — only their
+      // display name is needed for the "Referred by" line.
+      .leftJoin(
+        referrer,
+        and(
+          eq(referrer.id, users.referredByUserId),
+          eq(referrer.tenantId, users.tenantId),
+        ),
       );
   }
 }
@@ -311,6 +345,7 @@ type ResidentRow = {
   kycDocStatus: string | null;
   createdByName: string | null;
   createdAt: Date;
+  referredByName: string | null;
 };
 
 /**
@@ -379,5 +414,6 @@ function toSummary(r: ResidentRow): ResidentSummary {
     kycStatus: toKycStatus(r.kycDocStatus),
     createdByName: r.createdByName,
     createdAt: r.createdAt.toISOString(),
+    referredByName: r.referredByName,
   };
 }

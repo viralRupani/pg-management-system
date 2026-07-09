@@ -36,6 +36,7 @@ import { freeBed } from "../db/free-bed";
 import { isUniqueViolation } from "../db/pg-errors";
 import { prorateSegment } from "../rent/rent.proration";
 import { InvoiceScheduleService } from "../rent/invoice-schedule.service";
+import { qualifyReferralIfAny } from "../referrals/qualify-referral";
 
 /** Drizzle transaction handle (the arg to `db.transaction(async (tx) => …)`). */
 type Tx = Parameters<
@@ -94,6 +95,12 @@ export class AllocationService {
           .update(beds)
           .set({ status: BedStatus.OCCUPIED })
           .where(eq(beds.id, input.bedId));
+
+        // Refer & earn: this is the resident's first-ever allocation (a
+        // double-booking here is impossible — a resident with an existing
+        // active allocation would have failed the unique-violation catch
+        // above), so it's the earn moment for any referral they came with.
+        await qualifyReferralIfAny(tx, tenantId, input.residentId);
 
         return { id: alloc.id };
       });
