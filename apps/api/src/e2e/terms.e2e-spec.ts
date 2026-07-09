@@ -2,7 +2,7 @@ import { inArray } from "drizzle-orm";
 import * as argon2 from "argon2";
 import { UserRole } from "@pg/shared";
 import { PLATFORM_DB, type Database } from "../db/database.module";
-import { authIdentities, owners, tenants } from "../db/schema";
+import { authIdentities, owners, tcAcceptances, tcVersions, tenants } from "../db/schema";
 import { createHarness, type Harness } from "./harness";
 
 /**
@@ -17,8 +17,11 @@ import { createHarness, type Harness } from "./harness";
  *  4. Publishing a NEW version re-prompts a previously-accepted user.
  *  5. Only PLATFORM_ADMIN may publish (owner/manager get 403).
  *
- * tc_* tables are GLOBAL (no RLS, not cleaned per-run), so every assertion is
- * relative to the version we publish in-test — never an absolute version number.
+ * tc_* tables are GLOBAL (no RLS), so every assertion is relative to the
+ * version we publish in-test — never an absolute version number. Versions this
+ * run publishes are tracked in `createdVersions` and deleted in `afterAll` — a
+ * real dev/admin session reads `max(version)` as "the" terms, so a leftover
+ * test version otherwise becomes what the T&C gate shows outside the suite.
  * Needs infra up + migrated. Run serialized (the suite shares one Postgres).
  */
 describe("Terms & Conditions (e2e)", () => {
@@ -27,6 +30,7 @@ describe("Terms & Conditions (e2e)", () => {
   const createdOwnerEmails: string[] = [];
   const seededAdminEmails: string[] = [];
   const createdTenantIds: string[] = []; // owner-created PGs (not in harness cleanup)
+  const createdVersions: number[] = [];
   let suffix: string;
 
   beforeAll(async () => {
@@ -36,6 +40,12 @@ describe("Terms & Conditions (e2e)", () => {
   });
 
   afterAll(async () => {
+    if (createdVersions.length) {
+      await platformDb
+        .delete(tcAcceptances)
+        .where(inArray(tcAcceptances.version, createdVersions));
+      await platformDb.delete(tcVersions).where(inArray(tcVersions.version, createdVersions));
+    }
     if (createdTenantIds.length) {
       await platformDb.delete(tenants).where(inArray(tenants.id, createdTenantIds));
     }
@@ -86,6 +96,7 @@ describe("Terms & Conditions (e2e)", () => {
   async function publish(body: string): Promise<number> {
     const res = await h.req("post", "/terms/versions", h.platformToken(), { body });
     expect(res.status).toBe(201);
+    createdVersions.push(res.body.version);
     return res.body.version as number;
   }
 
@@ -210,6 +221,7 @@ describe("Terms & Conditions (e2e)", () => {
       body: "Published by a real platform admin credential. ".repeat(3),
     });
     expect(res.status).toBe(201);
+    createdVersions.push(res.body.version);
     expect(res.body.publishedByEmail).toBe(admin.email);
   });
 
@@ -229,7 +241,9 @@ describe("Terms & Conditions (e2e)", () => {
     const body = { body: "Attempted publish by a non-admin principal. ".repeat(3) };
     expect((await h.req("post", "/terms/versions", pg.managerToken, body)).status).toBe(403);
     expect((await h.req("post", "/terms/versions", owner.token, body)).status).toBe(403);
-    expect((await h.req("post", "/terms/versions", h.platformToken(), body)).status).toBe(201);
+    const created = await h.req("post", "/terms/versions", h.platformToken(), body);
+    expect(created.status).toBe(201);
+    createdVersions.push(created.body.version);
 
     // Platform admin can list versions; a manager cannot.
     expect((await h.req("get", "/terms/versions", h.platformToken())).status).toBe(200);
