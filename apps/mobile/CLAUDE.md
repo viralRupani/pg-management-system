@@ -1,10 +1,13 @@
 # CLAUDE.md — apps/mobile (Expo resident app)
 
 > **Built (M8) — device-verified.** The resident app is feature-complete: OTP auth
-> (slug → phone → OTP), swipeable bottom-tab nav, and every feature screen (Home
-> with floating rent card + at-a-glance strip, Rent + invoice detail + submit-payment
-> sheet, Complaints + raise + thread, KYC documents + upload, Deposit + ledger +
-> move-out request, Announcements, Mess menu, Notifications, Profile/More + logout).
+> (slug → phone → OTP), a **4-tab swipeable bottom nav** (Home · Rent · Complaints ·
+> More/Profile) with the remaining screens as **top-level pushed routes** reached
+> from the tabs (invoice detail + submit-payment sheet, complaint raise + thread,
+> KYC documents + upload, Deposit + ledger + move-out request, Announcements, Mess
+> menu, Notifications). Home has a floating rent card + at-a-glance strip; the
+> invoice detail shows the labelled charges breakdown, the PG's UPI-to-copy, the
+> payment mode/proof, and an "Under review" state for a submitted payment.
 > `@pg/api-client` has resident methods; NativeWind white-label theming repaints from
 > `GET /branding/:slug` and **persists across cold start**. Run in Expo Go on a
 > physical Android phone: `var(--brand)` paints + repaints confirmed on native. For
@@ -94,9 +97,21 @@ app/                       expo-router file-based routes
                            loads Inter (splash-held, system-font fallback via
                            lib/fonts.ts setInterLoaded) before rendering routes
   (auth)/                  login flow: slug → phone → OTP (auto-submit)
-  (tabs)/                  swipeable bottom-tab nav + every feature screen
-                           (home, rent, complaints, kyc, deposit, announcements,
-                           mess, notifications, more)
+                           (index → phone → otp)
+  (tabs)/                  swipeable bottom-tab nav — only 4 tabs now:
+                           home · rent · complaints · more. Material Top Tabs
+                           pinned to the bottom (finger-tracking swipe), custom bar
+                           (_layout.tsx). The other feature screens are TOP-LEVEL
+                           stack-pushed routes, navigated to from the tabs:
+  announcements.tsx        PG announcements feed
+  menu.tsx                 mess menu (materialized cycle)
+  notifications.tsx        in-app notification feed
+  deposit.tsx              security deposit + ledger + move-out request
+  documents.tsx            KYC documents + upload
+  invoices/[id].tsx        invoice detail + submit-payment sheet (charges
+                           breakdown, UPI-to-copy, payment mode/proof, under-review)
+  complaints/new.tsx       raise a complaint (optional photo)
+  complaints/[id].tsx      complaint thread
 components/
   ui/                      shared NativeWind primitives (Button, Input, Card,
                            Badge + status.ts, Row/Ricon (tone prop), Appbar,
@@ -183,6 +198,7 @@ the resource with the returned **key** (store the key, never a URL).
 | `POST /auth/resident/otp/request` / `/verify` *(public)* | OTP login |
 | `POST /auth/refresh` *(public)* | rotate tokens |
 | `GET /invoices/mine` | resident's rent invoices |
+| `GET /invoices/:id/charges` | labelled breakdown for one invoice (extra charges + a "Referral discount" line); resident-scoped to their own |
 | `POST /payments/upload-url` → PUT → `POST /payments` | upload UPI screenshot + record payment against an invoice |
 | `GET /deposits/mine` | own security-deposit + ledger |
 | `POST /documents/upload-url` → PUT → `POST /documents` | submit a KYC document |

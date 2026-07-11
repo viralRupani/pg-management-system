@@ -5,12 +5,19 @@ resident OTP belongs to the mobile app). For business context + the API surface
 see the root `CLAUDE.md` and `apps/api/CLAUDE.md`. This is a **pure client SPA** —
 no server here; the NestJS API is the only trust boundary.
 
-**Status: COMPLETE.** All eight nav pages built + verified (build / typecheck /
-live-API / live-browser). No `soon` stubs remain. (The resident mobile app —
-`apps/mobile/CLAUDE.md` — is also built + device-verified.) Outstanding: no
-committed frontend test — admin is
-build- + manual-verified; a Playwright e2e is the deferred safety net (the ad-hoc
-`npx playwright` scripts with cached chromium are a ready template).
+**Status: COMPLETE.** All nav pages built + verified (build / typecheck /
+live-API / live-browser). No `soon` stubs remain. Shell + primitives were
+redesigned (commit `098b3a4`): responsive `app-shell` with a mobile drawer, a
+richer `components/ui/` primitive set (see map), and the app is **branded
+"Basera"** (title, login, terms). Nav pages now: **dashboard, residents,
+property, rent, complaints, menu, announcements, budgets, settings**, plus
+owner-only **managers**. Out-of-shell pages: `login`, `pgs` (owner chooser),
+`change-password`, `forgot-password`, `reset-password`, `terms` (owner/manager
+acceptance gate), `terms-admin` (platform-admin publishing). (The resident mobile
+app — `apps/mobile/CLAUDE.md` — is also built + device-verified.) Outstanding: no
+committed frontend test — admin is build- + manual-verified; a Playwright e2e is
+the deferred safety net (the ad-hoc `npx playwright` scripts with cached chromium
+are a ready template).
 
 ## Stack
 Next.js 16 (App Router, **Turbopack**) · **`output: 'export'`** (static export) ·
@@ -41,13 +48,23 @@ app/
   page.tsx               "/" → redirect to /dashboard or /login
   login/page.tsx         manager email+password login (NEUTRAL branding)
   pgs/page.tsx           PG_OWNER chooser (OUTSIDE the shell — global token)
+  change-password|forgot-password|reset-password/page.tsx  password flows (public)
+  terms/page.tsx         owner/manager T&C acceptance gate (blocks the app until
+                         the latest version is accepted)
+  terms-admin/page.tsx   platform-admin T&C publishing (list + publish a version)
   (app)/                 route GROUP = authenticated area (no URL segment)
     layout.tsx           client route guard + <AppShell>
     dashboard|residents|property|rent|complaints|menu|announcements|budgets|
     settings|managers/page.tsx
 components/
-  app-shell.tsx          sidebar nav (white-labeled, ownerOnly flags) + topbar
-  ui/                    button, card, input/label, badge, dialog (cn())
+  app-shell.tsx          responsive sidebar nav (white-labeled, ownerOnly flags) +
+                         topbar + mobile drawer + alerts bell (dashboard.alerts)
+  stat-card.tsx          dashboard KPI tile
+  resident-combobox.tsx  typeahead resident picker (charges/deposits target)
+  charts/                invoice-donut, revenue-bar (dashboard; self-contained SVG)
+  ui/                    button, card, input/label, badge, dialog, select,
+                         textarea, table, tabs, toast, skeleton, empty-state,
+                         page-header (cn())
 lib/
   api.ts                 PgApiClient singleton + localStorage TokenStore +
                          decodeToken + currentUser; onUnauthorized → /login;
@@ -55,7 +72,8 @@ lib/
   auth.tsx               <AuthProvider>/useAuth: login/logout, user, branding,
                          isOwner/switchPg/exitPg, refreshBranding
   theme.ts               applyAccentColor → paints --brand from branding
-  utils.ts               cn(), formatPaise (₹ from integer paise), formatDate
+  utils.ts               cn(), formatPaise (₹ from integer paise), formatDate,
+                         toMessage (error → user string)
 ```
 
 ## Auth model (client-only)
@@ -92,13 +110,14 @@ the sidebar. Settings page edits this live via `refreshBranding()` (no reload).
    no optimistic local mutation.
 4. `pnpm --filter @pg/admin build` to confirm export + TS pass.
 
-## The four page patterns (locked in — pick one per page)
+## The page patterns (locked in — pick one per page)
 | Pattern | Worked example | When | `?id=`/Suspense? |
 |---|---|---|---|
 | **`?id=` detail** | residents, complaints | list ↔ one-record drill-down | yes |
 | **Tree** | property | nested hierarchy *is* the view: load all levels in one `Promise.all`, group client-side by parent id, expansion in local `Set` | no |
 | **Grid/range** | menu (week), budgets (month) | calendar/window data: hold window in local state, derive `from`/`to`, key results into a `Map` for O(1) cell render, click-cell upserts | no |
 | **Flat feed** | announcements | small chronological records, no drill-down needed (show inline) | no |
+| **Overview/dashboard** | dashboard | read-only aggregate landing: fan out several independent reads in one `Promise.all` (`stats` + `alerts` + pending payments + complaints), render into `StatCard`s + `charts/` (self-contained SVG, no external lib) + drill-out `Link`s. No mutations here. | no |
 
 ## ⚠️ Recurring landmines (re-bite anyone, esp. dates)
 - **Dates → API must be zero-padded LOCAL `YYYY-MM-DD`.** Write a `ymd()` helper
@@ -111,14 +130,30 @@ the sidebar. Settings page edits this live via `refreshBranding()` (no reload).
   the shared `inputClass`. Promote to `ui/` if reused.
 
 ## Page-specific notes (only the non-obvious)
+- **Dashboard** — the overview landing (see the pattern above). Reads
+  `dashboard.stats` + `dashboard.alerts` (also polled by the shell bell) plus the
+  payment-review + open-complaint queues; all money via `formatPaise`, charts are
+  the two self-contained SVG components in `components/charts/`.
 - **Rent** — tabbed Payments review queue (approve / reject-with-note / view
   screenshot; approving flips the linked invoice to PAID, so refetch invoices too)
   + Invoices list with a Generate dialog + a **Schedule** tab (one auto-generation
   schedule per PG: day-of-month + time in IST; create/edit/delete via
   `invoices.getSchedule/setSchedule/deleteSchedule`. No schedule = manual-only).
+  The PG's payable **UPI id / QR** is managed here (residents copy it to pay).
 - **Residents** — detail bundles bed allocation (ranked-suggestion picker /
-  move-out), KYC docs (verify/reject/download), security deposit (record +
-  settle-exit with live refund preview that blocks over-deduction).
+  move-out), KYC docs (verify/reject/download), security deposit (**partial/
+  installment collect + any-time refund + apply-to-invoice**, plus settle-exit with
+  live refund preview that blocks over-deduction), **extra charges** (one-time /
+  recurring; apply-now vs. next-month is a backend decision), and the resident's
+  **referral** history. Registration captures a planned move-in date + optional
+  referrer; assign-bed dispatches allocate/booking/short-stay per the root doc's
+  "Unified onboarding flow".
+- **Managers** (owner-only) — add / list / soft-deactivate managers for the
+  active PG (PG-scoped token; deactivation revokes at the next refresh).
+- **Terms / Terms-admin** — `terms` is the acceptance gate any owner/manager hits
+  when a newer T&C version is published (accept-to-continue); `terms-admin` is the
+  platform-admin publishing surface (list versions + publish a new one, which
+  re-prompts everyone). Backed by the GLOBAL no-RLS `tc_*` tables.
 - **Complaints** — no `GET /complaints/:id`; detail finds its row in
   `complaints.list()` + `complaints.updates(id)`. Thread entries carry only
   `authorUserId` → labelled Resident/You/Staff by comparing to `residentId`/JWT

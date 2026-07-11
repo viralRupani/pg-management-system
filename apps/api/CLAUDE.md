@@ -33,7 +33,16 @@ src/
     jwt-auth.guard.ts         verifies access token -> req.auth (tenant source)
     roles.guard.ts            enforces @Roles
     zod-validation.pipe.ts    ZodBody(schema)
+    ist-date.ts               IST (UTC+5:30) calendar helpers — THE canonical fix
+                              for the "toISOString off-by-one in IST" landmine
+                              (istPeriod/istParts/istStartOfDayUtc/istMomentUtc/
+                              daysInPeriod). Anything asking "what day/month is it"
+                              for a stored UTC instant MUST shift to IST first.
   auth/                       manager login + resident OTP (AuthService/Repo, OtpService)
+                              + password-reset (PasswordResetService: single-use
+                              Redis tokens; forgot/reset-password routes) + the
+                              resident-lockout gate (repo.residentHasAccess — EXITED
+                              or moved-out resident can't log in; see Auth specifics)
   platform/                   super-admin onboarding + metering (PLATFORM_DB, BYPASSRLS):
                               PlatformService (onboard + createOwner) + MeteringService
                               (billing_snapshots, overview); onboarding.helpers.ts
@@ -47,17 +56,58 @@ src/
                               slug is globally unique (no RLS on tenants) → update
                               pre-checks excluding self for a clean 409, unique
                               index is the backstop; GET /tenants/slug-available/
-                              :slug, PATCH /tenants/slug
-  residents/                  resident register/list/get (+ current bedLabel)
-  property/                   CRUD buildings/floors/rooms/beds + edit room rent
-  allocation/                 allocate/move-out/list + bed suggestions (AllocationService)
+                              :slug, PATCH /tenants/slug. Also the manager-set UPI
+                              id / QR (residents copy it to pay) lives on `tenants`.
+  residents/                  resident register/list/get (+ current bedLabel, current
+                              monthly rent, who-registered-them, referredBy)
+  property/                   CRUD buildings/floors/rooms/beds + edit room rent +
+                              editable room capacity/occupation (bed-count invariants)
+  allocation/                 allocate/move-out/list + bed suggestions (AllocationService).
+                              allocate() also fires the late-join invoice + referral
+                              qualify inside the alloc txn (see rent/)
+  bookings/                   future-dated bed holds (BookingsModule, `bookings`):
+                              reserve a bed for an incoming resident (RESERVED +
+                              UPCOMING + deposit HELD); a daily activate-bookings job
+                              creates the live allocation on/after move-in. Cancel is
+                              a true undo (freeBed + delete pristine deposit)
+  short-stays/                lightweight transient guests (`short_stays`, no OTP
+                              identity, no allocations row → auto-excluded from rent
+                              + ₹10 metering); assigned to a VACANT/RESERVED-free-after
+                              bed (→ TRANSIENT); complete/cancel frees the bed
   storage/                    StorageProvider seam (presigned URLs) + local stub
   rent/                       rent loop: invoices + payments (RentService, 2 controllers)
-  notifications/              feed + push_tokens + NotificationChannel (Expo stub)
+                              + InvoiceScheduleService (per-PG auto-generation) +
+                              rent.proration.ts (prorateRent / prorateSegment — IST
+                              day-math; segments price a mid-month transfer's two rooms)
+  charges/                    manager extra charges (`extra_charges` one-time/monthly
+                              → `invoice_charges` labelled lines): apply-now to the
+                              current open invoice + monthly fold in generateMonthly
+  referrals/                  refer & earn: per-PG discount + cap on `tenants`;
+                              qualify-referral.ts records the earn event at a
+                              resident's FIRST allocation; discount folded into the
+                              referrer's next invoice by generateMonthly
+  notifications/              feed + push_tokens + NotificationChannel (Expo stub);
+                              payment approve/reject notifies the resident
+  dashboard/                  manager dashboard: stats() (bed/invoice/6-mo revenue +
+                              upcoming bookings) + alerts() (cheap "needs attention"
+                              counts for the bell badge)
   jobs/                       BullMQ JobsModule + JobsService (cross-tenant batch)
   documents/                  KYC docs: resident upload + manager verify/reject
-  deposits/                   deposits + exit settlement ledger (DepositsService)
+  deposits/                   deposits + exit settlement ledger (DepositsService):
+                              partial/installment collect(), any-time refund(),
+                              apply-to-invoice, exit settlement
+  terms/                      T&C acceptance gate + platform-admin publishing
+                              (tc_versions/tc_acceptances — GLOBAL, no RLS; injects
+                              APP_DB directly like AuthRepository — see below)
+  mail/                       transactional email seam: MailService (typed per-email
+                              methods) → EmailProvider (AWS SES driver / dev log) +
+                              MailTemplateService (compiled html/text templates).
+                              Only user today: password-reset
   redis/redis.module.ts       @Global Redis client (REDIS token)
+  db/
+    free-bed.ts               freeBed() — the ONE bed-release path (→ RESERVED if a
+                              booking waits, else VACANT). All vacate flows go here.
+    pg-errors.ts              Postgres error helpers (isUniqueViolation, …)
 ```
 
 ## Request lifecycle (security)
@@ -120,6 +170,44 @@ Only the platform module may inject `PLATFORM_DB` (BYPASSRLS). Use it for
 onboarding and metering only. Platform routes are `@Roles(UserRole.PLATFORM_ADMIN)`
 and are NOT wrapped in a tenant txn.
 
+## Global (no-RLS) tables — the third data class
+Beyond tenant tables (RLS) and the login tables (`tenants`, `auth_identities` —
+no RLS, blast radius = contact+credential), the **T&C tables** (`tc_versions`,
+`tc_acceptances`) are a third class: **genuinely global, no `tenantId` at all.**
+`TermsService` injects `APP_DB` **directly** (like `AuthRepository`), NOT
+`ctx.db()`/`PLATFORM_DB`, because the accept/status calls must work both inside a
+tenant context (a manager on a PG-scoped token) AND without one (a PG_OWNER on
+their global `tenantId:null` token). Acceptance is keyed by `auth_identities.id`
+(the stable per-human credential, resolved from the JWT), and `getStatus`
+**fails OPEN** (`accepted:true`) when nothing is published or the credential
+can't be resolved — so the client-side gate can never trap a legitimate session
+or trip the api-client 401→/login loop. Publishing a version supersedes everyone's
+prior acceptance (re-prompt). Do NOT add such tables lightly — this is the T&C
+exception, not a pattern to reach for.
+
+## Billing folds — apply-now vs. monthly fold (never double-billed)
+Three features add money to a resident's invoice, and they share one discipline:
+a line either lands **now** (apply to the current open invoice) OR **later** (in
+`RentService.generateMonthly`), never both.
+- **Extra charges** (`ChargesService.create`): apply-now bumps the current-period
+  PENDING/OVERDUE invoice via a **conditional-flip `amount + delta`** UPDATE (no
+  read-modify-write race) + an `invoice_charges` line; a ONE_TIME charge is then
+  stamped `appliedToInvoiceId` so the monthly run skips it. Apply-now is
+  **deliberately skipped when a SUBMITTED payment is in flight** (approval settles
+  the invoice without reconciling amount → the delta would go silently
+  uncollected) or the invoice is voided — the charge waits for next month.
+- **Referrals** (`qualifyReferralIfAny`): the earn event (a `referrals` row) is
+  written atomically at the referrer's referred-resident's FIRST allocation;
+  `generateMonthly` folds any unapplied row into the referrer's next invoice as a
+  negative line. It does NOT get an `invoice_charges` row (that table is FK-bound
+  to `extra_charges`); `ChargesService.listForInvoice` merges it into the same
+  breakdown shape so the resident invoice-detail UI shows it for free.
+- **Rent adjustments** (`rent_adjustments`): a mid-month transfer's signed delta,
+  consumed exactly once by the next `generateMonthly`.
+
+All three are read once per run over the just-inserted resident ids (no N+1) and
+consumed inside the generation txn.
+
 ## Scheduled jobs (`jobs/`, BullMQ)
 `JobsModule` runs a BullMQ worker in-process (per-PG scheduled invoice dispatch +
 daily reminders) that calls `JobsService`. A batch job is cross-tenant but must
@@ -170,6 +258,18 @@ trigger.
   under `NODE_ENV=test`. Defense-in-depth on top of the OTP 5-wrong-tries burn.
 - Tokens: access signed with `JWT_ACCESS_SECRET` (default TTL), refresh signed
   explicitly with `JWT_REFRESH_SECRET`. `POST /auth/refresh` re-mints.
+- **Resident lockout** (`AuthRepository.residentHasAccess`, checked on OTP verify
+  AND refresh): a resident who has been settled/exited (`users.status = EXITED`)
+  OR moved out (ACTIVE but their only allocation has ended) is denied — status
+  first, allocation-history second. UPCOMING (future booking) and a freshly
+  registered resident mid-onboarding (ACTIVE, no allocation history) are allowed.
+  Runs inside the tenant txn (RLS-protected tables) → fail-closed without context.
+- **Password reset** (manager/owner): `POST /auth/forgot-password` (always 200,
+  no account enumeration) mints a single-use CSPRNG token in Redis
+  (`PasswordResetService`, `pwreset:*`, TTL from `PWRESET_TTL_SECONDS`) and emails
+  the link via `MailService`; `POST /auth/reset-password` does an atomic GETDEL
+  (`consume`) so a token spends exactly once. `POST /auth/change-password`
+  (authenticated) re-checks the current password. All are `@Public` except change.
 - Real SMS later: implement `SmsProvider` (see `auth/otp.service.ts`).
 
 ## Env (see .env.example)
@@ -194,9 +294,13 @@ pnpm db:migrate`):
 - `src/rls/rls-isolation.spec.ts` — the DB-level isolation gate (raw pools as
   `app_user`, max=1). Add new RLS tables here for explicit per-table coverage.
 - `src/e2e/*.e2e-spec.ts` — black-box HTTP e2e over the real `AppModule`, one file
-  per milestone/feature (property-allocation, rent, documents-deposits, operations,
-  metering-branding, owner, transfers, overdue-reminders, otp-lockout,
-  resident-exit-photo). `harness.ts` (`createHarness()`) boots the app with
+  per milestone/feature. Current set (24 files): property-allocation, rent,
+  documents-deposits, operations, metering-branding, owner, transfers,
+  transfer-auto-activate, overdue-reminders, otp-lockout, resident-exit-photo,
+  auth-password, bookings, charges, dashboard-alerts, deposit-apply-rent,
+  deposit-update-amount, invoice-delete, invoice-schedule, late-join-invoice,
+  referrals, resident-access-revocation, short-stays, terms. `harness.ts`
+  (`createHarness()`) boots the app with
   `@nestjs/testing` +
   supertest, **reusing the app's own `JwtService`** (to mint the PLATFORM_ADMIN
   token — super-admin has no login endpoint) and **`REDIS`** (to read the dev
@@ -229,3 +333,12 @@ pnpm db:migrate`):
   ioredis versions coexist and instance types clash across them (`jobs.module.ts`).
 - Enum consts (`PaymentStatus.APPROVED`) are values, not a namespace — don't use
   them in type position; use `typeof PaymentStatus.APPROVED` for a literal type.
+- **The harness clock is NOT frozen** — `istPeriod(new Date())` reads the real
+  system clock. Any e2e that asserts against "the current period" must compute it
+  from `istPeriod(new Date())`, NOT a hardcoded `'YYYY-MM'`. `charges.e2e-spec.ts`
+  learned this the hard way: it hardcoded period `2026-06` and silently started
+  failing once the wall clock passed June 2026 (`ChargesService.create`'s apply-now
+  targets the real current period, so it found no current invoice → null). It now
+  derives `P0 = istPeriod(new Date())` and `P1/P2 = addMonths(P0, ±n)`, and starts
+  residents on `${P0}-01` for full-month rent — the pattern to copy for any
+  period-relative spec.
