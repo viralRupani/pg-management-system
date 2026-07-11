@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   foreignKey,
   pgTable,
   text,
@@ -37,6 +38,11 @@ export const bookings = pgTable(
     bedId: uuid("bed_id").notNull(),
     moveInDate: timestamp("move_in_date", { withTimezone: true }).notNull(),
     depositId: uuid("deposit_id"),
+    // True when this booking created `depositId` itself (so `cancel()` may
+    // delete it as a true undo); false when it linked a deposit the manager
+    // had already recorded for the resident before this booking existed —
+    // that one outlives the booking and must never be deleted on cancel.
+    depositOwned: boolean("deposit_owned").notNull().default(true),
     status: text("status").notNull().default("PENDING"), // BookingStatus
     createdByUserId: uuid("created_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true })

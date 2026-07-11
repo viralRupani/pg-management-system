@@ -239,6 +239,13 @@
       "when": 1783610120449,
       "tag": "0033_black_shadowcat",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1783789775218,
+      "tag": "0034_smart_colonel_america",
+      "breakpoints": true
     }
   ]
 }

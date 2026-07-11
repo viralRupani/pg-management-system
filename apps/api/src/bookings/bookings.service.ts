@@ -17,7 +17,7 @@ import {
 } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
 import { allocations, beds, bookings, deposits, shortStays, users } from "../db/schema";
-import { isUniqueViolation } from "../db/pg-errors";
+import { isUniqueViolation, pgConstraintName } from "../db/pg-errors";
 import { istStartOfDayUtc } from "../common/ist-date";
 import { qualifyReferralIfAny } from "../referrals/qualify-referral";
 
@@ -100,16 +100,34 @@ export class BookingsService {
             throw new ConflictException("Bed already has a pending booking");
         }
 
-        // Deposit held now (one per resident — unique constraint backstops).
-        const [deposit] = await tx
-          .insert(deposits)
-          .values({
-            tenantId,
-            residentId: input.residentId,
-            amountPaise: input.depositAmountPaise,
-            status: DepositStatus.HELD,
-          })
-          .returning({ id: deposits.id });
+        // Reuse a deposit the manager already recorded for this resident (e.g.
+        // from the profile, before a bed was picked) rather than trying to
+        // create a second one — the one-deposit-per-resident constraint would
+        // reject that regardless of amount. A reused deposit isn't owned by
+        // this booking, so `cancel()` must leave it alone.
+        const [existingDeposit] = await tx
+          .select({ id: deposits.id })
+          .from(deposits)
+          .where(eq(deposits.residentId, input.residentId));
+
+        let depositId: string;
+        let depositOwned: boolean;
+        if (existingDeposit) {
+          depositId = existingDeposit.id;
+          depositOwned = false;
+        } else {
+          const [deposit] = await tx
+            .insert(deposits)
+            .values({
+              tenantId,
+              residentId: input.residentId,
+              amountPaise: input.depositAmountPaise,
+              status: DepositStatus.HELD,
+            })
+            .returning({ id: deposits.id });
+          depositId = deposit.id;
+          depositOwned = true;
+        }
 
         // The incoming resident shows as UPCOMING until move-in.
         await tx
@@ -129,7 +147,8 @@ export class BookingsService {
             residentId: input.residentId,
             bedId: input.bedId,
             moveInDate,
-            depositId: deposit.id,
+            depositId,
+            depositOwned,
             status: BookingStatus.PENDING,
             createdByUserId,
           })
@@ -139,7 +158,7 @@ export class BookingsService {
       });
     } catch (err) {
       if (isUniqueViolation(err)) {
-        const constraint = (err as { constraint?: string }).constraint;
+        const constraint = pgConstraintName(err);
         if (constraint === "deposits_resident_id_unique")
           throw new ConflictException(
             "A deposit is already recorded for this resident",
@@ -189,12 +208,13 @@ export class BookingsService {
   /**
    * Manager: drop a PENDING booking (conditional flip — concurrency-safe). A
    * true undo: frees a RESERVED bed back to VACANT (an OCCUPIED bed belongs to
-   * the sitting resident and is left alone), returns the resident to ACTIVE, and
-   * removes the booking's held deposit. The deposit is pristine here — an
-   * un-activated booking's resident is never ACTIVE, so `settleExit` can't have
-   * written a ledger against it — so deleting it is safe and avoids the
-   * one-deposit-per-resident rule blocking a re-booking. Returning the cash is
-   * the manager's offline concern.
+   * the sitting resident and is left alone), returns the resident to ACTIVE,
+   * and — only if THIS booking created the deposit (`depositOwned`) — removes
+   * it too (it's pristine: an un-activated booking's resident is never ACTIVE,
+   * so `settleExit` can't have written a ledger against it). A deposit the
+   * manager had already recorded before this booking is left on the resident's
+   * record untouched; only the link is dropped. Returning the cash is the
+   * manager's offline concern.
    */
   async cancel(id: string): Promise<{ cancelled: boolean }> {
     const db = this.ctx.db();
@@ -212,6 +232,7 @@ export class BookingsService {
           residentId: bookings.residentId,
           bedId: bookings.bedId,
           depositId: bookings.depositId,
+          depositOwned: bookings.depositOwned,
         });
       if (cancelled.length !== 1) {
         const [exists] = await tx
@@ -240,7 +261,7 @@ export class BookingsService {
         );
       }
 
-      const { residentId, bedId, depositId } = cancelled[0];
+      const { residentId, bedId, depositId, depositOwned } = cancelled[0];
       await tx
         .update(beds)
         .set({ status: BedStatus.VACANT })
@@ -255,7 +276,7 @@ export class BookingsService {
             eq(users.status, ResidentStatus.UPCOMING),
           ),
         );
-      if (depositId) {
+      if (depositId && depositOwned) {
         // Null only the booking's deposit_id first (a single-column update — the
         // composite FK's ON DELETE SET NULL would otherwise null tenant_id too),
         // then drop the pristine held deposit.

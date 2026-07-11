@@ -26,3 +26,22 @@ export function isUniqueViolation(err: unknown): boolean {
   }
   return false;
 }
+
+/**
+ * The violated constraint's name, walking the `.cause` chain for the same
+ * reason as `isUniqueViolation` — drizzle-orm >= 0.44 moves `.constraint`
+ * (alongside `.code`) onto `.cause`, so reading it off the top-level error
+ * only worked pre-upgrade. Returns undefined if no cause in the chain carries
+ * a `.constraint` string (not a Postgres error, or a non-constraint error).
+ */
+export function pgConstraintName(err: unknown): string | undefined {
+  let cur: unknown = err;
+  for (let depth = 0; cur != null && depth < 8; depth++) {
+    if (typeof cur === "object") {
+      const constraint = (cur as { constraint?: string }).constraint;
+      if (constraint) return constraint;
+    }
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return undefined;
+}

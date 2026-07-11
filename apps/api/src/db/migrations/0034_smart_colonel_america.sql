@@ -1,0 +1,1 @@
+ALTER TABLE "bookings" ADD COLUMN "deposit_owned" boolean DEFAULT true NOT NULL;
