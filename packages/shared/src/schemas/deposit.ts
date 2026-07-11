@@ -21,6 +21,23 @@ export type UpdateDepositAmountInput = z.infer<
   typeof updateDepositAmountSchema
 >;
 
+/** Manager collects a deposit payment (creates the deposit if none exists yet,
+ * otherwise adds to it — supports partial/installment collection). */
+export const collectDepositSchema = z.object({
+  residentId: z.string().uuid(),
+  amountPaise: z.number().int().positive(),
+});
+export type CollectDepositInput = z.infer<typeof collectDepositSchema>;
+
+/** Manager refunds part of a resident's held deposit any time (not just at
+ * exit) — e.g. a room downgrade lowers the required deposit. */
+export const refundDepositSchema = z.object({
+  residentId: z.string().uuid(),
+  amountPaise: z.number().int().positive(),
+  reason: z.string().min(1).max(200),
+});
+export type RefundDepositInput = z.infer<typeof refundDepositSchema>;
+
 /** One deduction line-item in an exit settlement. */
 export const deductionSchema = z.object({
   reason: z.string().min(1).max(200),

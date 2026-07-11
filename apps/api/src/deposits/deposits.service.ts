@@ -6,6 +6,7 @@ import {
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   type ApplyDepositToInvoiceResult,
+  type CollectDepositInput,
   type DepositSummary,
   DepositStatus,
   type DepositTransactionSummary,
@@ -15,6 +16,7 @@ import {
   type ExitSettlementInput,
   InvoiceStatus,
   type RecordDepositInput,
+  type RefundDepositInput,
   ResidentStatus,
   type SettlementResult,
   type UpdateDepositAmountInput,
@@ -42,15 +44,23 @@ type Tx = Parameters<
  * it is guarded by a CONDITIONAL status flip on the always-present entity (the
  * resident: ACTIVE -> EXITED) BEFORE any side effect. A concurrent second call
  * flips 0 rows and bails with 409, so nothing double-settles. The ledger
- * invariant `held = Σdeductions + refund` is enforced by rejecting
- * over-deductions.
+ * invariant `held = Σoutflows (deductions + refunds) + finalRefund` is
+ * enforced by rejecting over-deductions. Refunds aren't exit-only — a manager
+ * can record one any time the deposit is HELD (e.g. a room downgrade), which
+ * is why "outflows" covers both DEDUCTION and REFUND.
  */
 @Injectable()
 export class DepositsService {
   constructor(private readonly ctx: TenantContextService) {}
 
-  /** Manager: record a resident's deposit (one per resident). */
-  async record(input: RecordDepositInput): Promise<{ id: string }> {
+  /** Manager: record a resident's deposit (one per resident). Also logs the
+   * amount as the deposit's first COLLECTION so the ledger is complete from
+   * the start, whether the rest is added later via `collect()` or not. */
+  async record(
+    input: RecordDepositInput,
+    managerId: string,
+  ): Promise<{ id: string }> {
+    const tenantId = this.ctx.currentTenantId()!;
     const db = this.ctx.db();
     const [resident] = await db
       .select({ id: users.id })
@@ -64,16 +74,25 @@ export class DepositsService {
     if (!resident) throw new NotFoundException("Resident not found");
 
     try {
-      const [row] = await db
-        .insert(deposits)
-        .values({
-          tenantId: this.ctx.currentTenantId()!,
-          residentId: input.residentId,
+      return await db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(deposits)
+          .values({
+            tenantId,
+            residentId: input.residentId,
+            amountPaise: input.amountPaise,
+            status: DepositStatus.HELD,
+          })
+          .returning({ id: deposits.id });
+        await tx.insert(depositTransactions).values({
+          tenantId,
+          depositId: row.id,
+          type: DepositTxnType.COLLECTION,
           amountPaise: input.amountPaise,
-          status: DepositStatus.HELD,
-        })
-        .returning({ id: deposits.id });
-      return { id: row.id };
+          createdByUserId: managerId,
+        });
+        return { id: row.id };
+      });
     } catch (err) {
       if (isUniqueViolation(err))
         throw new ConflictException("Deposit already recorded for this resident");
@@ -134,9 +153,9 @@ export class DepositsService {
           "Deposit is already settled and can't be changed",
         );
 
-      // Can't drop the held base below what's already been spent — that would
-      // make the available balance (held − deductions) negative.
-      const prior = await this.sumDeductions(tx, deposit.id);
+      // Can't drop the held base below what's already gone out — that would
+      // make the available balance (held − outflows) negative.
+      const prior = await this.sumOutflows(tx, deposit.id);
       if (input.amountPaise < prior)
         throw new ConflictException(
           "New deposit can't be below the amount already applied to rent",
@@ -179,6 +198,7 @@ export class DepositsService {
    */
   async getForResident(residentId: string): Promise<{
     deposit: DepositSummary | null;
+    availablePaise: number;
     ledger: DepositTransactionSummary[];
     exitRequest: ExitRequestSummary | null;
   }> {
@@ -216,7 +236,9 @@ export class DepositsService {
       .from(deposits)
       .where(eq(deposits.residentId, residentId));
 
-    if (!row) return { deposit: null, ledger: [], exitRequest };
+    if (!row) return { deposit: null, availablePaise: 0, ledger: [], exitRequest };
+
+    const availablePaise = row.amountPaise - (await this.sumOutflows(db, row.id));
 
     const txns = await db
       .select({
@@ -240,6 +262,7 @@ export class DepositsService {
         amountPaise: row.amountPaise,
         status: row.status as DepositStatus,
       },
+      availablePaise,
       ledger: txns.map((t) => ({
         id: t.id,
         type: t.type as DepositTxnType,
@@ -253,8 +276,10 @@ export class DepositsService {
     };
   }
 
-  /** Σ of DEDUCTION line-items on a deposit (the part of the held sum spent). */
-  private async sumDeductions(tx: Tx, depositId: string): Promise<number> {
+  /** Σ of DEDUCTION + REFUND line-items on a deposit (the part of the held sum
+   * spent or already given back — refunds aren't exit-only, so this must
+   * cover both to keep `available` accurate). */
+  private async sumOutflows(tx: Tx, depositId: string): Promise<number> {
     const [r] = await tx
       .select({
         total: sql<number>`coalesce(sum(${depositTransactions.amountPaise}), 0)::int`,
@@ -263,7 +288,10 @@ export class DepositsService {
       .where(
         and(
           eq(depositTransactions.depositId, depositId),
-          eq(depositTransactions.type, DepositTxnType.DEDUCTION),
+          inArray(depositTransactions.type, [
+            DepositTxnType.DEDUCTION,
+            DepositTxnType.REFUND,
+          ]),
         ),
       );
     return r?.total ?? 0;
@@ -274,7 +302,7 @@ export class DepositsService {
    * deposit for this month's rent"). Records a DEDUCTION tied to the invoice and
    * flips the invoice PAID in one transaction — the conditional flip makes a
    * double-apply 409 instead of double-charging. The deposit stays HELD; its
-   * available balance (held − deductions) drops by the invoice amount. Partial
+   * available balance (held − outflows) drops by the invoice amount. Partial
    * coverage is rejected: the balance must cover the full invoice.
    */
   async applyToInvoice(
@@ -321,7 +349,7 @@ export class DepositsService {
         );
 
       // (3) Available balance must cover the full invoice (no partial settle).
-      const prior = await this.sumDeductions(tx, deposit.id);
+      const prior = await this.sumOutflows(tx, deposit.id);
       const available = deposit.amountPaise - prior;
       if (available < invoice.amountPaise)
         throw new ConflictException(
@@ -455,9 +483,9 @@ export class DepositsService {
       // (2) Settle the deposit if one is HELD. LOCK the row (FOR UPDATE) so this
       // serialises against a concurrent `applyToInvoice` on the same deposit:
       // without it, an apply could commit a fresh DEDUCTION between this read of
-      // `priorDeductions` and the refund write, over-drawing the deposit. The
+      // `priorOutflows` and the refund write, over-drawing the deposit. The
       // lock makes the apply wait (then see no HELD deposit) or makes us wait
-      // (then read the apply's deduction into `priorDeductions`).
+      // (then read the apply's deduction into `priorOutflows`).
       const [deposit] = await tx
         .select()
         .from(deposits)
@@ -470,19 +498,20 @@ export class DepositsService {
         .for("update");
 
       let depositPaise = 0;
-      let priorDeductions = 0;
+      let priorOutflows = 0;
       let available = 0;
       let totalDeductions = 0;
       let refund = 0;
 
       if (deposit) {
         depositPaise = deposit.amountPaise;
-        // Deductions may already have been applied pre-exit (e.g. last month's
-        // rent paid from the deposit). The refund is over what's LEFT, and exit
-        // deductions are capped at the remaining balance, not the original held
-        // sum — so deposit = priorDeductions + newDeductions + refund holds.
-        priorDeductions = await this.sumDeductions(tx, deposit.id);
-        available = depositPaise - priorDeductions;
+        // Deductions (and any mid-tenancy refunds, e.g. a room downgrade) may
+        // already have reduced the balance pre-exit. The final refund is over
+        // what's LEFT, and exit deductions are capped at the remaining
+        // balance, not the original held sum — so
+        // deposit = priorOutflows + newDeductions + refund holds.
+        priorOutflows = await this.sumOutflows(tx, deposit.id);
+        available = depositPaise - priorOutflows;
         totalDeductions = input.deductions.reduce(
           (sum, d) => sum + d.amountPaise,
           0,
@@ -548,13 +577,131 @@ export class DepositsService {
 
       return {
         depositPaise,
-        priorDeductionsPaise: priorDeductions,
+        priorDeductionsPaise: priorOutflows,
         availablePaise: available,
         totalDeductionsPaise: totalDeductions,
         refundPaise: refund,
         exited: true,
         bedFreed,
       };
+    });
+  }
+
+  /**
+   * Manager: collect a deposit payment. Creates the deposit if none exists
+   * yet (first payment), otherwise adds to the held amount — this is how a
+   * partial deposit taken at booking (e.g. ₹2,000) gets topped up later at
+   * move-in (e.g. ₹10,000 more). Locks the row (FOR UPDATE) so it can't race
+   * a concurrent collect/refund/apply/settle on the same deposit.
+   */
+  async collect(
+    input: CollectDepositInput,
+    managerId: string,
+  ): Promise<{ amountPaise: number }> {
+    const tenantId = this.ctx.currentTenantId()!;
+    const db = this.ctx.db();
+
+    return db.transaction(async (tx) => {
+      const [resident] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(
+          and(
+            eq(users.id, input.residentId),
+            eq(users.role, UserRole.RESIDENT),
+          ),
+        );
+      if (!resident) throw new NotFoundException("Resident not found");
+
+      const [deposit] = await tx
+        .select({ id: deposits.id, status: deposits.status, amountPaise: deposits.amountPaise })
+        .from(deposits)
+        .where(eq(deposits.residentId, input.residentId))
+        .for("update");
+
+      let depositId: string;
+      let newAmountPaise: number;
+
+      if (!deposit) {
+        const [row] = await tx
+          .insert(deposits)
+          .values({
+            tenantId,
+            residentId: input.residentId,
+            amountPaise: input.amountPaise,
+            status: DepositStatus.HELD,
+          })
+          .returning({ id: deposits.id });
+        depositId = row.id;
+        newAmountPaise = input.amountPaise;
+      } else {
+        if (deposit.status !== DepositStatus.HELD)
+          throw new ConflictException(
+            "Deposit is already settled and can't be collected against",
+          );
+        depositId = deposit.id;
+        newAmountPaise = deposit.amountPaise + input.amountPaise;
+        await tx
+          .update(deposits)
+          .set({ amountPaise: newAmountPaise })
+          .where(eq(deposits.id, depositId));
+      }
+
+      await tx.insert(depositTransactions).values({
+        tenantId,
+        depositId,
+        type: DepositTxnType.COLLECTION,
+        amountPaise: input.amountPaise,
+        createdByUserId: managerId,
+      });
+
+      return { amountPaise: newAmountPaise };
+    });
+  }
+
+  /**
+   * Manager: refund part of a resident's held deposit any time (not just at
+   * exit) — e.g. a room downgrade lowers what's required. Capped at the live
+   * available balance (held − outflows so far); locked FOR UPDATE against a
+   * concurrent collect/refund/apply/settle on the same deposit.
+   */
+  async refund(
+    input: RefundDepositInput,
+    managerId: string,
+  ): Promise<{ availablePaise: number }> {
+    const tenantId = this.ctx.currentTenantId()!;
+    const db = this.ctx.db();
+
+    return db.transaction(async (tx) => {
+      const [deposit] = await tx
+        .select({ id: deposits.id, status: deposits.status, amountPaise: deposits.amountPaise })
+        .from(deposits)
+        .where(eq(deposits.residentId, input.residentId))
+        .for("update");
+      if (!deposit)
+        throw new NotFoundException("No deposit on record for this resident");
+      if (deposit.status !== DepositStatus.HELD)
+        throw new ConflictException(
+          "Deposit is already settled and can't be refunded against",
+        );
+
+      const outflows = await this.sumOutflows(tx, deposit.id);
+      const available = deposit.amountPaise - outflows;
+      if (input.amountPaise > available)
+        throw new ConflictException(
+          "Refund exceeds the available deposit balance",
+        );
+
+      await tx.insert(depositTransactions).values({
+        tenantId,
+        depositId: deposit.id,
+        type: DepositTxnType.REFUND,
+        reason: input.reason,
+        amountPaise: input.amountPaise,
+        createdByUserId: managerId,
+      });
+
+      return { availablePaise: available - input.amountPaise };
     });
   }
 }

@@ -66,8 +66,10 @@ import type {
   ResidentPayment,
   PaymentUploadUrlInput,
   PresignedUploadResult,
+  CollectDepositInput,
   RecordDepositInput,
   RecordExpenseInput,
+  RefundDepositInput,
   ReferralSettings,
   ReferralSettingsInput,
   ReferralSummary,
@@ -316,11 +318,21 @@ export class PgApiClient {
     byResident: (residentId: string) =>
       this.http.get<{
         deposit: DepositSummary | null;
+        /** Net available now (Σcollections − Σdeductions − Σrefunds) — what's
+         * actually usable for apply-to-rent / exit refund. */
+        availablePaise: number;
         ledger: DepositTransactionSummary[];
         exitRequest: ExitRequestSummary | null;
       }>(`/deposits/resident/${residentId}`),
     record: (input: RecordDepositInput) =>
       this.http.post<{ id: string }>("/deposits", input),
+    /** Collect a deposit payment — creates the deposit if missing, otherwise
+     * adds to it (supports partial/installment collection). */
+    collect: (input: CollectDepositInput) =>
+      this.http.post<{ amountPaise: number }>("/deposits/collect", input),
+    /** Refund part of a held deposit any time (not just at exit). */
+    refund: (input: RefundDepositInput) =>
+      this.http.post<{ availablePaise: number }>("/deposits/refund", input),
     /** Set a resident's held deposit to a new amount (creates one if missing). */
     updateAmount: (input: UpdateDepositAmountInput) =>
       this.http.patch<{ amountPaise: number }>("/deposits/amount", input),
@@ -549,6 +561,9 @@ export class PgApiClient {
       mine: () =>
         this.http.get<{
           deposit: DepositSummary | null;
+          /** Net available now (Σcollections − Σdeductions − Σrefunds) — what's
+           * currently held. */
+          availablePaise: number;
           ledger: DepositTransactionSummary[];
           exitRequest: ExitRequestSummary | null;
         }>("/deposits/mine"),

@@ -79,7 +79,7 @@ export default function DepositPage() {
                 Deposit held
               </span>
               <span className="mt-1 text-[38px] font-extrabold text-brand-foreground">
-                {formatPaise(data.deposit.amountPaise)}
+                {formatPaise(data.availablePaise)}
               </span>
               <span className="text-[13px] text-brand-foreground/80">
                 Refunded on exit, less any deductions
@@ -93,7 +93,13 @@ export default function DepositPage() {
                 </p>
                 <div className="mt-2 flex flex-col">
                   {data.ledger.map((t, i) => {
+                    const collection = t.type === DepositTxnType.COLLECTION;
                     const refund = t.type === DepositTxnType.REFUND;
+                    const label = collection
+                      ? "Collected"
+                      : refund
+                        ? "Refund"
+                        : "Deduction";
                     return (
                       <div
                         key={t.id}
@@ -104,7 +110,7 @@ export default function DepositPage() {
                       >
                         <div className="flex-1">
                           <p className="text-[14px] font-semibold text-ink">
-                            {refund ? "Refund" : "Deduction"}
+                            {label}
                           </p>
                           <p className="text-[12px] text-ink2">
                             {t.reason ?? "—"} · {formatDate(t.createdAt)}
@@ -113,10 +119,14 @@ export default function DepositPage() {
                         <span
                           className={cn(
                             "text-[15px] font-bold",
-                            refund ? "text-success" : "text-danger",
+                            collection
+                              ? "text-info"
+                              : refund
+                                ? "text-success"
+                                : "text-danger",
                           )}
                         >
-                          {refund ? "+" : "−"}
+                          {refund || collection ? "" : "−"}
                           {formatPaise(t.amountPaise)}
                         </span>
                       </div>

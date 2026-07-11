@@ -165,6 +165,7 @@ export const DepositStatus = {
 export type DepositStatus = (typeof DepositStatus)[keyof typeof DepositStatus];
 
 export const DepositTxnType = {
+  COLLECTION: "COLLECTION",
   DEDUCTION: "DEDUCTION",
   REFUND: "REFUND",
 } as const;

@@ -692,6 +692,9 @@ interface DetailData {
   resident: ResidentSummary;
   documents: DocumentSummary[];
   deposit: DepositSummary | null;
+  // Net available now (Σcollections − Σdeductions − Σrefunds) — what's
+  // currently held, computed server-side.
+  availablePaise: number;
   ledger: DepositTransactionSummary[];
   exitRequest: ExitRequestSummary | null;
   invoices: InvoiceSummary[];
@@ -718,6 +721,8 @@ function ResidentDetail({ id }: { id: string }) {
     bedLabel: string;
   } | null>(null);
   const [depositOpen, setDepositOpen] = useState(false);
+  const [collectDepositOpen, setCollectDepositOpen] = useState(false);
+  const [refundDepositOpen, setRefundDepositOpen] = useState(false);
   const [chargeOpen, setChargeOpen] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
   const [applyDepositOpen, setApplyDepositOpen] = useState(false);
@@ -750,6 +755,7 @@ function ResidentDetail({ id }: { id: string }) {
       resident,
       documents: allDocs.filter((d) => d.residentId === id),
       deposit: dep.deposit,
+      availablePaise: dep.availablePaise,
       ledger: dep.ledger,
       exitRequest: dep.exitRequest,
       invoices: invoiceList.items,
@@ -797,6 +803,7 @@ function ResidentDetail({ id }: { id: string }) {
           resident,
           documents: allDocs.filter((d) => d.residentId === id),
           deposit: dep.deposit,
+          availablePaise: dep.availablePaise,
           ledger: dep.ledger,
           exitRequest: dep.exitRequest,
           invoices: invoiceList.items,
@@ -949,6 +956,7 @@ function ResidentDetail({ id }: { id: string }) {
     resident,
     documents,
     deposit,
+    availablePaise: depositBalancePaise,
     ledger,
     exitRequest,
     invoices,
@@ -971,13 +979,6 @@ function ResidentDetail({ id }: { id: string }) {
   const outstandingInvoices = invoices.filter(
     (i) => !i.deletedAt && (i.status === "PENDING" || i.status === "OVERDUE"),
   );
-  // How much of the held deposit has already been spent (rent applied pre-exit).
-  const depositAppliedPaise = ledger
-    .filter((t) => t.type === "DEDUCTION")
-    .reduce((sum, t) => sum + t.amountPaise, 0);
-  const depositBalancePaise = deposit
-    ? deposit.amountPaise - depositAppliedPaise
-    : 0;
   const initials = resident.name
     .split(/\s+/)
     .filter(Boolean)
@@ -1106,7 +1107,7 @@ function ResidentDetail({ id }: { id: string }) {
                   !deposit && "text-muted-foreground",
                 )}
               >
-                {deposit ? formatPaise(deposit.amountPaise) : "None"}
+                {deposit ? formatPaise(depositBalancePaise) : "None"}
               </p>
               {deposit && (
                 <p className="mt-0.5 text-xs text-muted-foreground">
@@ -1368,13 +1369,34 @@ function ResidentDetail({ id }: { id: string }) {
 
         {/* Deposit */}
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader>
             <CardTitle>Security deposit</CardTitle>
-            <div className="flex gap-2">
+          </CardHeader>
+          <CardContent>
+            <div className="mb-4 flex flex-wrap gap-2">
               {!deposit && active && (
                 <Button size="sm" onClick={() => setDepositOpen(true)}>
                   <Plus className="h-4 w-4" />
                   Record deposit
+                </Button>
+              )}
+              {deposit?.status === "HELD" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCollectDepositOpen(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                  Collect deposit
+                </Button>
+              )}
+              {deposit?.status === "HELD" && depositBalancePaise > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRefundDepositOpen(true)}
+                >
+                  Refund
                 </Button>
               )}
               {active &&
@@ -1398,8 +1420,6 @@ function ResidentDetail({ id }: { id: string }) {
                 </Button>
               )}
             </div>
-          </CardHeader>
-          <CardContent>
             {exitRequest && (
               <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 <span className="mt-0.5 shrink-0">⏳</span>
@@ -1412,22 +1432,17 @@ function ResidentDetail({ id }: { id: string }) {
             )}
             {deposit ? (
               <div className="space-y-3">
+                {/* The amount currently held (net of any refunds/deductions),
+                    not the gross ever collected — that's what's actually
+                    available for apply-to-rent / exit refund. */}
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-medium">
-                    {formatPaise(deposit.amountPaise)}
+                    {formatPaise(depositBalancePaise)}
                   </span>
                   <Badge tone={deposit.status === "HELD" ? "brand" : "neutral"}>
                     {deposit.status.toLowerCase()}
                   </Badge>
                 </div>
-                {deposit.status === "HELD" && depositAppliedPaise > 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    {formatPaise(depositAppliedPaise)} applied ·{" "}
-                    <span className="font-medium text-foreground">
-                      {formatPaise(depositBalancePaise)} balance
-                    </span>
-                  </p>
-                )}
                 {ledger.length > 0 && (
                   <ul className="divide-y divide-border border-t border-border">
                     {ledger.map((t) => (
@@ -1446,12 +1461,14 @@ function ResidentDetail({ id }: { id: string }) {
                         <span
                           className={cn(
                             "font-medium",
-                            t.type === "REFUND"
+                            t.type === "COLLECTION"
                               ? "text-success"
-                              : "text-danger",
+                              : t.type === "REFUND"
+                                ? "text-info"
+                                : "text-danger",
                           )}
                         >
-                          {t.type === "REFUND" ? "+" : "−"}
+                          {t.type === "DEDUCTION" ? "−" : ""}
                           {formatPaise(t.amountPaise)}
                         </span>
                       </li>
@@ -1598,6 +1615,25 @@ function ResidentDetail({ id }: { id: string }) {
           await refresh();
         }}
       />
+      <CollectDepositDialog
+        open={collectDepositOpen}
+        residentId={id}
+        onClose={() => setCollectDepositOpen(false)}
+        onDone={async () => {
+          setCollectDepositOpen(false);
+          await refresh();
+        }}
+      />
+      <RefundDepositDialog
+        open={refundDepositOpen}
+        residentId={id}
+        availablePaise={depositBalancePaise}
+        onClose={() => setRefundDepositOpen(false)}
+        onDone={async () => {
+          setRefundDepositOpen(false);
+          await refresh();
+        }}
+      />
       <AddChargeDialog
         open={chargeOpen}
         residentId={id}
@@ -1611,7 +1647,9 @@ function ResidentDetail({ id }: { id: string }) {
         open={exitOpen}
         residentId={id}
         deposit={deposit}
-        priorDeductionsPaise={depositAppliedPaise}
+        priorDeductionsPaise={
+          deposit ? deposit.amountPaise - depositBalancePaise : 0
+        }
         onClose={() => setExitOpen(false)}
         onDone={async () => {
           setExitOpen(false);
@@ -2134,6 +2172,174 @@ function RecordDepositDialog({
           </Button>
           <Button type="submit" disabled={busy || rupees === ""}>
             {busy ? "Saving…" : "Record"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/**
+ * Collect a deposit payment — creates the deposit if the resident has none yet,
+ * otherwise adds to it. Repeatable, so a partial deposit taken at booking (e.g.
+ * ₹2,000) can be topped up later at move-in (e.g. ₹10,000 more).
+ */
+function CollectDepositDialog({
+  open,
+  residentId,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  residentId: string;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+}) {
+  const toast = useToast();
+  const [rupees, setRupees] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) setRupees("");
+  }, [open]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.deposits.collect({
+        residentId,
+        amountPaise: Math.round(Number(rupees) * 100),
+      });
+      await onDone();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not collect the deposit."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Collect deposit"
+      description="Record a deposit payment. Adds to the held amount — use this for installment collection."
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Amount collected (₹)" htmlFor="collect-dep-amount">
+          <Input
+            id="collect-dep-amount"
+            type="number"
+            min={1}
+            step="1"
+            value={rupees}
+            onChange={(e) => setRupees(e.target.value)}
+            required
+            placeholder="e.g. 2000"
+          />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={busy || rupees === ""}>
+            {busy ? "Saving…" : "Collect"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/**
+ * Refund part of a held deposit any time (not just at exit) — e.g. a room
+ * downgrade lowers what's required. Capped at the live available balance.
+ */
+function RefundDepositDialog({
+  open,
+  residentId,
+  availablePaise,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  residentId: string;
+  availablePaise: number;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+}) {
+  const toast = useToast();
+  const [rupees, setRupees] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setRupees("");
+      setReason("");
+    }
+  }, [open]);
+
+  const amountPaise = rupees === "" ? 0 : Math.round(Number(rupees) * 100);
+  const overAvailable = amountPaise > availablePaise;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.deposits.refund({ residentId, amountPaise, reason });
+      await onDone();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not refund the deposit."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Refund deposit"
+      description={`Up to ${formatPaise(availablePaise)} available to refund.`}
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Amount to refund (₹)" htmlFor="refund-dep-amount">
+          <Input
+            id="refund-dep-amount"
+            type="number"
+            min={1}
+            step="1"
+            value={rupees}
+            onChange={(e) => setRupees(e.target.value)}
+            required
+            placeholder="e.g. 2000"
+          />
+          {overAvailable && (
+            <p className="mt-1 text-sm text-danger">
+              Exceeds the {formatPaise(availablePaise)} available.
+            </p>
+          )}
+        </Field>
+        <Field label="Reason" htmlFor="refund-dep-reason">
+          <Input
+            id="refund-dep-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            required
+            placeholder="e.g. Room downgrade"
+          />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            disabled={busy || rupees === "" || reason.trim() === "" || overAvailable}
+          >
+            {busy ? "Saving…" : "Refund"}
           </Button>
         </div>
       </form>

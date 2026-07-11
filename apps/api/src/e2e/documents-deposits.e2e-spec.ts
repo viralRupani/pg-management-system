@@ -182,8 +182,9 @@ describe("M4 documents, deposits & exit (e2e)", () => {
 
       const ledger = await h.req("get", `/deposits/resident/${r1Id}`, pgA.managerToken);
       expect(ledger.body.deposit.status).toBe("SETTLED");
+      // "record deposit" also logs a COLLECTION for the initial amount.
       const types = ledger.body.ledger.map((t: { type: string }) => t.type).sort();
-      expect(types).toEqual(["DEDUCTION", "REFUND"]);
+      expect(types).toEqual(["COLLECTION", "DEDUCTION", "REFUND"]);
     });
 
     it("a second settlement for the same resident is blocked (409)", async () => {
@@ -255,6 +256,115 @@ describe("M4 documents, deposits & exit (e2e)", () => {
         exited: true,
         bedFreed: false,
       });
+    });
+  });
+
+  describe("deposit collect + refund (partial/installment collection)", () => {
+    let r5Id: string;
+
+    it("collect creates a deposit when none exists, and tops it up on repeat calls", async () => {
+      r5Id = await h.registerResident(pgA.managerToken, {
+        name: "Res Five",
+        phone: randomPhone(),
+      });
+
+      // ₹2,000 at booking.
+      const first = await h.req("post", "/deposits/collect", pgA.managerToken, {
+        residentId: r5Id,
+        amountPaise: 200000,
+      });
+      expect(first.status).toBe(201);
+      expect(first.body.amountPaise).toBe(200000);
+
+      // ₹10,000 more at move-in.
+      const second = await h.req("post", "/deposits/collect", pgA.managerToken, {
+        residentId: r5Id,
+        amountPaise: 1000000,
+      });
+      expect(second.status).toBe(201);
+      expect(second.body.amountPaise).toBe(1200000);
+
+      const dep = await h.req("get", `/deposits/resident/${r5Id}`, pgA.managerToken);
+      expect(dep.body.deposit.amountPaise).toBe(1200000);
+      expect(dep.body.deposit.status).toBe("HELD");
+      // Nothing spent/refunded yet — available equals the gross collected.
+      expect(dep.body.availablePaise).toBe(1200000);
+      const types = dep.body.ledger.map((t: { type: string }) => t.type);
+      expect(types).toEqual(["COLLECTION", "COLLECTION"]);
+    });
+
+    it("refund is capped at the available balance and reduces it", async () => {
+      const over = await h.req("post", "/deposits/refund", pgA.managerToken, {
+        residentId: r5Id,
+        amountPaise: 1200001,
+        reason: "Room downgrade",
+      });
+      expect(over.status).toBe(409);
+
+      const ok = await h.req("post", "/deposits/refund", pgA.managerToken, {
+        residentId: r5Id,
+        amountPaise: 200000,
+        reason: "Room downgrade",
+      });
+      expect(ok.status).toBe(201);
+      expect(ok.body.availablePaise).toBe(1000000);
+
+      // The held base is untouched — the ledger is what nets out the balance.
+      // (2,000 + 10,000 collected − 2,000 refunded = 10,000 currently held —
+      // this is the number the resident/manager UIs show, not the 12,000 gross.)
+      const dep = await h.req("get", `/deposits/resident/${r5Id}`, pgA.managerToken);
+      expect(dep.body.deposit.amountPaise).toBe(1200000);
+      expect(dep.body.availablePaise).toBe(1000000);
+      const refund = dep.body.ledger.find(
+        (t: { type: string }) => t.type === "REFUND",
+      );
+      expect(refund.amountPaise).toBe(200000);
+      expect(refund.reason).toBe("Room downgrade");
+    });
+
+    it("a later apply-to-invoice/exit only sees the net-of-refund balance (net 10,000, not 12,000)", async () => {
+      const dep = await h.req("get", `/deposits/resident/${r5Id}`, pgA.managerToken);
+      const total = (
+        dep.body.ledger as Array<{ type: string; amountPaise: number }>
+      ).reduce(
+        (sum, t) =>
+          t.type === "COLLECTION" ? sum + t.amountPaise : sum - t.amountPaise,
+        0,
+      );
+      expect(total).toBe(1000000);
+
+      const res = await h.req("post", "/deposits/exit", pgA.managerToken, {
+        residentId: r5Id,
+        deductions: [],
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.priorDeductionsPaise).toBe(200000); // the mid-tenancy refund
+      expect(res.body.refundPaise).toBe(1000000);
+    });
+
+    it("collect/refund are rejected once the deposit is SETTLED (409)", async () => {
+      const collect = await h.req("post", "/deposits/collect", pgA.managerToken, {
+        residentId: r5Id,
+        amountPaise: 100000,
+      });
+      expect(collect.status).toBe(409);
+
+      const refund = await h.req("post", "/deposits/refund", pgA.managerToken, {
+        residentId: r5Id,
+        amountPaise: 100000,
+        reason: "test",
+      });
+      expect(refund.status).toBe(409);
+    });
+
+    it("refund 404s when there's no deposit on record", async () => {
+      // r3 exited earlier above with no deposit ever recorded.
+      const res = await h.req("post", "/deposits/refund", pgA.managerToken, {
+        residentId: r3Id,
+        amountPaise: 100,
+        reason: "test",
+      });
+      expect(res.status).toBe(404);
     });
   });
 });

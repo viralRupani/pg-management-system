@@ -79,7 +79,7 @@ export default function DepositScreen() {
               Deposit held
             </AppText>
             <AppText variant="display" className="mt-1 text-[38px] leading-[44px] text-brand-foreground">
-              {formatPaise(data.deposit.amountPaise)}
+              {formatPaise(data.availablePaise)}
             </AppText>
             <AppText variant="sub" className="text-brand-foreground-dim">
               Refunded on exit, less any deductions
@@ -93,8 +93,10 @@ export default function DepositScreen() {
               </AppText>
               <View className="mt-3">
                 {data.ledger.map((t, i) => {
+                  const collection = t.type === DepositTxnType.COLLECTION;
                   const refund = t.type === DepositTxnType.REFUND;
                   const last = i === data.ledger.length - 1;
+                  const label = collection ? 'Collected' : refund ? 'Refund' : 'Deduction';
                   return (
                     <View key={t.id} className="flex-row gap-3">
                       {/* Timeline rail: dot + connector */}
@@ -102,9 +104,11 @@ export default function DepositScreen() {
                         <View
                           className={cn(
                             'mt-1 h-3 w-3 rounded-full border-2',
-                            refund
-                              ? 'border-success-dot bg-success-bg'
-                              : 'border-danger-dot bg-danger-bg',
+                            collection
+                              ? 'border-info-dot bg-info-bg'
+                              : refund
+                                ? 'border-success-dot bg-success-bg'
+                                : 'border-danger-dot bg-danger-bg',
                           )}
                         />
                         {!last ? <View className="w-px flex-1 bg-line" /> : null}
@@ -112,7 +116,7 @@ export default function DepositScreen() {
                       <View className={cn('flex-1 flex-row items-start justify-between', !last && 'pb-4')}>
                         <View className="flex-1 pr-2">
                           <AppText variant="body" weight="semibold" className="text-[14px]">
-                            {refund ? 'Refund' : 'Deduction'}
+                            {label}
                           </AppText>
                           <AppText variant="sub" className="text-[12px]">
                             {t.reason ?? '—'} · {formatDate(t.createdAt)}
@@ -121,9 +125,9 @@ export default function DepositScreen() {
                         <AppText
                           variant="body"
                           weight="bold"
-                          className={refund ? 'text-success' : 'text-danger'}
+                          className={collection ? 'text-info' : refund ? 'text-success' : 'text-danger'}
                         >
-                          {refund ? '+' : '−'}
+                          {refund || collection ? '' : '−'}
                           {formatPaise(t.amountPaise)}
                         </AppText>
                       </View>

@@ -23,6 +23,7 @@
   --success: #16a34a;
   --warning: #d97706;
   --danger: #dc2626;
+  --info: #1d4ed8;
 
   --radius: 0.625rem;
 }
@@ -42,6 +43,7 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
+  --color-info: var(--info);
 
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
