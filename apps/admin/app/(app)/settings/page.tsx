@@ -662,15 +662,20 @@ function UpiCard({
 
 /**
  * Refer & earn: the flat discount a referring resident gets off one month's
- * rent once the resident they referred is allocated a bed. Not part of
- * `useAuth().branding`, so this card self-fetches. Empty input clears the
- * setting (referrals stop qualifying going forward; past ones are untouched).
+ * rent once the resident they referred is allocated a bed, plus a cap on how
+ * many referrals one resident can earn credit for (unlimited by default). Not
+ * part of `useAuth().branding`, so this card self-fetches. Clearing the
+ * discount turns refer & earn off going forward (past referrals untouched);
+ * the cap is a separate, independent setting that survives that toggle.
  */
 function ReferralCard() {
   const toast = useToast();
   const [savedPaise, setSavedPaise] = useState<number | null>(null);
+  const [savedMax, setSavedMax] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [rupees, setRupees] = useState("");
+  const [maxUnlimited, setMaxUnlimited] = useState(true);
+  const [maxInput, setMaxInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -682,6 +687,9 @@ function ReferralCard() {
         if (cancelled) return;
         setSavedPaise(s.discountPaise);
         setRupees(s.discountPaise != null ? String(s.discountPaise / 100) : "");
+        setSavedMax(s.maxReferrals);
+        setMaxUnlimited(s.maxReferrals == null);
+        setMaxInput(s.maxReferrals != null ? String(s.maxReferrals) : "");
       } finally {
         if (!cancelled) setLoaded(true);
       }
@@ -693,9 +701,17 @@ function ReferralCard() {
 
   const trimmed = rupees.trim();
   const savedRupees = savedPaise != null ? String(savedPaise / 100) : "";
-  const dirty = trimmed !== savedRupees;
   const isClearing = trimmed === "";
-  const valid = isClearing || (Number(trimmed) > 0 && !Number.isNaN(Number(trimmed)));
+  const validDiscount =
+    isClearing || (Number(trimmed) > 0 && !Number.isNaN(Number(trimmed)));
+
+  const trimmedMax = maxInput.trim();
+  const validMax =
+    maxUnlimited || (Number(trimmedMax) >= 1 && Number.isInteger(Number(trimmedMax)));
+  const maxDirty = maxUnlimited !== (savedMax == null) || (!maxUnlimited && trimmedMax !== (savedMax != null ? String(savedMax) : ""));
+
+  const dirty = trimmed !== savedRupees || (!isClearing && maxDirty);
+  const valid = validDiscount && (isClearing || validMax);
 
   const save = async () => {
     if (!dirty || !valid) return;
@@ -706,14 +722,16 @@ function ReferralCard() {
         await api.referrals.deleteSettings();
         setSavedPaise(null);
       } else {
-        const { discountPaise } = await api.referrals.setSettings({
+        const { discountPaise, maxReferrals } = await api.referrals.setSettings({
           discountPaise: Math.round(Number(trimmed) * 100),
+          maxReferrals: maxUnlimited ? null : Number(trimmedMax),
         });
         setSavedPaise(discountPaise);
+        setSavedMax(maxReferrals);
       }
       setSaved(true);
     } catch (err) {
-      toast.error(toMessage(err, "Could not save the referral discount."));
+      toast.error(toMessage(err, "Could not save the referral settings."));
     } finally {
       setSaving(false);
     }
@@ -725,16 +743,16 @@ function ReferralCard() {
         <CardTitle>Refer &amp; earn</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="space-y-1.5 max-w-md">
-          <Label htmlFor="referral-discount">Discount per referral (₹)</Label>
-          <p className="text-sm text-muted-foreground">
-            When a resident refers someone who gets a bed, the referrer gets
-            this much off one month&apos;s rent on their next invoice. Leave
-            blank to turn refer &amp; earn off.
-          </p>
-          {loaded && (
-            <div className="flex flex-wrap items-start gap-2">
-              <div className="min-w-40 flex-1 space-y-1.5">
+        <div className="space-y-4 max-w-md">
+          <div className="space-y-1.5">
+            <Label htmlFor="referral-discount">Discount per referral (₹)</Label>
+            <p className="text-sm text-muted-foreground">
+              When a resident refers someone who gets a bed, the referrer gets
+              this much off one month&apos;s rent on their next invoice. Leave
+              blank to turn refer &amp; earn off.
+            </p>
+            {loaded && (
+              <div className="min-w-40 space-y-1.5">
                 <Input
                   id="referral-discount"
                   type="number"
@@ -747,12 +765,62 @@ function ReferralCard() {
                   }}
                   placeholder="e.g. 500"
                 />
-                {!valid && (
+                {!validDiscount && (
                   <p className="text-xs text-danger">
                     Enter a positive amount, or leave blank to disable.
                   </p>
                 )}
               </div>
+            )}
+          </div>
+
+          {loaded && !isClearing && (
+            <div className="space-y-1.5">
+              <Label htmlFor="referral-max">Max referrals per resident</Label>
+              <p className="text-sm text-muted-foreground">
+                How many people one resident can refer for credit. Unlimited
+                by default.
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex h-10 cursor-pointer select-none items-center gap-2 rounded-md border border-input bg-card px-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={maxUnlimited}
+                    onChange={(e) => {
+                      setMaxUnlimited(e.target.checked);
+                      setSaved(false);
+                    }}
+                    className="h-4 w-4 accent-brand"
+                  />
+                  Unlimited
+                </label>
+                {!maxUnlimited && (
+                  <div className="min-w-32 space-y-1.5">
+                    <Input
+                      id="referral-max"
+                      type="number"
+                      min={1}
+                      step="1"
+                      value={maxInput}
+                      onChange={(e) => {
+                        setMaxInput(e.target.value);
+                        setSaved(false);
+                      }}
+                      placeholder="e.g. 3"
+                    />
+                  </div>
+                )}
+              </div>
+              {!validMax && (
+                <p className="text-xs text-danger">
+                  Enter a whole number of 1 or more, or check Unlimited.
+                </p>
+              )}
+            </div>
+          )}
+
+          {loaded && (
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"
                 onClick={save}
@@ -761,13 +829,13 @@ function ReferralCard() {
               >
                 {isClearing ? "Turn off" : "Save"}
               </Button>
+              {saved && !dirty && (
+                <span className="inline-flex items-center gap-1 text-sm text-success">
+                  <Check className="h-4 w-4" />
+                  Saved
+                </span>
+              )}
             </div>
-          )}
-          {saved && !dirty && (
-            <span className="inline-flex items-center gap-1 text-sm text-success">
-              <Check className="h-4 w-4" />
-              Saved
-            </span>
           )}
         </div>
       </CardContent>

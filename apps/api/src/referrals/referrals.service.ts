@@ -17,29 +17,48 @@ import { referrals, tenants, users } from "../db/schema";
 export class ReferralsService {
   constructor(private readonly ctx: TenantContextService) {}
 
-  /** The current tenant's configured discount, or null when not set. */
+  /** The current tenant's configured discount + referral cap (null = not set / unlimited). */
   async getSettings(): Promise<ReferralSettings> {
     const tenantId = this.ctx.currentTenantId()!;
     const [row] = await this.ctx
       .db()
-      .select({ discountPaise: tenants.referralDiscountPaise })
+      .select({
+        discountPaise: tenants.referralDiscountPaise,
+        maxReferrals: tenants.referralMaxCount,
+      })
       .from(tenants)
       .where(eq(tenants.id, tenantId));
-    return { discountPaise: row?.discountPaise ?? null };
+    return {
+      discountPaise: row?.discountPaise ?? null,
+      maxReferrals: row?.maxReferrals ?? null,
+    };
   }
 
-  /** Set (or update) the tenant's referral discount amount. */
-  async setSettings(discountPaise: number): Promise<ReferralSettings> {
+  /**
+   * Set (or update) the tenant's referral discount amount and, optionally,
+   * the max-referrals-per-resident cap. `maxReferrals` is a partial update:
+   * `undefined` (omitted from the request body) leaves the stored cap as-is;
+   * `null` explicitly sets it to unlimited.
+   */
+  async setSettings(
+    discountPaise: number,
+    maxReferrals?: number | null,
+  ): Promise<ReferralSettings> {
     const tenantId = this.ctx.currentTenantId()!;
     await this.ctx
       .db()
       .update(tenants)
-      .set({ referralDiscountPaise: discountPaise })
+      .set({
+        referralDiscountPaise: discountPaise,
+        ...(maxReferrals !== undefined ? { referralMaxCount: maxReferrals } : {}),
+      })
       .where(eq(tenants.id, tenantId));
-    return { discountPaise };
+    return this.getSettings();
   }
 
-  /** Clear the discount → referrals stop qualifying (opt-out, not a delete of history). */
+  /** Clear the discount → referrals stop qualifying (opt-out, not a delete of
+   * history). The referral cap is left untouched so it survives turning the
+   * discount back on later. */
   async clearSettings(): Promise<ReferralSettings> {
     const tenantId = this.ctx.currentTenantId()!;
     await this.ctx
@@ -47,7 +66,7 @@ export class ReferralsService {
       .update(tenants)
       .set({ referralDiscountPaise: null })
       .where(eq(tenants.id, tenantId));
-    return { discountPaise: null };
+    return this.getSettings();
   }
 
   /** Manager: every referral a resident has made (qualified + applied history). */

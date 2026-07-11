@@ -7,15 +7,22 @@ import { z } from "zod";
  * Used for both create and edit (the endpoint upserts). Delete clears it back
  * to null — referrals stop qualifying, but past ones already earned/applied
  * are untouched.
+ *
+ * `maxReferrals` caps how many referrals ONE resident can earn credit for —
+ * null (or omitted) means unlimited, the default. Omitting it on a PUT leaves
+ * the currently-stored cap untouched (a partial update), so existing callers
+ * that only send `discountPaise` don't accidentally reset it.
  */
 export const referralSettingsInputSchema = z.object({
   discountPaise: z.number().int().min(1),
+  maxReferrals: z.number().int().min(1).nullable().optional(),
 });
 export type ReferralSettingsInput = z.infer<typeof referralSettingsInputSchema>;
 
 /** The stored setting as returned to the manager UI (null when not configured). */
 export const referralSettingsSchema = z.object({
   discountPaise: z.number().int().nullable(),
+  maxReferrals: z.number().int().nullable(),
 });
 export type ReferralSettings = z.infer<typeof referralSettingsSchema>;
 

@@ -26,6 +26,10 @@ export const tenants = pgTable("tenants", {
   // month's rent when the resident they referred is allocated a bed. Null =
   // feature not configured for this PG (referrals never qualify).
   referralDiscountPaise: integer("referral_discount_paise"),
+  // Cap on how many referrals ONE resident can earn credit for. Null =
+  // unlimited (the default). Independent of `referralDiscountPaise` so a
+  // manager's chosen cap survives turning the discount off and back on.
+  referralMaxCount: integer("referral_max_count"),
   status: text("status").notNull().default("ACTIVE"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

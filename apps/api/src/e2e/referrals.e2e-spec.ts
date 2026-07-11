@@ -272,4 +272,78 @@ describe("refer & earn (e2e)", () => {
     expect(list.body).toHaveLength(1);
     expect(list.body[0].appliedToInvoiceId).toBeNull();
   });
+
+  it("settings default to unlimited and echo back the configured cap", async () => {
+    const pg = await h.onboardPg("refer-settings");
+    const mgr = pg.managerToken;
+
+    const bare = await h.req("put", "/referrals/settings", mgr, { discountPaise: 20000 });
+    expect(bare.status).toBe(200);
+    expect(bare.body).toEqual({ discountPaise: 20000, maxReferrals: null }); // default: unlimited
+
+    const capped = await h.req("put", "/referrals/settings", mgr, {
+      discountPaise: 20000,
+      maxReferrals: 2,
+    });
+    expect(capped.body).toEqual({ discountPaise: 20000, maxReferrals: 2 });
+
+    // Omitting maxReferrals is a partial update — the stored cap survives.
+    const untouched = await h.req("put", "/referrals/settings", mgr, { discountPaise: 25000 });
+    expect(untouched.body).toEqual({ discountPaise: 25000, maxReferrals: 2 });
+
+    // Turning the discount off leaves the cap on record for next time.
+    const off = await h.req("delete", "/referrals/settings", mgr);
+    expect(off.body).toEqual({ discountPaise: null, maxReferrals: 2 });
+
+    // Explicitly clearing the cap sets it back to unlimited.
+    const uncapped = await h.req("put", "/referrals/settings", mgr, {
+      discountPaise: 25000,
+      maxReferrals: null,
+    });
+    expect(uncapped.body).toEqual({ discountPaise: 25000, maxReferrals: null });
+  });
+
+  it("stops qualifying new referrals once the referrer hits the configured cap", async () => {
+    const pg = await h.onboardPg("refer-cap");
+    const mgr = pg.managerToken;
+    const DISCOUNT = 10000;
+    await h.req("put", "/referrals/settings", mgr, {
+      discountPaise: DISCOUNT,
+      maxReferrals: 2,
+    });
+
+    const referrerBed = await makeBed(mgr, 600000);
+    const referrerId = await h.registerResident(mgr, { name: "Capped Referrer", phone: randomPhone() });
+    await h.req("post", "/allocations", mgr, { bedId: referrerBed, residentId: referrerId });
+
+    // First two referrals qualify normally.
+    for (let i = 0; i < 2; i++) {
+      const bedId = await makeBed(mgr, 400000);
+      const referredId = await h.registerResident(mgr, {
+        name: `Referred ${i}`,
+        phone: randomPhone(),
+        referredByUserId: referrerId,
+      });
+      const alloc = await h.req("post", "/allocations", mgr, { bedId, residentId: referredId });
+      expect(alloc.status).toBe(201);
+    }
+    let list = await h.req("get", `/referrals?residentId=${referrerId}`, mgr);
+    expect(list.body).toHaveLength(2);
+
+    // A third referral's resident still gets allocated normally, but earns no credit.
+    const thirdBed = await makeBed(mgr, 400000);
+    const thirdReferredId = await h.registerResident(mgr, {
+      name: "Referred 3",
+      phone: randomPhone(),
+      referredByUserId: referrerId,
+    });
+    const thirdAlloc = await h.req("post", "/allocations", mgr, {
+      bedId: thirdBed,
+      residentId: thirdReferredId,
+    });
+    expect(thirdAlloc.status).toBe(201);
+
+    list = await h.req("get", `/referrals?residentId=${referrerId}`, mgr);
+    expect(list.body).toHaveLength(2); // still exactly two — the cap held
+  });
 });

@@ -22,7 +22,7 @@ export class ReferralsController {
   setSettings(
     @Body(new ZodBody(referralSettingsInputSchema)) dto: ReferralSettingsInput,
   ) {
-    return this.referrals.setSettings(dto.discountPaise);
+    return this.referrals.setSettings(dto.discountPaise, dto.maxReferrals);
   }
 
   @Delete("settings")
