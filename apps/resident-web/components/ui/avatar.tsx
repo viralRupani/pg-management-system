@@ -12,14 +12,14 @@ export function Avatar({
 }) {
   const initial = name.trim().charAt(0).toUpperCase() || "?";
   return (
-    <div
-      style={{ width: size, height: size, fontSize: size * 0.42 }}
+    <span
+      style={{ width: size, height: size, borderRadius: size / 2, fontSize: size * 0.42 }}
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full bg-brand font-bold text-brand-foreground",
+        "flex shrink-0 items-center justify-center bg-brand font-bold text-brand-foreground",
         className,
       )}
     >
       {initial}
-    </div>
+    </span>
   );
 }

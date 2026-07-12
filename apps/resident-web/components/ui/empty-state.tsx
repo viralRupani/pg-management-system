@@ -2,8 +2,9 @@
 
 import { Button } from "./button";
 import { Icon } from "./icon";
+import { AppText } from "./text";
 
-/** Friendly empty state: icon bubble, heading, copy, optional CTA. */
+/** Friendly empty state (design `.empty`): icon bubble, heading, copy, optional CTA. */
 export function EmptyState({
   icon = "sparkles-outline",
   title,
@@ -18,15 +19,17 @@ export function EmptyState({
   onAction?: () => void;
 }) {
   return (
-    <div className="flex flex-col items-center px-6 py-16">
-      <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-brand-soft">
-        <Icon name={icon} size={30} color="#0b7d73" />
+    <div className="animate-fade-in-down flex flex-col items-center px-6 py-16">
+      <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-brand-soft text-brand-deep">
+        <Icon name={icon} size={30} />
       </div>
-      <p className="mt-4 text-center text-base font-bold text-ink">{title}</p>
+      <AppText variant="heading" className="mt-4 text-center">
+        {title}
+      </AppText>
       {description ? (
-        <p className="mt-1.5 max-w-[260px] text-center text-[13px] text-ink2">
+        <AppText variant="sub" className="mt-1.5 max-w-[260px] text-center">
           {description}
-        </p>
+        </AppText>
       ) : null}
       {actionLabel && onAction ? (
         <Button title={actionLabel} onClick={onAction} className="mt-5" />

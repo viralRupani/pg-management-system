@@ -8,21 +8,17 @@ import { Appbar } from "@/components/ui/appbar";
 import { Badge } from "@/components/ui/badge";
 import { categoryMeta } from "@/components/ui/categories";
 import { Icon } from "@/components/ui/icon";
+import { PressableScale } from "@/components/ui/pressable-scale";
 import { complaintStatus } from "@/components/ui/status";
-import { useToast } from "@/components/ui/toast";
+import { AppText } from "@/components/ui/text";
+import { toast } from "@/components/ui/toast";
 import { api, currentUser } from "@/lib/api";
 import { qk, useComplaints, useComplaintThread } from "@/lib/queries";
 import { clock, cn, toMessage } from "@/lib/utils";
 
 export default function ComplaintThreadPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-full bg-page">
-          <Appbar title="Complaint" />
-        </div>
-      }
-    >
+    <Suspense fallback={null}>
       <ComplaintThread />
     </Suspense>
   );
@@ -31,7 +27,6 @@ export default function ComplaintThreadPage() {
 function ComplaintThread() {
   const id = useSearchParams().get("id") ?? "";
   const queryClient = useQueryClient();
-  const toast = useToast();
   const me = currentUser()?.sub;
 
   const { data: complaints } = useComplaints();
@@ -48,17 +43,21 @@ function ComplaintThread() {
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollToBottom = () =>
+    requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
 
   // Pin to the latest message whenever the thread loads or grows.
   const threadCount = thread.data?.length ?? 0;
   useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [threadCount, photo.data?.downloadUrl]);
+    if (threadCount > 0) scrollToBottom();
+  }, [threadCount]);
 
   async function send() {
     const text = note.trim();
-    if (!text) return;
+    if (!text || sending) return;
     setSending(true);
     try {
       await api.resident.complaints.addUpdate(id, text);
@@ -75,45 +74,60 @@ function ComplaintThread() {
   const status = complaint ? complaintStatus(complaint.status) : null;
 
   return (
+    // The (app) layout pads 68px for the fixed tab bar; fill the rest exactly
+    // so the reply bar sits flush above the tabs and only the thread scrolls.
     <div className="flex h-[calc(100dvh-68px)] flex-col bg-page">
-      <Appbar
-        title={meta?.label ?? "Complaint"}
-        action={
-          status ? <Badge label={status.label} variant={status.variant} /> : undefined
-        }
-      />
+      <div className="px-4">
+        <Appbar
+          title={meta?.label ?? "Complaint"}
+          action={
+            status ? <Badge label={status.label} variant={status.variant} /> : undefined
+          }
+        />
+      </div>
 
       <div
         ref={scrollRef}
         className="chat-scroll flex flex-1 flex-col gap-2.5 overflow-y-auto px-3 py-4"
       >
+        {/* Day pill */}
         {complaint ? (
-          <span className="self-center rounded-pill border border-line bg-surface px-3 py-1 text-[11px] font-semibold text-ink2">
+          <AppText
+            variant="caption"
+            weight="semibold"
+            className="self-center rounded-pill border border-line bg-surface px-3 py-1 text-ink2"
+          >
             {new Date(complaint.createdAt).toLocaleDateString(undefined, {
               day: "numeric",
               month: "short",
               year: "numeric",
             })}
-          </span>
+          </AppText>
         ) : null}
 
         {/* The complaint itself = the resident's first (outgoing) message */}
         {complaint ? (
-          <div className="max-w-[78%] self-end rounded-[15px] rounded-br-[4px] bg-brand p-1.5 shadow-sm shadow-black/5">
+          <div className="max-w-[78%] self-end rounded-[16px] rounded-br-[4px] bg-brand p-1.5 shadow-sm shadow-black/5">
             {photo.data?.downloadUrl ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={photo.data.downloadUrl}
-                alt=""
+                alt="Complaint photo"
                 className="h-44 w-60 rounded-xl object-cover"
               />
             ) : null}
-            <p className="px-2 pt-1.5 text-[13.5px] leading-[19px] text-brand-foreground">
+            <AppText
+              variant="sub"
+              className="px-2 pt-1.5 text-[13.5px] leading-[19px] text-brand-foreground"
+            >
               {complaint.description}
-            </p>
-            <p className="px-2 pb-0.5 pt-1 text-[10.5px] text-brand-foreground/70">
+            </AppText>
+            <AppText
+              variant="caption"
+              className="px-2 pb-0.5 pt-1 text-[10.5px] text-brand-foreground-dim"
+            >
               You · {clock(complaint.createdAt)}
-            </p>
+            </AppText>
           </div>
         ) : null}
 
@@ -125,63 +139,75 @@ function ComplaintThread() {
               className={cn(
                 "max-w-[78%] px-[13px] py-[10px] shadow-sm shadow-black/5",
                 mine
-                  ? "self-end rounded-[15px] rounded-br-[4px] bg-brand"
-                  : "self-start rounded-[15px] rounded-bl-[4px] bg-surface",
+                  ? "self-end rounded-[16px] rounded-br-[4px] bg-brand"
+                  : "self-start rounded-[16px] rounded-bl-[4px] border border-line2 bg-surface",
               )}
             >
-              <p
+              <AppText
+                variant="sub"
                 className={cn(
                   "text-[13.5px] leading-[19px]",
                   mine ? "text-brand-foreground" : "text-ink",
                 )}
               >
                 {u.note}
-              </p>
-              <p
+              </AppText>
+              <AppText
+                variant="caption"
                 className={cn(
                   "mt-1 text-[10.5px]",
-                  mine ? "text-brand-foreground/70" : "text-ink3",
+                  mine ? "text-brand-foreground-dim" : "text-ink3",
                 )}
               >
                 {mine ? "You" : "Manager"} · {clock(u.createdAt)}
-              </p>
+              </AppText>
             </div>
           );
         })}
 
         {thread.data && thread.data.length === 0 ? (
-          <span className="my-2 self-center rounded-pill border border-line bg-surface px-3 py-1.5 text-center text-[12px] text-ink2">
+          <AppText
+            variant="caption"
+            className="my-2 self-center rounded-pill border border-line bg-surface px-3 py-1.5 text-center text-[12px] text-ink2"
+          >
             No replies yet. Add a note for your manager.
-          </span>
+          </AppText>
         ) : null}
       </div>
 
       {/* Reply bar */}
       <form
+        className="flex flex-row items-end gap-2.5 border-t border-line bg-surface px-3.5 pb-2.5 pt-2.5"
         onSubmit={(e) => {
           e.preventDefault();
           send();
         }}
-        className="flex flex-row items-end gap-2.5 border-t border-line bg-surface px-3.5 py-2.5"
       >
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Message…"
           rows={1}
-          className="max-h-28 flex-1 resize-none rounded-btn border-[1.5px] border-line bg-surface px-3.5 py-2.5 text-[15px] text-ink placeholder:text-ink3 focus:border-brand focus:outline-none"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+          className="max-h-28 flex-1 resize-none rounded-field border-[1.5px] border-line bg-surface px-3.5 py-2.5 text-[15px] text-ink outline-none placeholder:text-ink3 focus:border-brand"
         />
-        <button
+        <PressableScale
           type="submit"
           disabled={!note.trim() || sending}
-          aria-label="Send"
+          pressedScale={0.88}
+          aria-label="Send message"
           className={cn(
             "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand text-brand-foreground shadow-sm shadow-black/10",
             (!note.trim() || sending) && "opacity-50",
           )}
         >
-          <Icon name="send" size={18} color="#fff" />
-        </button>
+          <Icon name="send" size={18} />
+        </PressableScale>
       </form>
     </div>
   );

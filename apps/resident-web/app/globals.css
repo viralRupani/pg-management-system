@@ -1,70 +1,113 @@
 @import "tailwindcss";
 
 /*
- * Design tokens — ported 1:1 from the Expo resident app's Tailwind v3 config
- * (apps/mobile/tailwind.config.js + apps/mobile/global.css) into Tailwind v4's
- * @theme. The screens are written against this exact vocabulary
- * (bg-page, text-ink2, bg-amber-bg, rounded-card, bg-brand-soft, …) so EVERY
- * token below must exist or those screens render unstyled.
+ * Design tokens — ported 1:1 from the Expo resident app's redesign
+ * (apps/mobile/tailwind.config.js + lib/tokens.ts) into Tailwind v4.
  *
- * Neutrals + status families are FIXED (semantic: amber=pending, green=ok,
- * red=bad, blue=in-flight). The `--brand*` set is the WHITE-LABEL accent: it
- * defaults here (teal) and is repainted at runtime from GET /branding/:slug
- * (see lib/theme.ts) — so it lives in :root and is referenced via @theme inline,
- * which keeps the generated utilities pointing at the live variable.
+ * EVERY color maps to a runtime CSS variable via `@theme inline` — one theming
+ * mechanism for both the white-label brand accent AND light/dark mode.
+ * lib/tokens.ts holds the actual hex values per scheme; ThemeProvider
+ * (lib/theme.tsx) writes the resolved var set onto <html> at runtime, and the
+ * inline <head> script in app/layout.tsx replays it before first paint.
+ * The :root block below only seeds LIGHT defaults so the pre-script frame is
+ * never unstyled. If a mobile class isn't defined here, that screen renders
+ * unstyled — keep this vocabulary in lockstep with the mobile config.
+ *
+ * NOTE: Tailwind alpha modifiers (e.g. `border-danger/30`) do NOT work on
+ * hex-valued vars — use the explicit `-dim`/`-line` tokens instead.
  */
 :root {
-  /* White-label accent + derived tints (teal default; pre-derived in lib/theme). */
+  /* brand (white-label; teal default pre-derived from brandPalette('#0d9488','light')) */
   --brand: #0d9488;
   --brand-foreground: #ffffff;
+  --brand-foreground-dim: #c3e4e1;
   --brand-soft: #e0f1ef;
   --brand-softer: #c6e6e2;
   --brand-line: #9bd0ca;
-  --brand-deep: #0b7d73;
+  --brand-deep: #0b8278;
+
+  /* neutrals (light) */
+  --page: #f5f6f8;
+  --surface: #ffffff;
+  --surface2: #eef0f3;
+  --line: #e6e8ec;
+  --line2: #f0f1f4;
+  --ink: #16181d;
+  --ink2: #5c6470;
+  --ink3: #9aa1ab;
+  --ink4: #c9ced6;
+
+  /* semantic status (light) */
+  --amber: #b45309;
+  --amber-bg: #fef3e2;
+  --amber-dot: #f59e0b;
+  --amber-line: #f6d7a6;
+  --success: #15803d;
+  --success-bg: #e9f9ef;
+  --success-dot: #22c55e;
+  --success-line: #b8e8c9;
+  --danger: #b91c1c;
+  --danger-bg: #fdeeee;
+  --danger-dot: #ef4444;
+  --danger-line: #f4c2c2;
+  --info: #1d4ed8;
+  --info-bg: #e9f1fe;
+  --info-dot: #3b82f6;
+  --info-line: #bdd4fa;
 }
 
 @theme inline {
-  /* Brand (white-label, runtime-repainted). */
+  /* White-label accent (repaints at runtime; dark-scheme-aware). */
   --color-brand: var(--brand);
   --color-brand-foreground: var(--brand-foreground);
+  --color-brand-foreground-dim: var(--brand-foreground-dim);
   --color-brand-soft: var(--brand-soft);
   --color-brand-softer: var(--brand-softer);
   --color-brand-line: var(--brand-line);
   --color-brand-deep: var(--brand-deep);
 
-  /* Neutrals (design prototype scale). */
-  --color-ink: #111827;
-  --color-ink2: #6b7280;
-  --color-ink3: #9ca3af;
-  --color-ink4: #c7ccd4;
-  --color-surface: #ffffff;
-  --color-surface2: #f8fafc;
-  --color-page: #f3f4f6;
-  --color-line: #e9ebef;
-  --color-line2: #f1f2f5;
+  /* Neutrals (scheme-swapped by ThemeProvider). */
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink2);
+  --color-ink3: var(--ink3);
+  --color-ink4: var(--ink4);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface2);
+  --color-page: var(--page);
+  --color-line: var(--line);
+  --color-line2: var(--line2);
 
-  /* Fixed semantic status palettes (text / bg / dot). */
-  --color-amber: #b45309;
-  --color-amber-bg: #fff7ed;
-  --color-amber-dot: #f59e0b;
-  --color-success: #15803d;
-  --color-success-bg: #ecfdf3;
-  --color-success-dot: #22c55e;
-  --color-danger: #b91c1c;
-  --color-danger-bg: #fef2f2;
-  --color-danger-dot: #ef4444;
-  --color-info: #1d4ed8;
-  --color-info-bg: #eff6ff;
-  --color-info-dot: #3b82f6;
+  /* Semantic status palettes (text / bg / dot / line) — fixed per scheme,
+     never tenant-themed. */
+  --color-amber: var(--amber);
+  --color-amber-bg: var(--amber-bg);
+  --color-amber-dot: var(--amber-dot);
+  --color-amber-line: var(--amber-line);
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-success-dot: var(--success-dot);
+  --color-success-line: var(--success-line);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-dot: var(--danger-dot);
+  --color-danger-line: var(--danger-line);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-info-dot: var(--info-dot);
+  --color-info-line: var(--info-line);
 
-  /* Radii (btn/card/sheet/pill). */
-  --radius-btn: 12px;
-  --radius-card: 18px;
-  --radius-sheet: 22px;
+  /* Radii — same scale as the mobile redesign. */
+  --radius-btn: 14px;
+  --radius-field: 14px;
+  --radius-tile: 16px;
+  --radius-card: 20px;
+  --radius-sheet: 28px;
   --radius-pill: 999px;
 
+  /* Inter (next/font sets --font-inter on <html>); system-font fallback. */
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
 }
 
 html,
@@ -73,21 +116,112 @@ body {
 }
 
 body {
-  background: var(--color-page);
-  color: var(--color-ink);
+  background: var(--page);
+  color: var(--ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   /* Prevent the iOS rubber-band white flash behind the mobile column. */
   overscroll-behavior-y: none;
 }
 
+/* --- Motion (the web stand-ins for the mobile reanimated bits) ------------ */
+
+/* EmptyState/ErrorState/cards: soft downward fade-in (FadeInDown). */
+@keyframes fade-in-down {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in-down {
+  animation: fade-in-down 300ms ease-out both;
+}
+
+/* Sheet: scrim fade + panel slide-up. */
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* Skeleton shimmer sweep. */
+@keyframes shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* OtpInput error shake. */
+@keyframes shake-x {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-8px);
+  }
+  45% {
+    transform: translateX(8px);
+  }
+  70% {
+    transform: translateX(-5px);
+  }
+}
+.animate-shake {
+  animation: shake-x 220ms ease-in-out;
+}
+
+/* Overdue pulse dot. */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+.animate-pulse-dot {
+  animation: pulse-dot 1300ms ease-in-out infinite;
+}
+
+/* Toast drop-in. */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 /*
- * Slim, rounded scrollbar for scroll viewports (e.g. the complaints chat thread).
- * Ported from apps/admin/app/globals.css.
+ * Slim, rounded scrollbar for inner scroll viewports (complaints chat thread).
+ * Uses token vars so it follows dark mode.
  */
 .chat-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #e9ebef transparent;
+  scrollbar-color: var(--line) transparent;
 }
 .chat-scroll::-webkit-scrollbar {
   width: 8px;
@@ -96,11 +230,11 @@ body {
   background: transparent;
 }
 .chat-scroll::-webkit-scrollbar-thumb {
-  background-color: #e9ebef;
+  background-color: var(--line);
   border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 .chat-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: #9ca3af;
+  background-color: var(--ink3);
 }

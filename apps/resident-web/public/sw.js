@@ -3,14 +3,27 @@
  *
  * Strategy:
  *  - Navigations (HTML): network-first, fall back to the cached shell offline.
- *  - Static assets (same-origin GET): stale-while-revalidate.
- *  - API + cross-origin (S3 presigned, branding, etc.): never touched — straight
- *    to network (they're auth'd/short-lived; caching them would serve stale data).
+ *  - Immutable build assets (/_next/static/, content-hashed) + the PWA shell
+ *    files (manifest, icons): stale-while-revalidate.
+ *  - EVERYTHING else — API, cross-origin (S3 presigned, branding), and
+ *    crucially Next's un-hashed RSC navigation payloads (*.txt) — is never
+ *    touched: straight to network. Caching RSC payloads is what broke client
+ *    navigations after a redeploy ("Cannot read properties of null (reading
+ *    'enqueueModel')"): the flight client got a payload from one build with
+ *    chunks from another.
  *
- * CACHE_VERSION is bumped on every deploy so an S3 redeploy can't pin users to a
- * stale JS bundle. skipWaiting + clients.claim make the new SW take over at once.
+ * CACHE_VERSION is bumped on every deploy so an S3 redeploy can't pin users to
+ * a stale JS bundle. skipWaiting + clients.claim make the new SW take over at
+ * once and the activate handler deletes every old cache.
  */
-const CACHE_VERSION = "pg-resident-v1";
+const CACHE_VERSION = "pg-resident-v2";
+
+/** Exact-path shell files worth caching besides /_next/static/. */
+const SHELL_PATHS = new Set([
+  "/manifest.webmanifest",
+  "/icon.svg",
+  "/icon-maskable.svg",
+]);
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -59,7 +72,14 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Static same-origin assets → stale-while-revalidate.
+  // Cache ONLY immutable hashed build assets + the PWA shell files. Anything
+  // else same-origin (RSC .txt payloads, dev-server chunks/HMR) goes straight
+  // to the network — serving those stale breaks client-side navigation.
+  const cacheable =
+    url.pathname.startsWith("/_next/static/") || SHELL_PATHS.has(url.pathname);
+  if (!cacheable) return;
+
+  // Stale-while-revalidate.
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE_VERSION);

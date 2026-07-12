@@ -1,112 +1,88 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import * as React from "react";
 
+import { Icon } from "./icon";
+import { AppText } from "./text";
+import { haptics } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 
-/**
- * Hand-rolled toast (matches the dialog/button primitives). Bottom-center stack
- * (above the tab bar), auto-dismiss after AUTO_DISMISS_MS, also dismissable via
- * the X. Replaces the mobile app's fire-and-forget Alert.alert confirmations.
- */
+type ToastKind = "success" | "error" | "info";
 
-type ToastTone = "error" | "success";
-
-interface ToastItem {
-  id: string;
+interface ToastPayload {
+  id: number;
+  kind: ToastKind;
   message: string;
-  tone: ToastTone;
 }
 
-const AUTO_DISMISS_MS = 4000;
+let pushToast: ((t: ToastPayload) => void) | null = null;
 
-interface ToastContextValue {
-  show: (message: string, tone: ToastTone) => void;
+function emit(kind: ToastKind, message: string): void {
+  if (kind === "success") haptics.success();
+  if (kind === "error") haptics.error();
+  pushToast?.({ id: Date.now(), kind, message });
 }
 
-const ToastContext = React.createContext<ToastContextValue | null>(null);
+/**
+ * Non-blocking feedback for completed/failed actions — same module-level API
+ * as the mobile app (`toast.success/error/info`), so screens port verbatim.
+ * ToastHost is mounted once in the root layout inside ThemeProvider.
+ */
+export const toast = {
+  success: (message: string) => emit("success", message),
+  error: (message: string) => emit("error", message),
+  info: (message: string) => emit("info", message),
+};
 
-export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [toasts, setToasts] = React.useState<ToastItem[]>([]);
+const ICON: Record<ToastKind, string> = {
+  success: "checkmark-circle",
+  error: "alert-circle",
+  info: "information-circle",
+};
 
-  const dismiss = React.useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+const ICON_CLS: Record<ToastKind, string> = {
+  success: "text-success",
+  error: "text-danger",
+  info: "text-info",
+};
+
+/** Mounted once in the root layout. Top-center, auto-dismiss, tap to dismiss. */
+export function ToastHost() {
+  const [current, setCurrent] = React.useState<ToastPayload | null>(null);
+
+  React.useEffect(() => {
+    pushToast = setCurrent;
+    return () => {
+      pushToast = null;
+    };
   }, []);
 
-  const show = React.useCallback(
-    (message: string, tone: ToastTone) => {
-      const id =
-        typeof crypto !== "undefined" && crypto.randomUUID
-          ? crypto.randomUUID()
-          : String(Date.now() + Math.random());
-      setToasts((prev) => [...prev, { id, message, tone }]);
-      setTimeout(() => dismiss(id), AUTO_DISMISS_MS);
-    },
-    [dismiss],
-  );
+  React.useEffect(() => {
+    if (!current) return;
+    const timer = setTimeout(() => setCurrent(null), 2600);
+    return () => clearTimeout(timer);
+  }, [current]);
 
-  const value = React.useMemo(() => ({ show }), [show]);
+  if (!current) return null;
 
   return (
-    <ToastContext.Provider value={value}>
-      {children}
-      <div className="pointer-events-none fixed inset-x-0 bottom-[88px] z-[60] mx-auto flex max-w-[440px] flex-col items-center gap-2 px-4">
-        {toasts.map((t) => (
-          <ToastCard key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />
-        ))}
-      </div>
-    </ToastContext.Provider>
-  );
-}
-
-function ToastCard({
-  toast,
-  onDismiss,
-}: {
-  toast: ToastItem;
-  onDismiss: () => void;
-}) {
-  const isError = toast.tone === "error";
-  return (
-    <div
-      role="alert"
-      className={cn(
-        "pointer-events-auto flex w-full items-start gap-3 rounded-card border bg-surface p-3 text-sm shadow-lg",
-        isError ? "border-danger/30" : "border-success/30",
-      )}
-    >
-      {isError ? (
-        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
-      ) : (
-        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-      )}
-      <span className="flex-1 text-ink">{toast.message}</span>
+    <div className="pointer-events-none fixed inset-x-0 top-[calc(8px+env(safe-area-inset-top))] z-[60] mx-auto max-w-[480px] px-4">
       <button
+        key={current.id}
         type="button"
-        aria-label="Dismiss"
-        onClick={onDismiss}
-        className="rounded p-0.5 text-ink3 transition-colors hover:bg-page hover:text-ink"
+        onClick={() => setCurrent(null)}
+        className="pointer-events-auto flex w-full animate-[toast-in_240ms_ease-out] flex-row items-center gap-2.5 rounded-tile border border-line bg-surface px-3.5 py-3 text-left shadow-lg shadow-black/20"
+        role="alert"
       >
-        <X className="h-4 w-4" />
+        <Icon
+          name={ICON[current.kind]}
+          size={20}
+          className={cn("shrink-0", ICON_CLS[current.kind])}
+        />
+        <AppText variant="label" className="flex-1" numberOfLines={2}>
+          {current.message}
+        </AppText>
       </button>
     </div>
-  );
-}
-
-export function useToast(): {
-  error: (message: string) => void;
-  success: (message: string) => void;
-} {
-  const ctx = React.useContext(ToastContext);
-  if (!ctx) {
-    throw new Error("useToast must be used within a <ToastProvider>");
-  }
-  return React.useMemo(
-    () => ({
-      error: (message: string) => ctx.show(message, "error"),
-      success: (message: string) => ctx.show(message, "success"),
-    }),
-    [ctx],
   );
 }

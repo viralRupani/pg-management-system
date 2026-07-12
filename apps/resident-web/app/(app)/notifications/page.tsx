@@ -1,15 +1,19 @@
 "use client";
 
-import type { NotificationSummary } from "@pg/shared";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Appbar } from "@/components/ui/appbar";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ErrorState } from "@/components/ui/error-state";
 import { Icon } from "@/components/ui/icon";
+import { PressableScale } from "@/components/ui/pressable-scale";
+import { Screen } from "@/components/ui/screen";
 import { ListSkeleton } from "@/components/ui/skeleton";
+import { AppText } from "@/components/ui/text";
 import { api } from "@/lib/api";
 import { qk, useNotifications } from "@/lib/queries";
 import { cn, timeAgo } from "@/lib/utils";
+import type { NotificationSummary } from "@pg/shared";
 
 const ICON: Record<string, string> = {
   ANNOUNCEMENT: "megaphone-outline",
@@ -25,7 +29,7 @@ const ICON: Record<string, string> = {
 
 export default function NotificationsPage() {
   const queryClient = useQueryClient();
-  const { data, isLoading } = useNotifications();
+  const { data, isLoading, isError, refetch } = useNotifications();
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: qk.notifications });
@@ -38,74 +42,71 @@ export default function NotificationsPage() {
 
   async function markAll() {
     const unread = data?.filter((n) => !n.readAt) ?? [];
-    await Promise.all(
-      unread.map((n) => api.resident.notifications.markRead(n.id)),
-    );
+    await Promise.all(unread.map((n) => api.resident.notifications.markRead(n.id)));
     invalidate();
   }
 
   const hasUnread = data?.some((n) => !n.readAt) ?? false;
 
   return (
-    <div className="min-h-full bg-page">
+    <Screen contentClassName="gap-2">
       <Appbar
         title="Notifications"
         action={
           hasUnread ? (
-            <button
-              type="button"
-              onClick={markAll}
-              className="text-[13px] font-semibold text-brand-deep"
-            >
-              Mark all read
-            </button>
+            <PressableScale onClick={markAll} className="flex min-h-[36px] items-center">
+              <AppText variant="label" className="text-brand-deep">
+                Mark all read
+              </AppText>
+            </PressableScale>
           ) : undefined
         }
       />
-      <div className="flex flex-col gap-2 px-4 pb-8 pt-1">
-        {isLoading ? (
-          <ListSkeleton />
-        ) : !data?.length ? (
-          <EmptyState
-            icon="notifications-outline"
-            title="You're all caught up"
-            description="Updates about rent, complaints, and notices will show here."
-          />
-        ) : (
-          data.map((n) => {
-            const unread = !n.readAt;
-            return (
-              <button
-                key={n.id}
-                type="button"
-                onClick={() => markRead(n)}
-                className={cn(
-                  "flex flex-row gap-3 rounded-card border border-line p-3.5 text-left",
-                  unread ? "bg-brand-soft" : "bg-surface",
-                )}
-              >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface">
-                  <Icon
-                    name={ICON[n.type] ?? "notifications-outline"}
-                    size={18}
-                    color="#0b7d73"
-                  />
-                </div>
-                <div className="flex-1">
-                  <p className="text-[14px] font-semibold text-ink">{n.title}</p>
-                  <p className="mt-0.5 text-[13px] text-ink2">{n.body}</p>
-                  <p className="mt-1 text-[11px] text-ink3">
-                    {timeAgo(n.createdAt)}
-                  </p>
-                </div>
-                {unread ? (
-                  <div className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-info-dot" />
-                ) : null}
-              </button>
-            );
-          })
-        )}
-      </div>
-    </div>
+
+      {isLoading ? (
+        <ListSkeleton />
+      ) : isError ? (
+        <ErrorState title="Couldn't load notifications" onRetry={() => refetch()} />
+      ) : !data?.length ? (
+        <EmptyState
+          icon="notifications-outline"
+          title="You're all caught up"
+          description="Updates about rent, complaints, and notices will show here."
+        />
+      ) : (
+        data.map((n) => {
+          const unread = !n.readAt;
+          return (
+            <PressableScale
+              key={n.id}
+              onClick={() => markRead(n)}
+              pressedScale={0.99}
+              className={cn(
+                "flex w-full flex-row gap-3 rounded-card border border-line p-3.5",
+                unread ? "bg-brand-soft" : "bg-surface",
+              )}
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface text-brand-deep">
+                <Icon name={ICON[n.type] ?? "notifications-outline"} size={18} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <AppText variant="body" weight="semibold" className="text-[14px]">
+                  {n.title}
+                </AppText>
+                <AppText variant="sub" className="mt-0.5">
+                  {n.body}
+                </AppText>
+                <AppText variant="caption" className="mt-1">
+                  {timeAgo(n.createdAt)}
+                </AppText>
+              </div>
+              {unread ? (
+                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-info-dot" />
+              ) : null}
+            </PressableScale>
+          );
+        })
+      )}
+    </Screen>
   );
 }

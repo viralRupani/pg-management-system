@@ -1,23 +1,30 @@
 # CLAUDE.md — apps/resident-web (Next.js resident web app)
 
 The **resident** web app — a faithful, feature-complete replica of the Expo
-resident app (`apps/mobile`) as a static-export Next.js SPA, so iPhone residents
-can use it (installable PWA, "Add to Home Screen") without an App Store build.
-Android residents keep the Play Store app. Same NestJS API as every surface;
-the API is the only trust boundary. For business context see root `CLAUDE.md`.
+resident app (`apps/mobile`) as a static-export Next.js SPA, so residents can
+use it (installable PWA, "Add to Home Screen") without an app-store build.
+Same NestJS API as every surface; the API is the only trust boundary. For
+business context see root `CLAUDE.md`.
+
+> **In lockstep with the 2026-07 mobile redesign** (re-ported 2026-07-12):
+> design tokens + **light/dark mode**, Inter, micro-interactions, and all the
+> post-06-19 mobile features (extra-charges breakdown, payment mode/proof +
+> "Under review", UPI copy/QR, oldest-unpaid-first rent, Profile tab). When a
+> mobile screen changes, re-port it here — the two surfaces share `@pg/shared`
+> + `@pg/api-client` but duplicate screens (the accepted cost).
 
 ## Why this exists / the tradeoff
-Avoids the recurring Apple Developer cost until revenue justifies a native iOS
-build. **Cost accepted:** resident features now ship to two codebases (Expo +
-this). The shared `@pg/api-client` + `@pg/shared` keep the data/type layer
-single-sourced; screens are duplicated.
+Avoids app-store cost until revenue justifies native builds — web ships first;
+mobile follows once there are paying customers. **Cost accepted:** resident
+features ship to two codebases (Expo + this). The shared `@pg/api-client` +
+`@pg/shared` keep the data/type layer single-sourced; screens are duplicated.
 
 ## Stack
 Next.js 16 (App Router, Turbopack) · **`output: 'export'`** (static SPA → `out/`)
-· React 19 · Tailwind **v4** (`@tailwindcss/postcss`, tokens in `app/globals.css`)
-· `@tanstack/react-query` (read hooks + complaint-thread polling) · `lucide-react`
-· hand-rolled primitives. Types/validation from `@pg/shared`, HTTP via
-`@pg/api-client`. Dev port **3001** (admin owns 3000).
+· React 19 · Tailwind **v4** (`@tailwindcss/postcss`) · `@tanstack/react-query`
+· `lucide-react` (via the `ui/icon.tsx` Ionicons-name registry) · Inter via
+`next/font/google` (self-hosted at build) · hand-rolled primitives. Types from
+`@pg/shared`, HTTP via `@pg/api-client`. Dev port **3001** (admin owns 3000).
 
 ## Static-export constraints (READ before adding pages)
 Same as admin: no SSR/middleware/server-actions; everything `"use client"`.
@@ -25,62 +32,98 @@ Same as admin: no SSR/middleware/server-actions; everything `"use client"`.
 wrapped in `<Suspense>` (invoices, complaints/thread). `next dev` does NOT catch
 export violations — only `pnpm --filter @pg/resident-web build` does.
 
-## The one load-bearing detail: the palette
-`app/globals.css` translates the **entire** mobile Tailwind-v3 vocabulary
-(`apps/mobile/tailwind.config.js`) into Tailwind v4 `@theme inline`: neutrals
-(`ink/ink2/…`, `surface/page/line/…`) and status families (`amber/success/danger/
-info` + `-bg`/`-dot`) as literals; the six `--brand*` tints as runtime CSS vars
-(white-label). Radii `btn/card/sheet/pill`. **If a mobile class isn't defined
-here, that screen renders unstyled.** Verify after changes:
-`grep -o '\.bg-page{[^}]*}' out/_next/static/chunks/*.css`.
+## The design system (the load-bearing part)
+Mirrors the mobile token architecture 1:1 — **every color is a runtime CSS var**,
+one mechanism for white-label accent AND light/dark:
 
-## White-labeling (pre-auth, unlike admin)
-Resident types a PG slug → `GET /branding/:slug` (public) → `applyAccentColor()`
-(`lib/theme.ts`) paints all six `--brand*` tints and persists the accent
-(`pg_resident_accent`). The inline `<head>` script in `app/layout.tsx` **replays
-the full palette derivation** (not just `--brand`) before first paint so a cold
-start with a saved session never flashes teal.
+- `lib/tokens.ts` — **verbatim copy of `apps/mobile/lib/tokens.ts`** (keep them
+  identical): `NEUTRALS`/`SEMANTICS` per scheme, `brandPalette(accent, scheme)`
+  (dark variant contrast-lifts arbitrary tenant accents), `themeVars()`,
+  `resolveTokens()`.
+- `lib/theme.tsx` — web ThemeProvider: holds accent (persisted
+  `pg_resident_accent`) + scheme preference (`pg_resident_scheme`,
+  system/light/dark via `matchMedia`), writes the full `themeVars()` set onto
+  `document.documentElement.style` (+ `colorScheme`). `useTheme()`/`useTokens()`.
+  The login slug step calls `setAccent()` after `GET /branding/:slug` (pre-auth
+  theming, unlike admin). Sign-out clears the accent, not the scheme.
+- `app/globals.css` — Tailwind v4 `@theme inline` maps every class
+  (`bg-page`, `text-ink2`, `bg-amber-bg`, `rounded-card/field/tile/sheet/pill`,
+  `text-brand-foreground-dim`, …) to those vars; `:root` seeds LIGHT defaults
+  only (pre-provider frame). Also the keyframes (`sheet-up`, `shimmer`,
+  `shake-x`, `pulse-dot`, `toast-in`, `fade-in-down`). **If a mobile class
+  isn't defined here, that screen renders unstyled.** Alpha modifiers don't
+  work on hex vars — use the `-dim`/`-line` tokens (same rule as mobile).
+- `app/layout.tsx` — the **anti-flash inline script** embeds
+  `NEUTRALS`/`SEMANTICS` from `lib/tokens.ts` at build time (can't drift) and
+  replays scheme resolution + the full brand derivation (incl. the dark
+  contrast-lift) before first paint, so a cold start with a saved session never
+  flashes teal-on-light. Verified live: dark + lifted accent survive reload.
 
 ## Directory map
 ```
 app/
-  layout.tsx              root: anti-flash script + PWA head + Query/Toast/Auth providers + SW
+  layout.tsx              server root: Inter, anti-flash script, Query→Auth→Theme
+                          providers + ToastHost + SW
   page.tsx                '/' → /home or /login
-  login/page.tsx          OTP wizard (slug→phone→OTP) as one client state machine
-  (app)/layout.tsx        client route guard + centered mobile column + <BottomTabs/>
-  (app)/{home,rent,complaints,more}/page.tsx          the 4 tabs
+  login/page.tsx          slug→phone→OTP wizard (OtpInput auto-submit, resend
+                          countdown, pre-auth accent repaint)
+  (app)/layout.tsx        client route guard + centered mobile column (max-w 480,
+                          pb-68 for the tab bar) + <BottomTabs/>
+  (app)/{home,rent,complaints,more}/page.tsx           the 4 tabs
   (app)/{announcements,menu,documents,deposit,notifications}/page.tsx
-  (app)/invoices/page.tsx           detail (?id=, Suspense) + payment Sheet + UPI QR
-  (app)/complaints/new/page.tsx     raise + photo upload
+  (app)/invoices/page.tsx           detail (?id=, Suspense): charges breakdown,
+                                    PaymentCard(s) (mode/proof/reference/reject
+                                    reason), UPI copy + collapsible QR
+                                    (save/share), submit sheet (UPI/cash
+                                    Segmented, screenshot OR reference)
+  (app)/complaints/new/page.tsx     category grid + photo upload
   (app)/complaints/thread/page.tsx  chat thread (?id=, Suspense, polls 3s)
 components/
-  bottom-tabs.tsx, auth-shell.tsx, service-worker.tsx
-  ui/                     button card badge input row appbar screen chip fab empty-state
-                          skeleton avatar sheet(=dialog) status categories toast file-picker icon
+  auth-shell.tsx          staggered fade-in login chrome + PgBrandHeader
+  bottom-tabs.tsx         custom bar: soft brand pill behind active icon
+  service-worker.tsx      registers public/sw.js
+  ui/                     web ports of ALL mobile primitives: text (AppText
+                          variants), pressable-scale (active:scale), button,
+                          input, card, badge + status.ts, row (Row/Ricon tone),
+                          appbar, empty-state, error-state (use on every isError
+                          branch), skeleton (shimmer), chip, fab, sheet
+                          (slide-up/down + scrim, ESC, stacked-sheet safe),
+                          segmented (sliding thumb), section-header, otp-input
+                          (hidden input + shake), calendar (CalendarSheet),
+                          toast (module-level toast.success/error/info +
+                          ToastHost — same API as mobile), avatar, screen,
+                          categories, icon (Ionicons-name → lucide registry),
+                          file-picker (hidden <input type=file>)
 lib/
-  api.ts (localStorage TokenStore, resident keys) · auth.tsx (OTP signIn/signOut)
-  theme.ts (brandPalette + applyAccentColor) · utils.ts (ymd LOCAL, formatPaise, …)
-  query.ts/query-provider.tsx/queries.ts (ported from mobile) · upload.ts (web File)
-public/  manifest.webmanifest · sw.js (versioned cache) · icon.svg · icon-maskable.svg
+  tokens.ts               = apps/mobile/lib/tokens.ts (keep identical)
+  theme.tsx               ThemeProvider (see above)
+  haptics.ts              navigator.vibrate shim (selection/tap/success/error)
+  api.ts (localStorage TokenStore) · auth.tsx · utils.ts (ymd LOCAL, formatPaise,
+  formatPeriod, clock) · query.ts/query-provider.tsx/queries.ts (mirrors mobile
+  incl. invoicePayments) · upload.ts (web File + downloadCrossOrigin/shareImage)
+public/  manifest.webmanifest · sw.js (versioned cache) · icon.svg
 ```
 
 ## Native→web swaps (when porting a mobile screen)
-- `View`→`div`, `Text`→`span`/`p`, `Pressable`→`button`, `onPress`→`onClick`,
-  Ionicons→`<Icon name="…">` (registry in `ui/icon.tsx`).
+- `View`→`div`, `AppText`→`AppText` (same variants; renders a block `<span>`,
+  `numberOfLines`→line-clamp), `PressableScale`→`PressableScale` (real
+  `<button>`, `onPress`→`onClick`), Ionicons→`<Icon name="…">`.
 - **Flex context:** RN `View` is implicit flex-column; a `div` is not. Add
-  `flex flex-col`/`flex-row` to any ported `View` that uses `items-*`/`justify-*`/
-  `gap-*`/`flex-1` on children, or it silently no-ops.
-- expo-image-picker/document-picker → `<FilePicker>` (`ui/file-picker.tsx`,
-  hidden `<input type=file>`); upload via `uploadToPresignedPost(post, file)`.
-- `Alert.alert` confirmations → `useToast()`; yes/no → `<Sheet>` with actions.
-- QR save/share: cross-origin presigned URL → `downloadCrossOrigin` (fetch→blob)
-  + `shareImage` (`navigator.share({files})`, feature-detected).
-- Token storage → localStorage (`pg_resident_access`/`_refresh`/`_accent`).
+  `flex flex-col`/`flex-row` wherever children use `items-*`/`justify-*`/
+  `gap-*`/`flex-1`, or it silently no-ops.
+- reanimated → the globals.css keyframes; expo pickers → `<FilePicker>` +
+  `URL.createObjectURL` previews; `Alert.alert` → `toast.error` (blocking
+  errors) or a confirm `<Sheet>` (destructive, e.g. logout); Clipboard →
+  `navigator.clipboard`; QR save/share → `downloadCrossOrigin`/`shareImage`.
+- Pull-to-refresh has no web equivalent — omit `RefreshControl`; error states
+  carry the retry.
+- Token storage → localStorage (`pg_resident_access`/`_refresh`/`_accent`/
+  `pg_resident_scheme`).
 
 ## CORS
-The browser enforces CORS (the native app doesn't), so the API's `CORS_ORIGINS`
+The browser enforces CORS (the native app doesn't): the API's `CORS_ORIGINS`
 must include this app's origin. `http://localhost:3001` is in the dev default
-(`apps/api/src/config/env.ts`); add the prod web origin there at deploy time.
+(`apps/api/src/config/env.ts`); add the prod web origin at deploy time.
 
 ## Run / verify
 ```bash
@@ -88,27 +131,25 @@ pnpm --filter @pg/shared build            # required before typecheck/build
 cp apps/resident-web/.env.example apps/resident-web/.env.local   # NEXT_PUBLIC_API_URL
 pnpm --filter @pg/resident-web dev        # http://localhost:3001
 pnpm --filter @pg/resident-web typecheck
-pnpm --filter @pg/resident-web build      # static export → out/ (the REAL export check)
+pnpm --filter @pg/resident-web build      # static export → out/ (the REAL check)
 pnpm --filter @pg/resident-web start      # preview out/ with no Next server
 ```
-Backend must be running (`pnpm --filter @pg/api dev`) + seeded. Resident login:
-slug + phone + OTP (dev fixed `009009` via `seed-viral.mjs`).
-**Deploy:** sync `out/` to S3 (same path as admin); set `NEXT_PUBLIC_API_URL` to
-the prod API at build time.
+Backend must be running + seeded. Resident login: slug + phone + OTP (with
+`OTP_DEV_LOG=true` read it from API logs, or read Redis key `otp:{tenantId}:{phone}`
+directly; `OTP_DEV_FIXED_CODE` fixes it).
+**Deploy:** sync `out/` to S3; set `NEXT_PUBLIC_API_URL` to the prod API at
+build time.
 
 ## Status
-Built; typechecks + statically exports cleanly (16 routes); palette verified in
-compiled CSS. **Live-verified (2026-06-19)** against the seeded backend
-(`seed.mjs`, PG `shreyank-pg`) via Playwright: full slug→phone→OTP login,
-pre-auth theming repaint (`--brand` → `#10B981` + derived tints), home + rent
-render with real data, bottom-tab nav, **zero console errors**; CORS for `:3001`
-and all authenticated resident reads (`/invoices/mine`, `/deposits/mine`, etc.)
-return 200. **Still untested:** the presigned upload round-trip (KYC/payment/
-complaint photo) — api-client integration is proven but a real file PUT to the
-local storage stub wasn't exercised. No PNG app icons yet — SVG only (iOS
-home-screen icon is best with a PNG `apple-touch-icon`).
-
-To reproduce the live test: start the API with `OTP_DEV_FIXED_CODE=009009` (+
-`CORS_ORIGINS` incl. `:3001`), seed via `node apps/api/scripts/seed.mjs`, run
-`NEXT_PUBLIC_API_URL=… pnpm dev`, then log in with slug `shreyank-pg`, phone
-`8000000001`, code `009009`.
+**Re-ported to the mobile redesign + live-verified (2026-07-12)** against the
+local API (tenant `bliss-homes`) via Playwright + system Chrome on the built
+static export: full slug→phone→OTP login (real Redis OTP), pre-auth accent
+repaint, home (floating rent card incl. overdue pulse, glance tiles, notices,
+mess), rent (brand due card, segmented, year groups, oldest-first), complaints,
+profile, **dark-mode toggle → correct dark neutrals + contrast-lifted accent,
+both persisted across reload via the anti-flash script**, all pushed routes
+render, **zero console errors**. Typechecks + exports 16 routes; token classes
+verified in compiled CSS.
+**Still untested:** the presigned upload round-trip against real S3 (KYC/
+payment/complaint photo — the flows are ported, the api-client integration is
+proven). No PNG `apple-touch-icon` yet (SVG only).

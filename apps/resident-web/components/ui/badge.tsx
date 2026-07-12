@@ -10,7 +10,7 @@ const TONE: Record<BadgeVariant, { box: string; text: string; dot: string }> = {
   neutral: { box: "bg-page", text: "text-ink2", dot: "bg-ink3" },
 };
 
-/** A status pill with a leading colored dot. */
+/** A status pill with a leading colored dot (design prototype `.badge`). */
 export function Badge({
   label,
   variant = "neutral",
@@ -24,7 +24,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 self-start rounded-pill px-2.5 py-1",
+        "inline-flex shrink-0 items-center gap-1.5 self-start rounded-pill px-2.5 py-1",
         tone.box,
         className,
       )}

@@ -4,10 +4,12 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 
 import { Icon } from "./icon";
+import { PressableScale } from "./pressable-scale";
+import { AppText } from "./text";
 
 /**
- * Secondary-screen header: circular back button, title, optional trailing action.
- * Sticky to the top of the mobile column.
+ * Secondary-screen header (design `.appbar`): circular back button, title,
+ * optional trailing action.
  */
 export function Appbar({
   title,
@@ -20,16 +22,18 @@ export function Appbar({
 }) {
   const router = useRouter();
   return (
-    <div className="sticky top-0 z-10 flex flex-row items-center gap-3 bg-page/95 px-4 pb-3 pt-3 backdrop-blur">
-      <button
-        type="button"
+    <div className="flex flex-row items-center gap-3 pb-3 pt-1">
+      <PressableScale
         onClick={onBack ?? (() => router.back())}
-        aria-label="Back"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line bg-surface active:opacity-60"
+        pressedScale={0.9}
+        aria-label="Go back"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-ink"
       >
-        <Icon name="chevron-back" size={20} color="#111827" />
-      </button>
-      <h1 className="flex-1 truncate text-[19px] font-bold text-ink">{title}</h1>
+        <Icon name="chevron-back" size={20} />
+      </PressableScale>
+      <AppText variant="heading" className="flex-1 text-[19px]" numberOfLines={1}>
+        {title}
+      </AppText>
       {action}
     </div>
   );

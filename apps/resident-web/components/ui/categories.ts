@@ -2,7 +2,7 @@ import { ComplaintCategory } from "@pg/shared";
 
 export interface CategoryMeta {
   label: string;
-  /** Icon name understood by <Icon> (Ionicons-style). */
+  /** Icon name for <Icon> (the mobile Ionicons vocabulary, mapped in icon.tsx). */
   icon: string;
 }
 

@@ -6,12 +6,15 @@ import { useState } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Icon } from "@/components/ui/icon";
-import { Ricon, Row } from "@/components/ui/row";
+import { Row, Ricon } from "@/components/ui/row";
 import { Screen } from "@/components/ui/screen";
+import { SectionHeader } from "@/components/ui/section-header";
+import { Segmented } from "@/components/ui/segmented";
 import { Sheet } from "@/components/ui/sheet";
+import { AppText } from "@/components/ui/text";
 import { useAuth } from "@/lib/auth";
 import { useInvoices } from "@/lib/queries";
+import { useTheme, type SchemePreference } from "@/lib/theme";
 
 const LINKS = [
   { icon: "document-text-outline", label: "My documents", href: "/documents" },
@@ -20,48 +23,91 @@ const LINKS = [
   { icon: "notifications-outline", label: "Notifications", href: "/notifications" },
 ] as const;
 
+const SCHEME_LABEL: Record<SchemePreference, string> = {
+  system: "System",
+  light: "Light",
+  dark: "Dark",
+};
+
 export default function MorePage() {
   const router = useRouter();
   const { signOut } = useAuth();
+  const { schemePreference, setSchemePreference } = useTheme();
   const invoices = useInvoices();
   const name = invoices.data?.[0]?.residentName ?? "Resident";
-  const [confirm, setConfirm] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
 
   return (
-    <Screen contentClassName="flex flex-col gap-4">
-      <h1 className="text-[25px] font-extrabold text-ink">Profile</h1>
+    <Screen contentClassName="gap-4">
+      <AppText variant="title" weight="heavy" className="text-[25px]">
+        More
+      </AppText>
 
-      <Card className="flex flex-row items-center gap-3">
+      <Card className="flex-row items-center gap-3">
         <Avatar name={name} size={52} />
-        <div className="flex-1">
-          <p className="text-[16px] font-bold text-ink">{name}</p>
-          <p className="text-[13px] text-ink2">Resident</p>
+        <div className="min-w-0 flex-1">
+          <AppText variant="heading" className="text-[16px]">
+            {name}
+          </AppText>
+          <AppText variant="sub">Resident</AppText>
         </div>
       </Card>
 
-      <Card padded={false} className="px-4">
+      <SectionHeader title="My PG" />
+      <Card padded={false} className="-mt-2 px-4">
         {LINKS.map((l, i) => (
           <Row
             key={l.href}
             first={i === 0}
             leading={<Ricon name={l.icon} />}
             title={l.label}
-            trailing={<Icon name="chevron-forward" size={18} color="#c7ccd4" />}
-            onClick={() => router.push(l.href)}
+            onPress={() => router.push(l.href)}
           />
         ))}
       </Card>
 
-      <Button title="Log out" variant="danger" onClick={() => setConfirm(true)} />
+      <SectionHeader title="Preferences" />
+      <Card padded={false} className="-mt-2 px-4">
+        <Row
+          first
+          leading={<Ricon name="contrast-outline" tone="neutral" />}
+          title="Appearance"
+          trailing={
+            <AppText variant="sub">{SCHEME_LABEL[schemePreference]}</AppText>
+          }
+          onPress={() => setAppearanceOpen(true)}
+        />
+      </Card>
+
+      <Button title="Log out" variant="danger" onClick={() => setLogoutOpen(true)} />
 
       <Sheet
-        visible={confirm}
-        onClose={() => setConfirm(false)}
+        visible={appearanceOpen}
+        onClose={() => setAppearanceOpen(false)}
+        title="Appearance"
+        subtitle="System follows your device's light/dark setting."
+      >
+        <Segmented<SchemePreference>
+          options={[
+            { label: "System", value: "system" },
+            { label: "Light", value: "light" },
+            { label: "Dark", value: "dark" },
+          ]}
+          value={schemePreference}
+          onChange={setSchemePreference}
+        />
+        <Button title="Done" variant="ghost" onClick={() => setAppearanceOpen(false)} />
+      </Sheet>
+
+      <Sheet
+        visible={logoutOpen}
+        onClose={() => setLogoutOpen(false)}
         title="Log out?"
         subtitle="You will need to sign in again with an OTP."
       >
         <Button title="Log out" variant="danger" onClick={signOut} />
-        <Button title="Cancel" variant="ghost" onClick={() => setConfirm(false)} />
+        <Button title="Cancel" variant="ghost" onClick={() => setLogoutOpen(false)} />
       </Sheet>
     </Screen>
   );

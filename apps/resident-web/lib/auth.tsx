@@ -13,7 +13,7 @@ import {
 } from "react";
 
 import { currentUser, onUnauthorized, tokenStore } from "@/lib/api";
-import { clearAccentColor } from "@/lib/theme";
+import { clearPersistedAccent } from "@/lib/theme";
 
 interface AuthContextValue {
   /** Decoded JWT of the signed-in resident, or null. UI/routing only. */
@@ -59,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(() => {
     tokenStore.clear();
-    clearAccentColor();
+    clearPersistedAccent();
     queryClient.clear();
     setUser(null);
   }, [queryClient]);
