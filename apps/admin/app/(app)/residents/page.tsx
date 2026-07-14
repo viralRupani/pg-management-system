@@ -723,7 +723,6 @@ function ResidentDetail({ id }: { id: string }) {
     bedRentPaise: number;
     bedLabel: string;
   } | null>(null);
-  const [depositOpen, setDepositOpen] = useState(false);
   const [collectDepositOpen, setCollectDepositOpen] = useState(false);
   const [refundDepositOpen, setRefundDepositOpen] = useState(false);
   const [chargeOpen, setChargeOpen] = useState(false);
@@ -1377,18 +1376,9 @@ function ResidentDetail({ id }: { id: string }) {
           </CardHeader>
           <CardContent>
             <div className="mb-4 flex flex-wrap gap-2">
-              {!deposit && active && (
-                <Button size="sm" onClick={() => setDepositOpen(true)}>
-                  <Plus className="h-4 w-4" />
-                  Record deposit
-                </Button>
-              )}
-              {deposit?.status === "HELD" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCollectDepositOpen(true)}
-                >
+              {((deposit && deposit.status === "HELD") ||
+                (!deposit && active)) && (
+                <Button size="sm" onClick={() => setCollectDepositOpen(true)}>
                   <Plus className="h-4 w-4" />
                   Collect deposit
                 </Button>
@@ -1609,18 +1599,11 @@ function ResidentDetail({ id }: { id: string }) {
           await refresh();
         }}
       />
-      <RecordDepositDialog
-        open={depositOpen}
-        residentId={id}
-        onClose={() => setDepositOpen(false)}
-        onDone={async () => {
-          setDepositOpen(false);
-          await refresh();
-        }}
-      />
       <CollectDepositDialog
         open={collectDepositOpen}
         residentId={id}
+        rentPaise={resident.currentRentPaise}
+        heldPaise={depositBalancePaise}
         onClose={() => setCollectDepositOpen(false)}
         onDone={async () => {
           setCollectDepositOpen(false);
@@ -2114,74 +2097,6 @@ function TransferDialog({
   );
 }
 
-function RecordDepositDialog({
-  open,
-  residentId,
-  onClose,
-  onDone,
-}: {
-  open: boolean;
-  residentId: string;
-  onClose: () => void;
-  onDone: () => Promise<void> | void;
-}) {
-  const toast = useToast();
-  const [rupees, setRupees] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (open) setRupees("");
-  }, [open]);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      await api.deposits.record({
-        residentId,
-        amountPaise: Math.round(Number(rupees) * 100),
-      });
-      await onDone();
-    } catch (err) {
-      toast.error(toMessage(err, "Could not record the deposit."));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title="Record deposit"
-      description="The security deposit held for this resident (one per resident)."
-    >
-      <form onSubmit={submit} className="space-y-4">
-        <Field label="Amount (₹)" htmlFor="dep-amount">
-          <Input
-            id="dep-amount"
-            type="number"
-            min={0}
-            step="1"
-            value={rupees}
-            onChange={(e) => setRupees(e.target.value)}
-            required
-            placeholder="e.g. 10000"
-          />
-        </Field>
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={busy || rupees === ""}>
-            {busy ? "Saving…" : "Record"}
-          </Button>
-        </div>
-      </form>
-    </Dialog>
-  );
-}
-
 /**
  * Collect a deposit payment — creates the deposit if the resident has none yet,
  * otherwise adds to it. Repeatable, so a partial deposit taken at booking (e.g.
@@ -2190,11 +2105,15 @@ function RecordDepositDialog({
 function CollectDepositDialog({
   open,
   residentId,
+  rentPaise,
+  heldPaise,
   onClose,
   onDone,
 }: {
   open: boolean;
   residentId: string;
+  rentPaise: number | null;
+  heldPaise: number;
   onClose: () => void;
   onDone: () => Promise<void> | void;
 }) {
@@ -2230,6 +2149,18 @@ function CollectDepositDialog({
       description="Record a deposit payment. Adds to the held amount — use this for installment collection."
     >
       <form onSubmit={submit} className="space-y-4">
+        <div className="rounded-md border bg-muted/40 p-3 text-sm space-y-1">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Resident&apos;s monthly rent</span>
+            <span className="font-medium">
+              {rentPaise != null ? formatPaise(rentPaise) : "—"}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Deposit held so far</span>
+            <span className="font-medium">{formatPaise(heldPaise)}</span>
+          </div>
+        </div>
         <Field label="Amount collected (₹)" htmlFor="collect-dep-amount">
           <Input
             id="collect-dep-amount"
