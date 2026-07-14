@@ -174,6 +174,9 @@ describe("short-term stays (e2e)", () => {
       { requestedDate: plus(10) },
     );
     expect(reqRes.status).toBe(201);
+    // LEAVING_SOON bed-booking eligibility is keyed off the APPROVED exit, not
+    // the raw ask.
+    await h.req("post", `/deposits/exit-request/${sitter}/approve`, mgr);
 
     const incoming = await h.registerResident(mgr, {
       name: "Incoming",

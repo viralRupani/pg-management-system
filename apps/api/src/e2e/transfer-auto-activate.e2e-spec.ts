@@ -105,10 +105,17 @@ describe("Transfer auto-activate onto a freeing bed (e2e)", () => {
     await h?.close();
   });
 
-  it("surfaces the occupied bed as 'exiting' once the sitter requests move-out", async () => {
+  it("surfaces the occupied bed as 'exiting' once the manager approves the sitter's move-out", async () => {
     await h.req("post", "/deposits/exit-request", sitter, {
       requestedDate: "2026-06-30",
     });
+    // The "exiting beds" bed-booking signal is keyed off the APPROVED exit, not
+    // the raw ask — an unreviewed request shouldn't drive bed-handover planning.
+    await h.req(
+      "post",
+      `/deposits/exit-request/${sitterId}/approve`,
+      pgA.managerToken,
+    );
     const res = await h.req("get", "/allocations/exiting-beds", pgA.managerToken);
     expect(res.status).toBe(200);
     const target = res.body.find((b: { bedId: string }) => b.bedId === bedT);

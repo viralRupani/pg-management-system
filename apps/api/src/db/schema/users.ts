@@ -52,12 +52,22 @@ export const users = pgTable("users", {
   shortStayCheckOutDate: date("short_stay_check_out_date"), // YYYY-MM-DD
   shortStayPerDayChargePaise: integer("short_stay_per_day_charge_paise"),
 
-  // Resident-initiated move-out request (manager-driven exit is separate; see
-  // DepositsService.settleExit). null = no request pending; all three are set
-  // together when the resident raises a request.
-  exitRequestedDate: date("exit_requested_date"), // preferred move-out 'YYYY-MM-DD'
+  // Resident-initiated move-out request, manager-approved (manager-driven exit
+  // settlement is separate; see DepositsService.settleExit). null = no
+  // approved request; all three are set together once a manager approves the
+  // resident's pending action below. See DepositsService for the state machine.
+  exitRequestedDate: date("exit_requested_date"), // approved move-out 'YYYY-MM-DD'
   exitRequestNote: text("exit_request_note"),
   exitRequestedAt: timestamp("exit_requested_at", { withTimezone: true }),
+
+  // A resident-initiated action awaiting a manager decision (approve/reject).
+  // null = nothing pending. exitPendingType is 'REQUEST' | 'UPDATE' | 'CANCEL'
+  // (see DepositTxnType-style string enums elsewhere); exitPendingDate is null
+  // only for CANCEL. Only one pending action at a time per resident.
+  exitPendingType: text("exit_pending_type"),
+  exitPendingDate: date("exit_pending_date"), // proposed move-out 'YYYY-MM-DD'
+  exitPendingNote: text("exit_pending_note"),
+  exitPendingAt: timestamp("exit_pending_at", { withTimezone: true }),
 
   // Manager soft-deactivation (set by an owner). null = active; when set, the
   // login credential in auth_identities is removed but this row is KEPT so the

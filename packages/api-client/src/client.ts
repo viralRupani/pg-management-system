@@ -35,6 +35,7 @@ import type {
   DepositTransactionSummary,
   DocumentSummary,
   DocumentUploadUrlInput,
+  ExitEffective,
   ExitRequestInput,
   ExitRequestSummary,
   ApplyDepositToInvoiceResult,
@@ -345,6 +346,18 @@ export class PgApiClient {
         "/deposits/apply-to-invoice",
         { invoiceId },
       ),
+    /** Approve a resident's pending move-out request/update/cancel action. */
+    approveExitRequest: (residentId: string) =>
+      this.http.post<{ effective: ExitEffective | null }>(
+        `/deposits/exit-request/${residentId}/approve`,
+      ),
+    /** Reject a resident's pending move-out action; the approved request (if
+     * any) is left untouched. */
+    rejectExitRequest: (residentId: string, note?: string) =>
+      this.http.post<{ rejected: true }>(
+        `/deposits/exit-request/${residentId}/reject`,
+        { note },
+      ),
   };
 
   readonly property = {
@@ -567,12 +580,27 @@ export class PgApiClient {
           ledger: DepositTransactionSummary[];
           exitRequest: ExitRequestSummary | null;
         }>("/deposits/mine"),
-      /** Raise a resident-initiated move-out request (one pending at a time). */
+      /** Raise a resident-initiated move-out request (one pending at a time,
+       * awaits manager approval). */
       requestExit: (input: ExitRequestInput) =>
         this.http.post<{ requestedDate: string }>(
           "/deposits/exit-request",
           input,
         ),
+      /** Propose changing the month of an already-approved move-out (awaits
+       * manager approval; the approved request is untouched until then). */
+      updateExitRequest: (input: ExitRequestInput) =>
+        this.http.post<{ requestedDate: string }>(
+          "/deposits/exit-request/update",
+          input,
+        ),
+      /** Ask to cancel an already-approved move-out (awaits manager approval). */
+      cancelExitRequest: () =>
+        this.http.post<{ pending: true }>("/deposits/exit-request/cancel"),
+      /** Withdraw your own pending action (request/update/cancel) before a
+       * manager decides — takes effect immediately, no approval needed. */
+      withdrawExitRequest: () =>
+        this.http.post<{ withdrawn: true }>("/deposits/exit-request/withdraw"),
     },
     documents: {
       /** Own KYC documents + review status, newest first. */

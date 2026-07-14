@@ -233,7 +233,7 @@ function ResidentsList() {
             onChange={(e) => setExitRequested(e.target.checked)}
             className="h-4 w-4 accent-amber-500"
           />
-          Exit requested
+          Moving out
         </label>
       </div>
 
@@ -280,7 +280,7 @@ function ResidentsList() {
                       </span>
                       {r.isShortStay && <Badge tone="brand">Short stay</Badge>}
                       {r.exitRequestedDate && (
-                        <Badge tone="warning">Exit requested</Badge>
+                        <Badge tone="warning">Moving out</Badge>
                       )}
                       <Badge tone={kycTone(r.kycStatus)}>
                         {kycLabel(r.kycStatus)}
@@ -923,6 +923,30 @@ function ResidentDetail({ id }: { id: string }) {
     }
   };
 
+  const approveExit = async () => {
+    setBusy(true);
+    try {
+      await api.deposits.approveExitRequest(id);
+      await load();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not approve the move-out request."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rejectExit = async () => {
+    setBusy(true);
+    try {
+      await api.deposits.rejectExitRequest(id);
+      await load();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not reject the move-out request."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleApproveDoc = async (docId: string) => {
     await api.documents.verify(docId);
     await load();
@@ -1413,14 +1437,71 @@ function ResidentDetail({ id }: { id: string }) {
                 </Button>
               )}
             </div>
-            {exitRequest && (
-              <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                <span className="mt-0.5 shrink-0">⏳</span>
+            {exitRequest?.effective && (
+              <div className="mb-3 flex items-start gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm">
+                <span className="mt-0.5 shrink-0">📅</span>
                 <span>
-                  Move-out requested for{" "}
-                  <strong>{formatDate(exitRequest.requestedDate)}</strong>
-                  {exitRequest.note ? ` — "${exitRequest.note}"` : ""}
+                  Move-out confirmed for{" "}
+                  <strong>{formatDate(exitRequest.effective.date)}</strong>
+                  {exitRequest.effective.note
+                    ? ` — "${exitRequest.effective.note}"`
+                    : ""}
                 </span>
+              </div>
+            )}
+            {exitRequest?.pending && (
+              <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <div className="flex items-start justify-between gap-3">
+                  <span className="flex items-start gap-2">
+                    <span className="mt-0.5 shrink-0">⏳</span>
+                    <span>
+                      {exitRequest.pending.type === "CANCEL" ? (
+                        "Requested to cancel the confirmed move-out above"
+                      ) : exitRequest.pending.type === "UPDATE" ? (
+                        <>
+                          Requested to change the move-out to{" "}
+                          <strong>{formatDate(exitRequest.pending.date!)}</strong>
+                        </>
+                      ) : (
+                        <>
+                          Move-out requested for{" "}
+                          <strong>{formatDate(exitRequest.pending.date!)}</strong>
+                        </>
+                      )}
+                      {exitRequest.pending.note
+                        ? ` — "${exitRequest.pending.note}"`
+                        : ""}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 gap-1.5">
+                    <Button
+                      size="sm"
+                      disabled={
+                        busy ||
+                        (exitRequest.pending.type !== "REQUEST" &&
+                          exitRequest.bookingConflict)
+                      }
+                      onClick={approveExit}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      disabled={busy}
+                      onClick={rejectExit}
+                    >
+                      Reject
+                    </Button>
+                  </span>
+                </div>
+                {exitRequest.pending.type !== "REQUEST" &&
+                  exitRequest.bookingConflict && (
+                    <p className="mt-1.5 pl-6 text-xs text-amber-700">
+                      A booking already depends on this move-out date —
+                      resolve the booking before approving.
+                    </p>
+                  )}
               </div>
             )}
             {deposit ? (

@@ -4,6 +4,7 @@ import {
   ComplaintStatus,
   DocumentStatus,
   DocumentType,
+  ExitPendingType,
   PaymentStatus,
   ResidentStatus,
   UserRole,
@@ -195,27 +196,31 @@ export class DashboardService {
 
     const [exitRows, exitCountRow, paymentsRow, kycRow, complaintsRow] =
       await Promise.all([
-        // Pending move-out requests — capped list for the dropdown/panel.
+        // Resident exit actions awaiting a manager decision — capped list for
+        // the dropdown/panel. Keyed off the PENDING tier (exitPendingType), not
+        // the approved request, since this feed's whole purpose is "needs a
+        // decision".
         db
           .select({
             residentId: users.id,
             name: users.name,
-            requestedDate: sql<string>`to_char(${users.exitRequestedDate}, 'YYYY-MM-DD')`,
-            requestedAt: users.exitRequestedAt,
-            note: users.exitRequestNote,
+            pendingType: users.exitPendingType,
+            requestedDate: sql<string | null>`to_char(${users.exitPendingDate}, 'YYYY-MM-DD')`,
+            requestedAt: users.exitPendingAt,
+            note: users.exitPendingNote,
           })
           .from(users)
           .where(
             and(
               eq(users.role, UserRole.RESIDENT),
               eq(users.status, ResidentStatus.ACTIVE),
-              isNotNull(users.exitRequestedAt),
+              isNotNull(users.exitPendingType),
             ),
           )
-          .orderBy(users.exitRequestedAt)
+          .orderBy(users.exitPendingAt)
           .limit(10),
 
-        // Total pending move-out requests (the list above is capped at 10).
+        // Total pending exit actions (the list above is capped at 10).
         db
           .select({ count: sql<number>`count(*)::int` })
           .from(users)
@@ -223,7 +228,7 @@ export class DashboardService {
             and(
               eq(users.role, UserRole.RESIDENT),
               eq(users.status, ResidentStatus.ACTIVE),
-              isNotNull(users.exitRequestedAt),
+              isNotNull(users.exitPendingType),
             ),
           ),
 
@@ -267,6 +272,7 @@ export class DashboardService {
         items: exitRows.map((r) => ({
           residentId: r.residentId,
           name: r.name,
+          pendingType: r.pendingType as ExitPendingType,
           requestedDate: r.requestedDate,
           requestedAt: r.requestedAt!.toISOString(),
           note: r.note,

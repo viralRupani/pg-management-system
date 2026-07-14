@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ExitPendingType } from "../enums";
 
 export const dashboardUpcomingBookingSchema = z.object({
   id: z.string(),
@@ -47,12 +48,15 @@ export type DashboardCurrentMonth = z.infer<typeof dashboardCurrentMonthSchema>;
 export type DashboardRevenueMonth = z.infer<typeof dashboardRevenueMonthSchema>;
 export type DashboardUpcomingBooking = z.infer<typeof dashboardUpcomingBookingSchema>;
 
-// A single pending move-out request, surfaced in the manager's alerts feed.
+// A single resident action awaiting a manager decision, surfaced in the
+// manager's alerts feed — a new request, a proposed month change, or a
+// cancellation of an already-approved move-out.
 export const dashboardExitRequestSchema = z.object({
   residentId: z.string().uuid(),
   name: z.string(),
-  requestedDate: z.string(), // YYYY-MM-DD (preferred move-out)
-  requestedAt: z.string(), // ISO timestamp the request was raised
+  pendingType: z.nativeEnum(ExitPendingType),
+  requestedDate: z.string().nullable(), // YYYY-MM-DD proposed date; null for CANCEL
+  requestedAt: z.string(), // ISO timestamp the action was raised
   note: z.string().nullable(),
 });
 

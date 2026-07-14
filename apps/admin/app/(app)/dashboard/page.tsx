@@ -251,10 +251,18 @@ function MoveOutRequestsPanel({
                     )}
                   </div>
                   <div className="text-right">
-                    <p className="text-xs font-medium text-foreground">
-                      {formatDate(r.requestedDate)}
-                    </p>
-                    <Badge tone="warning">Requested</Badge>
+                    {r.requestedDate && (
+                      <p className="text-xs font-medium text-foreground">
+                        {formatDate(r.requestedDate)}
+                      </p>
+                    )}
+                    <Badge tone="warning">
+                      {r.pendingType === "CANCEL"
+                        ? "Cancellation"
+                        : r.pendingType === "UPDATE"
+                          ? "Change requested"
+                          : "Requested"}
+                    </Badge>
                   </div>
                 </Link>
               </li>

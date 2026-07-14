@@ -253,6 +253,13 @@
       "when": 1783790876395,
       "tag": "0035_watery_madame_web",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1784044603505,
+      "tag": "0036_wandering_serpent_society",
+      "breakpoints": true
     }
   ]
 }

@@ -67,3 +67,14 @@ export function daysInPeriod(period: string): number {
   // Day 0 of the next month == last day of this month.
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
+
+/** `period` shifted by `n` calendar months (may be negative), e.g.
+ * `addMonthsToPeriod('2026-01', -1) === '2025-12'`. Pure integer arithmetic —
+ * a billing period has no time-of-day, so there's no IST/UTC ambiguity here. */
+export function addMonthsToPeriod(period: string, n: number): string {
+  const [year, month] = period.split("-").map(Number);
+  const total = year * 12 + (month - 1) + n;
+  const newYear = Math.floor(total / 12);
+  const newMonth = (total % 12) + 1;
+  return `${newYear}-${String(newMonth).padStart(2, "0")}`;
+}

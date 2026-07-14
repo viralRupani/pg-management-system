@@ -172,6 +172,19 @@ export const DepositTxnType = {
 export type DepositTxnType =
   (typeof DepositTxnType)[keyof typeof DepositTxnType];
 
+/**
+ * A resident-initiated action on their move-out request, awaiting a manager
+ * decision. REQUEST = a brand-new move-out ask; UPDATE = change the approved
+ * move-out month; CANCEL = withdraw the approved move-out entirely.
+ */
+export const ExitPendingType = {
+  REQUEST: "REQUEST",
+  UPDATE: "UPDATE",
+  CANCEL: "CANCEL",
+} as const;
+export type ExitPendingType =
+  (typeof ExitPendingType)[keyof typeof ExitPendingType];
+
 export const ComplaintCategory = {
   MAINTENANCE: "MAINTENANCE",
   CLEANLINESS: "CLEANLINESS",

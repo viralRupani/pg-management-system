@@ -3,18 +3,24 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import {
   type ApplyDepositToInvoiceResult,
+  BookingStatus,
   type CollectDepositInput,
   type DepositSummary,
   DepositStatus,
   type DepositTransactionSummary,
   DepositTxnType,
+  type ExitDecisionInput,
+  type ExitEffective,
+  type ExitPending,
+  ExitPendingType,
   type ExitRequestInput,
   type ExitRequestSummary,
   type ExitSettlementInput,
   InvoiceStatus,
+  PaymentStatus,
   type RecordDepositInput,
   type RefundDepositInput,
   ResidentStatus,
@@ -25,13 +31,18 @@ import {
 import { TenantContextService } from "../db/tenant-context";
 import {
   allocations,
+  bookings,
   depositTransactions,
   deposits,
   invoices,
+  payments,
   users,
 } from "../db/schema";
 import { freeBed } from "../db/free-bed";
 import { isUniqueViolation } from "../db/pg-errors";
+import { addMonthsToPeriod } from "../common/ist-date";
+import { sumOutflows } from "./deposit-ledger";
+import { settleInvoiceFromDepositIfEligible } from "./settle-invoice-from-deposit";
 
 /** Drizzle transaction handle (the arg to `db.transaction(async (tx) => …)`). */
 type Tx = Parameters<
@@ -155,7 +166,7 @@ export class DepositsService {
 
       // Can't drop the held base below what's already gone out — that would
       // make the available balance (held − outflows) negative.
-      const prior = await this.sumOutflows(tx, deposit.id);
+      const prior = await sumOutflows(tx, deposit.id);
       if (input.amountPaise < prior)
         throw new ConflictException(
           "New deposit can't be below the amount already applied to rent",
@@ -212,20 +223,59 @@ export class DepositsService {
         exitRequestedDate: users.exitRequestedDate,
         exitRequestNote: users.exitRequestNote,
         exitRequestedAt: users.exitRequestedAt,
+        exitPendingType: users.exitPendingType,
+        exitPendingDate: users.exitPendingDate,
+        exitPendingNote: users.exitPendingNote,
+        exitPendingAt: users.exitPendingAt,
       })
       .from(users)
       .where(
         and(eq(users.id, residentId), eq(users.role, UserRole.RESIDENT)),
       );
 
-    const exitRequest: ExitRequestSummary | null =
+    const effective: ExitEffective | null =
       resident?.exitRequestedAt && resident.exitRequestedDate
         ? {
-            requestedDate: resident.exitRequestedDate,
+            date: resident.exitRequestedDate,
             note: resident.exitRequestNote,
-            requestedAt: resident.exitRequestedAt.toISOString(),
+            at: resident.exitRequestedAt.toISOString(),
           }
         : null;
+
+    const pending: ExitPending | null =
+      resident?.exitPendingType && resident.exitPendingAt
+        ? {
+            type: resident.exitPendingType as ExitPendingType,
+            date: resident.exitPendingDate,
+            note: resident.exitPendingNote,
+            at: resident.exitPendingAt.toISOString(),
+          }
+        : null;
+
+    // Back-compat flat fields (apps/mobile): whichever is "live" — a pending
+    // action if one exists (a CANCEL has no date of its own, so it falls back
+    // to the effective date it would clear), else the approved request.
+    const live = pending
+      ? {
+          date: pending.date ?? effective?.date ?? null,
+          note: pending.note,
+          at: pending.at,
+        }
+      : effective;
+
+    const exitRequest: ExitRequestSummary | null = live?.date
+      ? {
+          requestedDate: live.date,
+          note: live.note,
+          requestedAt: live.at,
+          effective,
+          pending,
+          bookingConflict: await this.hasPendingBookingOnCurrentBed(
+            db,
+            residentId,
+          ),
+        }
+      : null;
 
     const [row] = await db
       .select({
@@ -238,7 +288,7 @@ export class DepositsService {
 
     if (!row) return { deposit: null, availablePaise: 0, ledger: [], exitRequest };
 
-    const availablePaise = row.amountPaise - (await this.sumOutflows(db, row.id));
+    const availablePaise = row.amountPaise - (await sumOutflows(db, row.id));
 
     const txns = await db
       .select({
@@ -274,27 +324,6 @@ export class DepositsService {
       })),
       exitRequest,
     };
-  }
-
-  /** Σ of DEDUCTION + REFUND line-items on a deposit (the part of the held sum
-   * spent or already given back — refunds aren't exit-only, so this must
-   * cover both to keep `available` accurate). */
-  private async sumOutflows(tx: Tx, depositId: string): Promise<number> {
-    const [r] = await tx
-      .select({
-        total: sql<number>`coalesce(sum(${depositTransactions.amountPaise}), 0)::int`,
-      })
-      .from(depositTransactions)
-      .where(
-        and(
-          eq(depositTransactions.depositId, depositId),
-          inArray(depositTransactions.type, [
-            DepositTxnType.DEDUCTION,
-            DepositTxnType.REFUND,
-          ]),
-        ),
-      );
-    return r?.total ?? 0;
   }
 
   /**
@@ -349,7 +378,7 @@ export class DepositsService {
         );
 
       // (3) Available balance must cover the full invoice (no partial settle).
-      const prior = await this.sumOutflows(tx, deposit.id);
+      const prior = await sumOutflows(tx, deposit.id);
       const available = deposit.amountPaise - prior;
       if (available < invoice.amountPaise)
         throw new ConflictException(
@@ -397,46 +426,364 @@ export class DepositsService {
   }
 
   /**
-   * Resident: raise a move-out request (preferred date + optional note). Guarded
+   * Resident: raise a brand-new move-out request (preferred month + optional
+   * note) — awaits manager approval before it becomes the approved exit. Guarded
    * by a CONDITIONAL update on the always-present resident row: only an ACTIVE
-   * resident with no request pending flips, so a re-submit or an already-exited
-   * resident flips 0 rows and is rejected — no select-then-update race.
+   * resident with no approved request and nothing already pending flips, so a
+   * re-submit or an already-exited resident flips 0 rows and is rejected — no
+   * select-then-update race. See `updateExitRequest`/`requestCancelExit` for
+   * changing/cancelling an already-approved request.
    */
   async requestExit(
     residentId: string,
     input: ExitRequestInput,
   ): Promise<{ requestedDate: string }> {
+    return this.raisePendingAction(
+      residentId,
+      ExitPendingType.REQUEST,
+      input,
+      /* requireApprovedExisting */ false,
+    );
+  }
+
+  /**
+   * Resident: propose changing the month of an already-approved move-out.
+   * Awaits manager approval; the approved request is untouched until then.
+   */
+  async updateExitRequest(
+    residentId: string,
+    input: ExitRequestInput,
+  ): Promise<{ requestedDate: string }> {
+    return this.raisePendingAction(
+      residentId,
+      ExitPendingType.UPDATE,
+      input,
+      /* requireApprovedExisting */ true,
+    );
+  }
+
+  /**
+   * Resident: ask to cancel an already-approved move-out. Awaits manager
+   * approval — the approved request stays in effect until then (see
+   * `getForResident`'s deposit balance, which is unaffected either way: it's
+   * computed live from the ledger, never from exit-request state).
+   */
+  async requestCancelExit(residentId: string): Promise<{ pending: true }> {
+    await this.raisePendingAction(
+      residentId,
+      ExitPendingType.CANCEL,
+      null,
+      /* requireApprovedExisting */ true,
+    );
+    return { pending: true };
+  }
+
+  /**
+   * Is an incoming resident's booking already depending on this resident's
+   * CURRENT bed freeing up? Joins the resident's active allocation to a
+   * PENDING booking on that same bed — the exact "is a booking waiting on
+   * this bed" check `freeBed()` (`db/free-bed.ts`) already uses. Once true,
+   * cancelling or changing the move-out date would strand that booking.
+   */
+  private async hasPendingBookingOnCurrentBed(
+    db: Tx,
+    residentId: string,
+  ): Promise<boolean> {
+    const [row] = await db
+      .select({ id: bookings.id })
+      .from(allocations)
+      .innerJoin(
+        bookings,
+        and(
+          eq(bookings.bedId, allocations.bedId),
+          eq(bookings.status, BookingStatus.PENDING),
+        ),
+      )
+      .where(
+        and(eq(allocations.residentId, residentId), isNull(allocations.endDate)),
+      );
+    return !!row;
+  }
+
+  /** Shared conditional-flip guard for requestExit/updateExitRequest/
+   * requestCancelExit — they differ only in whether an approved request must
+   * already exist and what date/note to stage as pending. UPDATE/CANCEL are
+   * additionally blocked once an incoming resident's booking depends on the
+   * current move-out date (see `hasPendingBookingOnCurrentBed`) — a plain
+   * check-then-act is fine here since it's a business-rule gate, not a
+   * concurrency guard; `approveExitRequest` re-checks it as the real backstop. */
+  private async raisePendingAction(
+    residentId: string,
+    type: ExitPendingType,
+    input: ExitRequestInput | null,
+    requireApprovedExisting: boolean,
+  ): Promise<{ requestedDate: string }> {
     const db = this.ctx.db();
+
+    if (type === ExitPendingType.UPDATE || type === ExitPendingType.CANCEL) {
+      if (await this.hasPendingBookingOnCurrentBed(db, residentId))
+        throw new ConflictException(
+          "An incoming resident's booking depends on your current move-out date — ask your manager to sort out the booking first",
+        );
+    }
+
     const updated = await db
       .update(users)
       .set({
-        exitRequestedDate: input.requestedDate,
-        exitRequestNote: input.note ?? null,
-        exitRequestedAt: new Date(),
+        exitPendingType: type,
+        exitPendingDate: input?.requestedDate ?? null,
+        exitPendingNote: input?.note ?? null,
+        exitPendingAt: new Date(),
       })
       .where(
         and(
           eq(users.id, residentId),
           eq(users.role, UserRole.RESIDENT),
           eq(users.status, ResidentStatus.ACTIVE),
-          isNull(users.exitRequestedAt),
+          requireApprovedExisting
+            ? isNotNull(users.exitRequestedAt)
+            : isNull(users.exitRequestedAt),
+          isNull(users.exitPendingType),
         ),
       )
       .returning({ id: users.id });
 
     if (updated.length !== 1) {
       const [exists] = await db
-        .select({ status: users.status, requestedAt: users.exitRequestedAt })
+        .select({
+          status: users.status,
+          requestedAt: users.exitRequestedAt,
+          pendingType: users.exitPendingType,
+        })
         .from(users)
         .where(
           and(eq(users.id, residentId), eq(users.role, UserRole.RESIDENT)),
         );
       if (!exists) throw new NotFoundException("Resident not found");
-      if (exists.requestedAt)
-        throw new ConflictException("A move-out request is already pending");
+      if (exists.pendingType)
+        throw new ConflictException("A move-out action is already pending");
+      if (requireApprovedExisting && !exists.requestedAt)
+        throw new ConflictException("No approved move-out request on record");
+      if (!requireApprovedExisting && exists.requestedAt)
+        throw new ConflictException(
+          "A move-out request is already approved — use update or cancel",
+        );
       throw new ConflictException("Resident is not active");
     }
-    return { requestedDate: input.requestedDate };
+    return { requestedDate: input?.requestedDate ?? "" };
+  }
+
+  /**
+   * Resident: withdraw their own pending action (request/update/cancel) before
+   * a manager decides. No approval is needed to take back something that
+   * hasn't taken effect yet — the complement to every pending action requiring
+   * approval to go THROUGH.
+   */
+  async withdrawExitRequest(residentId: string): Promise<{ withdrawn: true }> {
+    const db = this.ctx.db();
+    const updated = await db
+      .update(users)
+      .set({
+        exitPendingType: null,
+        exitPendingDate: null,
+        exitPendingNote: null,
+        exitPendingAt: null,
+      })
+      .where(
+        and(
+          eq(users.id, residentId),
+          eq(users.role, UserRole.RESIDENT),
+          isNotNull(users.exitPendingType),
+        ),
+      )
+      .returning({ id: users.id });
+
+    if (updated.length !== 1) {
+      const [exists] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(
+          and(eq(users.id, residentId), eq(users.role, UserRole.RESIDENT)),
+        );
+      if (!exists) throw new NotFoundException("Resident not found");
+      throw new ConflictException("No pending move-out action to withdraw");
+    }
+    return { withdrawn: true };
+  }
+
+  /**
+   * Manager: approve a resident's pending move-out action. Wrapped in a
+   * transaction because approving a REQUEST/UPDATE also tries to settle the
+   * resident's new last billed month from their deposit if that invoice
+   * already exists (the generation-time fold in `RentService.generateMonthly`
+   * only fires for an invoice created AFTER approval — this is the apply-now
+   * counterpart for one created before).
+   *
+   * The state transition itself is a single CONDITIONAL UPDATE, guarded on
+   * `exitPendingType IS NOT NULL` (the always-present marker for "something is
+   * awaiting a decision") — the SET clause's CASE expressions read the
+   * pre-update `exitPendingType`/`exitPendingDate`/`exitPendingNote` (Postgres
+   * evaluates every SET expression against the row as it was before this
+   * statement), so REQUEST/UPDATE adopt the pending date/note as the new
+   * approved request and CANCEL nulls it out — all in one atomic statement, no
+   * select-then-update race. A pre-check SELECT runs first only to read
+   * `pendingType` for the booking guard (UPDATE/CANCEL only) — that guard can
+   * tolerate a benign race (worst case: a booking sneaks in between this read
+   * and the atomic update, and approval goes through when a re-decision would
+   * have been ideal); the ACTUAL concurrency-correctness guarantee is still
+   * the conditional UPDATE below.
+   */
+  async approveExitRequest(
+    residentId: string,
+    managerId: string,
+  ): Promise<{ effective: ExitEffective | null }> {
+    const db = this.ctx.db();
+    const tenantId = this.ctx.currentTenantId()!;
+
+    return db.transaction(async (tx) => {
+      const [current] = await tx
+        .select({ pendingType: users.exitPendingType })
+        .from(users)
+        .where(
+          and(eq(users.id, residentId), eq(users.role, UserRole.RESIDENT)),
+        );
+      if (!current) throw new NotFoundException("Resident not found");
+      if (!current.pendingType)
+        throw new ConflictException("No pending move-out action to approve");
+
+      if (
+        current.pendingType === ExitPendingType.UPDATE ||
+        current.pendingType === ExitPendingType.CANCEL
+      ) {
+        if (await this.hasPendingBookingOnCurrentBed(tx, residentId))
+          throw new ConflictException(
+            "An incoming resident's booking depends on this move-out date — resolve the booking before approving",
+          );
+      }
+
+      const [row] = await tx
+        .update(users)
+        .set({
+          exitRequestedDate: sql`case when ${users.exitPendingType} = ${ExitPendingType.CANCEL} then null else ${users.exitPendingDate} end`,
+          exitRequestNote: sql`case when ${users.exitPendingType} = ${ExitPendingType.CANCEL} then null else ${users.exitPendingNote} end`,
+          exitRequestedAt: sql`case when ${users.exitPendingType} = ${ExitPendingType.CANCEL} then null else now() end`,
+          exitPendingType: null,
+          exitPendingDate: null,
+          exitPendingNote: null,
+          exitPendingAt: null,
+        })
+        .where(
+          and(
+            eq(users.id, residentId),
+            eq(users.role, UserRole.RESIDENT),
+            isNotNull(users.exitPendingType),
+          ),
+        )
+        .returning({
+          exitRequestedDate: users.exitRequestedDate,
+          exitRequestNote: users.exitRequestNote,
+          exitRequestedAt: users.exitRequestedAt,
+        });
+
+      if (!row)
+        throw new ConflictException("No pending move-out action to approve");
+
+      const effective: ExitEffective | null =
+        row.exitRequestedAt && row.exitRequestedDate
+          ? {
+              date: row.exitRequestedDate,
+              note: row.exitRequestNote,
+              at: row.exitRequestedAt.toISOString(),
+            }
+          : null;
+
+      // Apply-now: if this approval set/changed the effective move-out date,
+      // and the new last billed month's invoice already exists (generated
+      // before this approval), try to settle it from the deposit right away —
+      // mirrors ChargesService.create's apply-now guard (skip if a payment is
+      // already SUBMITTED, so approving never fights an in-flight payment).
+      if (effective) {
+        const lastPeriod = addMonthsToPeriod(effective.date.slice(0, 7), -1);
+        const [invoice] = await tx
+          .select({ id: invoices.id, amountPaise: invoices.amountPaise })
+          .from(invoices)
+          .where(
+            and(
+              eq(invoices.residentId, residentId),
+              eq(invoices.period, lastPeriod),
+              isNull(invoices.deletedAt),
+              inArray(invoices.status, [
+                InvoiceStatus.PENDING,
+                InvoiceStatus.OVERDUE,
+              ]),
+            ),
+          );
+        if (invoice) {
+          const [inFlightPayment] = await tx
+            .select({ id: payments.id })
+            .from(payments)
+            .where(
+              and(
+                eq(payments.invoiceId, invoice.id),
+                eq(payments.status, PaymentStatus.SUBMITTED),
+              ),
+            );
+          if (!inFlightPayment) {
+            await settleInvoiceFromDepositIfEligible(
+              tx,
+              tenantId,
+              residentId,
+              invoice.id,
+              invoice.amountPaise,
+              `Rent for ${lastPeriod} — auto-settled from deposit (final month)`,
+              managerId,
+            );
+          }
+        }
+      }
+
+      return { effective };
+    });
+  }
+
+  /**
+   * Manager: reject a resident's pending move-out action. The approved
+   * request (if any) is left exactly as it was — only the pending action is
+   * cleared.
+   */
+  async rejectExitRequest(
+    residentId: string,
+    _input: ExitDecisionInput,
+  ): Promise<{ rejected: true }> {
+    const db = this.ctx.db();
+    const updated = await db
+      .update(users)
+      .set({
+        exitPendingType: null,
+        exitPendingDate: null,
+        exitPendingNote: null,
+        exitPendingAt: null,
+      })
+      .where(
+        and(
+          eq(users.id, residentId),
+          eq(users.role, UserRole.RESIDENT),
+          isNotNull(users.exitPendingType),
+        ),
+      )
+      .returning({ id: users.id });
+
+    if (updated.length !== 1) {
+      const [exists] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(
+          and(eq(users.id, residentId), eq(users.role, UserRole.RESIDENT)),
+        );
+      if (!exists) throw new NotFoundException("Resident not found");
+      throw new ConflictException("No pending move-out action to reject");
+    }
+    return { rejected: true };
   }
 
   /**
@@ -453,10 +800,21 @@ export class DepositsService {
 
     return db.transaction(async (tx) => {
       // (1) Re-entry guard FIRST: conditional ACTIVE -> EXITED. A second
-      // concurrent call flips 0 rows and bails before any side effect.
+      // concurrent call flips 0 rows and bails before any side effect. Also
+      // clears any exit-request state (approved + pending) so nothing stale
+      // lingers on an EXITED resident.
       const exited = await tx
         .update(users)
-        .set({ status: ResidentStatus.EXITED })
+        .set({
+          status: ResidentStatus.EXITED,
+          exitRequestedDate: null,
+          exitRequestNote: null,
+          exitRequestedAt: null,
+          exitPendingType: null,
+          exitPendingDate: null,
+          exitPendingNote: null,
+          exitPendingAt: null,
+        })
         .where(
           and(
             eq(users.id, input.residentId),
@@ -510,7 +868,7 @@ export class DepositsService {
         // what's LEFT, and exit deductions are capped at the remaining
         // balance, not the original held sum — so
         // deposit = priorOutflows + newDeductions + refund holds.
-        priorOutflows = await this.sumOutflows(tx, deposit.id);
+        priorOutflows = await sumOutflows(tx, deposit.id);
         available = depositPaise - priorOutflows;
         totalDeductions = input.deductions.reduce(
           (sum, d) => sum + d.amountPaise,
@@ -685,7 +1043,7 @@ export class DepositsService {
           "Deposit is already settled and can't be refunded against",
         );
 
-      const outflows = await this.sumOutflows(tx, deposit.id);
+      const outflows = await sumOutflows(tx, deposit.id);
       const available = deposit.amountPaise - outflows;
       if (input.amountPaise > available)
         throw new ConflictException(

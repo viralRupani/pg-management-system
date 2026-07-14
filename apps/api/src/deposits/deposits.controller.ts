@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
 import {
   type ApplyDepositToInvoiceInput,
   type CollectDepositInput,
+  type ExitDecisionInput,
   type ExitRequestInput,
   type ExitSettlementInput,
   type JwtPayload,
@@ -11,6 +12,7 @@ import {
   UserRole,
   applyDepositToInvoiceSchema,
   collectDepositSchema,
+  exitDecisionSchema,
   exitRequestSchema,
   exitSettlementSchema,
   recordDepositSchema,
@@ -39,6 +41,27 @@ export class DepositsController {
     @Body(new ZodBody(exitRequestSchema)) dto: ExitRequestInput,
   ) {
     return this.deposits.requestExit(user.sub, dto);
+  }
+
+  @Post("exit-request/update")
+  @Roles(UserRole.RESIDENT)
+  updateExitRequest(
+    @CurrentUser() user: JwtPayload,
+    @Body(new ZodBody(exitRequestSchema)) dto: ExitRequestInput,
+  ) {
+    return this.deposits.updateExitRequest(user.sub, dto);
+  }
+
+  @Post("exit-request/cancel")
+  @Roles(UserRole.RESIDENT)
+  cancelExitRequest(@CurrentUser() user: JwtPayload) {
+    return this.deposits.requestCancelExit(user.sub);
+  }
+
+  @Post("exit-request/withdraw")
+  @Roles(UserRole.RESIDENT)
+  withdrawExitRequest(@CurrentUser() user: JwtPayload) {
+    return this.deposits.withdrawExitRequest(user.sub);
   }
 
   // --- Manager ---
@@ -106,5 +129,23 @@ export class DepositsController {
     dto: ApplyDepositToInvoiceInput,
   ) {
     return this.deposits.applyToInvoice(dto.invoiceId, user.sub);
+  }
+
+  @Post("exit-request/:residentId/approve")
+  @Roles(UserRole.PG_MANAGER)
+  approveExitRequest(
+    @CurrentUser() user: JwtPayload,
+    @Param("residentId") residentId: string,
+  ) {
+    return this.deposits.approveExitRequest(residentId, user.sub);
+  }
+
+  @Post("exit-request/:residentId/reject")
+  @Roles(UserRole.PG_MANAGER)
+  rejectExitRequest(
+    @Param("residentId") residentId: string,
+    @Body(new ZodBody(exitDecisionSchema)) dto: ExitDecisionInput,
+  ) {
+    return this.deposits.rejectExitRequest(residentId, dto);
   }
 }

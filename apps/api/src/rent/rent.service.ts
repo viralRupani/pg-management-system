@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { and, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import {
   type GenerateInvoicesInput,
   type InvoiceListQuery,
@@ -38,9 +38,10 @@ import {
   type StorageProvider,
   assertAllowedType,
 } from "../storage/storage.module";
-import { istPeriod, istStartOfDayUtc } from "../common/ist-date";
+import { addMonthsToPeriod, istPeriod, istStartOfDayUtc } from "../common/ist-date";
 import { prorateSegment } from "./rent.proration";
 import { NotificationsService } from "../notifications/notifications.service";
+import { settleInvoiceFromDepositIfEligible } from "../deposits/settle-invoice-from-deposit";
 
 /**
  * The rent loop. RLS isolates tenants; it does NOT isolate residents within a
@@ -115,6 +116,21 @@ export class RentService {
     const billableIds = [...activeStartByResident.keys()];
     if (billableIds.length === 0) return { generated: 0, period };
 
+    // A resident's APPROVED move-out month (read once per run, like the
+    // billable-start map above). Their tenancy is billed through the month
+    // BEFORE this one — see the skip check below and the auto-settle fold —
+    // `exitRequestedDate` is a plain 'YYYY-MM-DD' string column, so no IST/Date
+    // conversion is needed to get its 'YYYY-MM' period.
+    const exitRows = await db
+      .select({ residentId: users.id, exitRequestedDate: users.exitRequestedDate })
+      .from(users)
+      .where(
+        and(inArray(users.id, billableIds), isNotNull(users.exitRequestedDate)),
+      );
+    const exitPeriodByResident = new Map(
+      exitRows.map((r) => [r.residentId, r.exitRequestedDate!.slice(0, 7)]),
+    );
+
     // Every allocation segment for the billable residents (old + active). A
     // mid-month transfer leaves an ENDED old segment plus the active new one;
     // summing their prorated portions bills the whole month. Non-overlapping
@@ -144,6 +160,11 @@ export class RentService {
       // Active allocation begins in a LATER month than the period → not yet
       // billable (matches the old prorateRent null for a future joiner/booking).
       if (istPeriod(activeStartByResident.get(residentId)!) > period) return [];
+      // Approved move-out month, or later → the resident is gone; no invoice
+      // at all for this period (their last billed month is exitPeriod - 1,
+      // handled below as the 4th billing fold).
+      const exitPeriod = exitPeriodByResident.get(residentId);
+      if (exitPeriod && period >= exitPeriod) return [];
       const amountPaise = (segsByResident.get(residentId) ?? []).reduce(
         (sum, s) => sum + prorateSegment(s.rent, s.startDate, s.endDate, period),
         0,
@@ -313,10 +334,14 @@ export class RentService {
         const pending = pendingByResident.get(inv.residentId) ?? [];
         const charges = chargesByResident.get(inv.residentId) ?? [];
         const earnedReferrals = referralsByResident.get(inv.residentId) ?? [];
+        const exitPeriod = exitPeriodByResident.get(inv.residentId);
+        const isLastMonth =
+          exitPeriod !== undefined && period === addMonthsToPeriod(exitPeriod, -1);
         if (
           pending.length === 0 &&
           charges.length === 0 &&
-          earnedReferrals.length === 0
+          earnedReferrals.length === 0 &&
+          !isLastMonth
         )
           continue;
 
@@ -380,6 +405,23 @@ export class RentService {
                 earnedReferrals.map((r) => r.id),
               ),
             );
+        }
+
+        // The resident's LAST billed month: try to auto-settle it from their
+        // held deposit before falling back to the normal PENDING/credit paths
+        // below. All-or-nothing (matches manual "Apply to rent") — if there's
+        // no deposit or it doesn't fully cover newTotal, this is a no-op and
+        // billing proceeds exactly as it would for anyone else.
+        if (isLastMonth && newTotal > 0) {
+          const settled = await settleInvoiceFromDepositIfEligible(
+            tx,
+            tenantId,
+            inv.residentId,
+            inv.id,
+            newTotal,
+            `Rent for ${period} — auto-settled from deposit (final month)`,
+          );
+          if (settled) continue;
         }
 
         if (newTotal >= 0) {

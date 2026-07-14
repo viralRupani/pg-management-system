@@ -79,11 +79,26 @@ describe("Dashboard alerts (e2e)", () => {
     expect(res.body.exitRequests.items[0]).toMatchObject({
       residentId: r1Id,
       name: "Res One",
+      pendingType: "REQUEST",
       requestedDate: "2026-08-15",
       note: "Moving for a new job",
     });
     expect(res.body.exitRequests.items[0].requestedAt).toBeTruthy();
     expect(res.body.total).toBeGreaterThanOrEqual(1);
+  });
+
+  it("drops off the alert feed once the manager approves it", async () => {
+    const approve = await h.req(
+      "post",
+      `/deposits/exit-request/${r1Id}/approve`,
+      pgA.managerToken,
+    );
+    expect(approve.status).toBe(201);
+    expect(approve.body.effective).toMatchObject({ date: "2026-08-15" });
+
+    const res = await h.req("get", "/dashboard/alerts", pgA.managerToken);
+    expect(res.body.exitRequests.count).toBe(0);
+    expect(res.body.exitRequests.items).toEqual([]);
   });
 
   it("counts an open complaint", async () => {

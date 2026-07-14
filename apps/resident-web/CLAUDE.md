@@ -153,3 +153,23 @@ verified in compiled CSS.
 **Still untested:** the presigned upload round-trip against real S3 (KYC/
 payment/complaint photo — the flows are ported, the api-client integration is
 proven). No PNG `apple-touch-icon` yet (SVG only).
+
+**Deliberate divergence from mobile (2026-07-14):** `/deposit` was reworked
+here only (per explicit request) — a month+year-only move-out picker (`lib/
+month-year-sheet.tsx`, stores that month's 1st) plus the resident side of the
+new manager-approval workflow (request/update-month/cancel, each pending until
+a manager approves — see root `CLAUDE.md` "Move-out request approval
+workflow"). `apps/mobile`'s `deposit.tsx` was intentionally NOT re-ported this
+round and still shows the old single-date `CalendarSheet` flow with no
+approval-state UI; it keeps working unmodified since the API's `exitRequest`
+response still carries the flat back-compat fields. Re-port to mobile is
+follow-up work, not done here.
+
+**This divergence became a real billing gap, not just cosmetic (2026-07-14):**
+approving a move-out now skips billing the resident's entire exit month and
+auto-settles their last billed month from the deposit (see root `CLAUDE.md`
+"Move-out billing: skip-and-auto-settle"). A mobile resident can still pick an
+exact day via the old `CalendarSheet`, but the backend now reduces that to
+"the whole month is skipped" regardless of day — a resident who picked "the
+15th" meaning "bill me a partial month" instead gets that month fully
+unbilled. Known, not fixed here.

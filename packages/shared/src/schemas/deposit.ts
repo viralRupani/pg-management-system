@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DepositStatus, DepositTxnType } from "../enums";
+import { DepositStatus, DepositTxnType, ExitPendingType } from "../enums";
 
 /** Manager records a resident's security deposit (one per resident). */
 export const recordDepositSchema = z.object({
@@ -71,18 +71,56 @@ export type ApplyDepositToInvoiceResult = z.infer<
   typeof applyDepositToInvoiceResultSchema
 >;
 
-/** Resident requests their own move-out: a preferred date + optional note. */
+/** Resident requests their own move-out (or proposes changing an approved
+ * one's month): a preferred date + optional note. */
 export const exitRequestSchema = z.object({
   requestedDate: z.string().date(), // 'YYYY-MM-DD'
   note: z.string().max(500).optional(),
 });
 export type ExitRequestInput = z.infer<typeof exitRequestSchema>;
 
-/** A resident's pending move-out request (null when none has been raised). */
+/** Manager rejects a resident's pending exit-request action, with an
+ * optional short reason. */
+export const exitDecisionSchema = z.object({
+  note: z.string().max(500).optional(),
+});
+export type ExitDecisionInput = z.infer<typeof exitDecisionSchema>;
+
+/** The manager-approved move-out, if any. */
+export const exitEffectiveSchema = z.object({
+  date: z.string(),
+  note: z.string().nullable(),
+  at: z.string(),
+});
+export type ExitEffective = z.infer<typeof exitEffectiveSchema>;
+
+/** A resident-initiated action awaiting a manager decision, if any. `date` is
+ * null for a CANCEL action (nothing to propose — it just drops `effective`). */
+export const exitPendingSchema = z.object({
+  type: z.nativeEnum(ExitPendingType),
+  date: z.string().nullable(),
+  note: z.string().nullable(),
+  at: z.string(),
+});
+export type ExitPending = z.infer<typeof exitPendingSchema>;
+
+/**
+ * A resident's move-out state (null when there's no approved request and
+ * nothing pending). `requestedDate`/`note`/`requestedAt` are kept for
+ * back-compat with older clients (apps/mobile) — populated from `pending` if
+ * one exists, else from `effective`. `effective`/`pending` are the precise
+ * two-tier state for clients that render the full approval workflow.
+ */
 export const exitRequestSummarySchema = z.object({
   requestedDate: z.string(),
   note: z.string().nullable(),
   requestedAt: z.string(),
+  effective: exitEffectiveSchema.nullable(),
+  pending: exitPendingSchema.nullable(),
+  // True when an incoming resident's PENDING booking already depends on this
+  // resident's current bed freeing up — cancelling or changing the move-out
+  // date is blocked server-side while this is true (see root CLAUDE.md).
+  bookingConflict: z.boolean(),
 });
 export type ExitRequestSummary = z.infer<typeof exitRequestSummarySchema>;
 
