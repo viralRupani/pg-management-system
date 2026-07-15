@@ -381,7 +381,7 @@ function toSummary(r: ResidentRow): ResidentSummary {
     phone: r.phone ?? "",
     age: r.age,
     occupationType: (r.occupationType ??
-      "OTHER") as ResidentSummary["occupationType"],
+      "STUDENT") as ResidentSummary["occupationType"],
     nativePlace: r.nativePlace,
     emergencyContactName: r.emergencyContactName,
     emergencyContactRelation:

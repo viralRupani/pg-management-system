@@ -22,13 +22,18 @@ describe("M5 operations (e2e)", () => {
     pgB = await h.onboardPg("ops-b");
 
     const phone1 = randomPhone();
-    await h.registerResident(pgA.managerToken, { name: "Res One", phone: phone1 });
+    await h.registerResident(pgA.managerToken, {
+      name: "Res One",
+      phone: phone1,
+      occupationType: "PROFESSIONAL",
+    });
     residentA = await h.residentLogin(pgA.slug, pgA.id, phone1);
 
     const phone2 = randomPhone();
     residentA2Id = await h.registerResident(pgA.managerToken, {
       name: "Res Two",
       phone: phone2,
+      occupationType: "PROFESSIONAL",
     });
     residentA2 = await h.residentLogin(pgA.slug, pgA.id, phone2);
 

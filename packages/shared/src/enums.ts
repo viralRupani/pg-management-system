@@ -33,7 +33,6 @@ export type ResidentStatus =
 export const OccupationType = {
   STUDENT: "STUDENT",
   PROFESSIONAL: "PROFESSIONAL",
-  OTHER: "OTHER",
 } as const;
 export type OccupationType =
   (typeof OccupationType)[keyof typeof OccupationType];

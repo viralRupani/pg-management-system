@@ -413,7 +413,7 @@ function RegisterDialog({
               name: name.trim(),
               phone: phone.trim(),
               email: email.trim() || undefined,
-              occupationType: OccupationType.OTHER,
+              occupationType: OccupationType.STUDENT,
               isShortStay: true,
               expectedMoveInDate: moveInDate,
               shortStayCheckOutDate: checkOutDate,
@@ -1774,9 +1774,10 @@ function AllocateDialog({
   const [beds, setBeds] = useState<EligibleBed[] | null>(null);
   const [selectedBedId, setSelectedBedId] = useState<string | null>(null);
   // "ALL" shows every eligible bed; a specific type filters by the room's
-  // occupation preference (a room with no preference shows only under "OTHER").
+  // occupation preference. Short stay guests have no meaningful occupation
+  // type, so default them to seeing every bed rather than a STUDENT-only slice.
   const [occFilter, setOccFilter] = useState<OccupationType | "ALL">(
-    resident.occupationType,
+    isShortStay ? "ALL" : resident.occupationType,
   );
   const [moveInDate, setMoveInDate] = useState(
     resident.expectedMoveInDate ?? ymdToday(),
@@ -1788,7 +1789,7 @@ function AllocateDialog({
     let cancelled = false;
     setBeds(null);
     setSelectedBedId(null);
-    setOccFilter(resident.occupationType);
+    setOccFilter(isShortStay ? "ALL" : resident.occupationType);
     setMoveInDate(resident.expectedMoveInDate ?? ymdToday());
     (async () => {
       try {
@@ -1807,11 +1808,12 @@ function AllocateDialog({
     residentId,
     resident.expectedMoveInDate,
     resident.occupationType,
+    isShortStay,
     toast,
   ]);
 
-  // Filter by the room's occupation preference (null pref → "OTHER" only; "ALL"
-  // → everything), then order so nearly-full rooms come first to fill rooms up
+  // Filter by the room's occupation preference ("ALL" → everything), then
+  // order so nearly-full rooms come first to fill rooms up
   // faster: then ascending beds-remaining, then room/bed. The primary key
   // depends on the resident — a short stay prefers RESERVED_FREE_AFTER beds
   // (idle reserved capacity, freed before check-out) so truly-vacant beds stay
@@ -1821,12 +1823,7 @@ function AllocateDialog({
     const filtered =
       occFilter === "ALL"
         ? beds
-        : beds.filter((b) =>
-            occFilter === OccupationType.OTHER
-              ? b.occupationPreference === OccupationType.OTHER ||
-                b.occupationPreference === null
-              : b.occupationPreference === occFilter,
-          );
+        : beds.filter((b) => b.occupationPreference === occFilter);
     const rank = (b: EligibleBed) =>
       isShortStay
         ? Number(b.kind === "RESERVED_FREE_AFTER")

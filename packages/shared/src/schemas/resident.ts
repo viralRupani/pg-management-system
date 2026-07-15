@@ -20,7 +20,9 @@ export const registerResidentSchema = z
     // Required for long-term residents; optional for short-stay guests (a
     // lightweight guest record only needs name + phone). See superRefine.
     age: z.number().int().min(15).max(120).optional(),
-    occupationType: z.nativeEnum(OccupationType).default(OccupationType.OTHER),
+    occupationType: z
+      .nativeEnum(OccupationType)
+      .default(OccupationType.STUDENT),
     nativePlace: z.string().max(120).optional(),
     emergencyContactName: z.string().min(2).max(120).optional(),
     emergencyContactRelation: z.nativeEnum(EmergencyRelation).optional(),
