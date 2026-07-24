@@ -3,7 +3,7 @@ import { and, eq, inArray, isNotNull, ne, sql, isNull } from "drizzle-orm";
 import {
   ComplaintStatus,
   DocumentStatus,
-  DocumentType,
+  GOVERNMENT_ID_TYPES,
   ExitPendingType,
   PaymentStatus,
   ResidentStatus,
@@ -238,13 +238,13 @@ export class DashboardService {
           .from(payments)
           .where(eq(payments.status, PaymentStatus.SUBMITTED)),
 
-        // KYC (Aadhaar) docs uploaded and awaiting verification.
+        // KYC (government ID) docs uploaded and awaiting verification.
         db
           .select({ count: sql<number>`count(*)::int` })
           .from(documents)
           .where(
             and(
-              eq(documents.type, DocumentType.AADHAAR),
+              inArray(documents.type, GOVERNMENT_ID_TYPES),
               eq(documents.status, DocumentStatus.PENDING),
             ),
           ),

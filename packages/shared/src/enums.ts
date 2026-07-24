@@ -128,11 +128,11 @@ export type ComplaintStatus =
   (typeof ComplaintStatus)[keyof typeof ComplaintStatus];
 
 export const DocumentType = {
-  AADHAAR: "AADHAAR",
-  PAN: "PAN",
+  MASKED_AADHAAR: "MASKED_AADHAAR",
+  DRIVING_LICENCE: "DRIVING_LICENCE",
+  VOTER_ID: "VOTER_ID",
+  PASSPORT: "PASSPORT",
   PHOTO: "PHOTO",
-  RENTAL_AGREEMENT: "RENTAL_AGREEMENT",
-  OTHER: "OTHER",
 } as const;
 export type DocumentType = (typeof DocumentType)[keyof typeof DocumentType];
 
@@ -145,9 +145,10 @@ export type DocumentStatus =
   (typeof DocumentStatus)[keyof typeof DocumentStatus];
 
 /**
- * Derived KYC rollup for a resident — NOT stored, computed from the resident's
- * required documents (currently Aadhaar only). NOT_SUBMITTED = no document yet;
- * PENDING/VERIFIED/REJECTED mirror the document's own review state.
+ * Derived KYC rollup for a resident — NOT stored, computed across the resident's
+ * government-ID documents (GOVERNMENT_ID_TYPES; any ONE verified = complete).
+ * NOT_SUBMITTED = no government ID yet; VERIFIED if any is verified, else PENDING
+ * if any is pending, else REJECTED. See document-meta.ts.
  */
 export const KycStatus = {
   NOT_SUBMITTED: "NOT_SUBMITTED",

@@ -7,9 +7,11 @@ import {
   type EligibleBed,
   type ExitingBed,
   type DepositSummary,
+  DOCUMENT_TYPE_META,
   type DepositTransactionSummary,
   type ExitRequestSummary,
   type DocumentSummary,
+  documentTypeLabel,
   EmergencyRelation,
   type ExtraChargeSummary,
   type InvoiceSummary,
@@ -1356,7 +1358,7 @@ function ResidentDetail({ id }: { id: string }) {
           </CardHeader>
           <CardContent>
             {documents.length === 0 ? (
-              <EmptyRow text="Awaiting Aadhaar upload from the resident (uploaded from their app)." />
+              <EmptyRow text="Awaiting a government ID upload from the resident (uploaded from their app)." />
             ) : (
               <ul className="divide-y divide-border">
                 {documents.map((d) => (
@@ -1366,7 +1368,7 @@ function ResidentDetail({ id }: { id: string }) {
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-medium">
-                        {d.type.replace("_", " ").toLowerCase()}
+                        {documentTypeLabel(d.type)}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {formatDate(d.createdAt)}
@@ -2922,29 +2924,59 @@ function DocViewerDialog({
   };
 
   const isPending = doc?.status === "PENDING";
+  const isPdf = doc?.contentType === "application/pdf";
+  const expected = doc ? DOCUMENT_TYPE_META[doc.type]?.instruction : undefined;
 
   return (
     <Dialog
       open={doc !== null}
       onClose={onClose}
-      title={doc ? doc.type.replace(/_/g, " ").toLowerCase() : "Document"}
+      title={doc ? documentTypeLabel(doc.type) : "Document"}
       description={doc ? formatDate(doc.createdAt) : undefined}
       className="max-w-3xl"
     >
-      {/* Image area */}
+      {/* Preview area — PDFs (DigiLocker Aadhaar, passport pages) render in an
+          embedded viewer; images render inline. Both offer open-in-new-tab. */}
       <div className="flex min-h-[300px] items-center justify-center overflow-hidden rounded-lg bg-muted">
         {imgLoading ? (
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand border-t-transparent" />
         ) : imgUrl ? (
-          <img
-            src={imgUrl}
-            alt={doc?.type ?? "document"}
-            className="max-h-[60vh] w-full object-contain"
-          />
+          isPdf ? (
+            <iframe
+              src={imgUrl}
+              title={doc ? documentTypeLabel(doc.type) : "document"}
+              className="h-[60vh] w-full"
+            />
+          ) : (
+            <img
+              src={imgUrl}
+              alt={doc?.type ?? "document"}
+              className="max-h-[60vh] w-full object-contain"
+            />
+          )
         ) : (
           <p className="text-sm text-muted-foreground">No preview available.</p>
         )}
       </div>
+
+      {/* Open-in-new-tab fallback (esp. for PDFs that don't render inline). */}
+      {imgUrl && (
+        <div className="mt-2 flex items-center justify-between gap-2">
+          {expected ? (
+            <p className="text-xs text-muted-foreground">Expected: {expected}</p>
+          ) : (
+            <span />
+          )}
+          <a
+            href={imgUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 text-xs font-medium text-brand hover:underline"
+          >
+            Open in new tab
+          </a>
+        </div>
+      )}
 
       {/* Status row + actions */}
       <div className="mt-4 space-y-3">

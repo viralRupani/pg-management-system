@@ -1,4 +1,5 @@
 export * from "./enums";
+export * from "./document-meta";
 export * from "./sharing";
 export * from "./schemas/phone";
 export * from "./schemas/auth";

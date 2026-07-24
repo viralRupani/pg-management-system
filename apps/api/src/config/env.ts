@@ -65,8 +65,17 @@ const envSchema = z.object({
   S3_BUCKET: z.string().optional(),
   ACCESS_KEY_ID: z.string().optional(),
   SECRET_ACCESS_KEY: z.string().optional(),
-  // Presigned upload/download URL lifetime, in seconds.
+  // Presigned URL lifetime, in seconds — the default for uploads AND non-KYC
+  // downloads (logos, UPI QR, payment proofs, complaint photos).
   S3_PRESIGN_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+  // KYC document READ link lifetime, in seconds. Deliberately short: a KYC view
+  // link should live only long enough to render, not be shared or bookmarked.
+  // Scoped to KYC downloads only (DocumentsService.getDownloadUrl).
+  S3_KYC_DOWNLOAD_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(120),
   // Max upload size in bytes; the presigned-POST policy edge-rejects anything
   // larger. Defaults to the shared MAX_UPLOAD_BYTES (5 MB).
   UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(MAX_UPLOAD_BYTES),

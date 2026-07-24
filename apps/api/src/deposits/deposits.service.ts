@@ -1,6 +1,8 @@
 import {
   ConflictException,
+  Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
@@ -34,10 +36,15 @@ import {
   bookings,
   depositTransactions,
   deposits,
+  documents,
   invoices,
   payments,
   users,
 } from "../db/schema";
+import {
+  STORAGE_PROVIDER,
+  type StorageProvider,
+} from "../storage/storage.module";
 import { freeBed } from "../db/free-bed";
 import { isUniqueViolation } from "../db/pg-errors";
 import { addMonthsToPeriod } from "../common/ist-date";
@@ -62,7 +69,12 @@ type Tx = Parameters<
  */
 @Injectable()
 export class DepositsService {
-  constructor(private readonly ctx: TenantContextService) {}
+  private readonly logger = new Logger(DepositsService.name);
+
+  constructor(
+    private readonly ctx: TenantContextService,
+    @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+  ) {}
 
   /** Manager: record a resident's deposit (one per resident). Also logs the
    * amount as the deposit's first COLLECTION so the ledger is complete from
@@ -798,7 +810,7 @@ export class DepositsService {
     const tenantId = this.ctx.currentTenantId()!;
     const db = this.ctx.db();
 
-    return db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       // (1) Re-entry guard FIRST: conditional ACTIVE -> EXITED. A second
       // concurrent call flips 0 rows and bails before any side effect. Also
       // clears any exit-request state (approved + pending) so nothing stale
@@ -933,6 +945,11 @@ export class DepositsService {
         bedFreed = true;
       }
 
+      // (4) Purge KYC documents — the privacy notice promises deletion on exit.
+      // Rows go inside the txn (rolled back if the settle fails); the S3 objects
+      // are removed after commit (below), best-effort.
+      await tx.delete(documents).where(eq(documents.residentId, input.residentId));
+
       return {
         depositPaise,
         priorDeductionsPaise: priorOutflows,
@@ -943,6 +960,20 @@ export class DepositsService {
         bedFreed,
       };
     });
+
+    // Delete the resident's KYC objects from storage AFTER the exit commits. A
+    // slow or failed S3 delete must not roll back the settlement, so this is
+    // best-effort (the rows are already gone; orphaned objects can be swept
+    // later). Prefix matches the per-resident key namespace from presignUpload.
+    await this.storage
+      .deletePrefix(`${tenantId}/kyc/${input.residentId}/`)
+      .catch((err) =>
+        this.logger.warn(
+          `Failed to purge KYC objects for resident ${input.residentId}: ${String(err)}`,
+        ),
+      );
+
+    return result;
   }
 
   /**

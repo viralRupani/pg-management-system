@@ -10,11 +10,13 @@ import { tenants } from "./tenants";
 import { users } from "./users";
 
 /**
- * A resident's KYC / security document (Aadhaar, PAN, photo, agreement). Stored
- * as an S3 key the manager reviews; lifecycle PENDING -> VERIFIED | REJECTED,
- * guarded in the service (same pattern as payments). Resident reads filter by
+ * A resident's KYC document (masked Aadhaar, driving licence, voter ID,
+ * passport, or photograph — see DocumentType/DOCUMENT_TYPE_META). Stored as an
+ * S3 key the manager reviews; lifecycle PENDING -> VERIFIED | REJECTED, guarded
+ * in the service (same pattern as payments). Resident reads filter by
  * user_id = sub (RLS isolates tenants, not residents). Composite FKs keep
- * resident + reviewer in tenant.
+ * resident + reviewer in tenant. Purged (rows + S3 objects) when the resident
+ * exits — see DepositsService.settleExit.
  */
 export const documents = pgTable(
   "documents",
@@ -26,6 +28,7 @@ export const documents = pgTable(
     residentId: uuid("resident_id").notNull(),
     type: text("type").notNull(), // DocumentType
     s3Key: text("s3_key").notNull(),
+    contentType: text("content_type"), // MIME of the stored file (image/* | application/pdf)
     status: text("status").notNull().default("PENDING"), // DocumentStatus
     reviewNote: text("review_note"),
     reviewedByUserId: uuid("reviewed_by_user_id"),

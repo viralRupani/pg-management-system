@@ -21,9 +21,10 @@ export class DocumentsController {
   @Post("upload-url")
   @Roles(UserRole.RESIDENT)
   uploadUrl(
+    @CurrentUser() user: JwtPayload,
     @Body(new ZodBody(documentUploadUrlSchema)) dto: DocumentUploadUrlInput,
   ) {
-    return this.documents.requestUploadUrl(dto.contentType);
+    return this.documents.requestUploadUrl(user.sub, dto.contentType);
   }
 
   @Post()

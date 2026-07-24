@@ -14,6 +14,7 @@ import {
 } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
 import { documents, users } from "../db/schema";
+import { ENV, type AppEnv } from "../config/env";
 import {
   STORAGE_PROVIDER,
   type StorageProvider,
@@ -30,14 +31,21 @@ export class DocumentsService {
   constructor(
     private readonly ctx: TenantContextService,
     @Inject(STORAGE_PROVIDER) private readonly storage: StorageProvider,
+    @Inject(ENV) private readonly env: AppEnv,
   ) {}
 
   /** Resident: presigned URL to upload a KYC file. */
-  async requestUploadUrl(contentType: string): Promise<PresignedUploadResult> {
+  async requestUploadUrl(
+    residentId: string,
+    contentType: string,
+  ): Promise<PresignedUploadResult> {
     assertAllowedType("kyc", contentType);
     return this.storage.presignUpload({
       tenantId: this.ctx.currentTenantId()!,
       kind: "kyc",
+      // Namespace by resident so all of a resident's KYC objects share one
+      // prefix and can be purged together on exit (see settleExit).
+      subPath: residentId,
       contentType,
     });
   }
@@ -62,12 +70,14 @@ export class DocumentsService {
         residentId, // from JWT sub, never the body
         type: input.type,
         s3Key: input.s3Key,
+        contentType: input.contentType ?? null,
         status: DocumentStatus.PENDING,
       })
       .onConflictDoUpdate({
         target: [documents.tenantId, documents.residentId, documents.type],
         set: {
           s3Key: input.s3Key,
+          contentType: input.contentType ?? null,
           status: DocumentStatus.PENDING,
           reviewNote: null,
           reviewedByUserId: null,
@@ -102,7 +112,11 @@ export class DocumentsService {
       .from(documents)
       .where(eq(documents.id, id));
     if (!d) throw new NotFoundException("Document not found");
-    return this.storage.presignDownload(d.key);
+    // Short-lived read link — a KYC view URL shouldn't be shareable/bookmarkable.
+    return this.storage.presignDownload(
+      d.key,
+      this.env.S3_KYC_DOWNLOAD_TTL_SECONDS,
+    );
   }
 
   /** Manager: mark a PENDING document VERIFIED. */
@@ -168,6 +182,7 @@ export class DocumentsService {
         type: documents.type,
         status: documents.status,
         reviewNote: documents.reviewNote,
+        contentType: documents.contentType,
         createdAt: documents.createdAt,
       })
       .from(documents)
@@ -181,6 +196,7 @@ export class DocumentsService {
       type: r.type as DocumentType,
       status: r.status as DocumentStatus,
       reviewNote: r.reviewNote,
+      contentType: r.contentType,
       createdAt: r.createdAt.toISOString(),
     }));
   }

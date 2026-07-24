@@ -27,15 +27,19 @@ import {
   uploadToPresignedPost,
 } from "@/lib/upload";
 import { cn, toMessage } from "@/lib/utils";
-import { DocumentStatus, DocumentType } from "@pg/shared";
+import {
+  DOCUMENT_TYPE_META,
+  DOCUMENT_UPLOAD_WARNING,
+  DocumentStatus,
+  type DocumentType,
+} from "@pg/shared";
 
-const DOC_TYPES: { type: DocumentType; label: string }[] = [
-  { type: DocumentType.AADHAAR, label: "Aadhaar card" },
-  { type: DocumentType.PAN, label: "PAN card" },
-  { type: DocumentType.PHOTO, label: "Photograph" },
-  { type: DocumentType.RENTAL_AGREEMENT, label: "Rental agreement" },
-  { type: DocumentType.OTHER, label: "Other document" },
-];
+const DOC_TYPES = (
+  Object.entries(DOCUMENT_TYPE_META) as [
+    DocumentType,
+    (typeof DOCUMENT_TYPE_META)[DocumentType],
+  ][]
+).map(([type, meta]) => ({ type, label: meta.label }));
 
 const RICON: Record<string, { name: string; tone: RiconTone }> = {
   [DocumentStatus.VERIFIED]: { name: "checkmark-circle", tone: "success" },
@@ -66,7 +70,7 @@ export default function DocumentsPage() {
       const post = await api.resident.documents.uploadUrl({ type: chosenType, contentType });
       const ok = await uploadToPresignedPost(post, file);
       if (!ok) throw new Error("Upload failed. Please try a smaller file.");
-      await api.resident.documents.submit({ type: chosenType, s3Key: post.key });
+      await api.resident.documents.submit({ type: chosenType, s3Key: post.key, contentType });
       await queryClient.invalidateQueries({ queryKey: qk.documents });
       setSheetOpen(false);
       setChosenType(null);
@@ -104,7 +108,8 @@ export default function DocumentsPage() {
               {data.map((d, i) => {
                 const r = RICON[d.status] ?? RICON[DocumentStatus.PENDING];
                 const s = documentStatus(d.status);
-                const label = DOC_TYPES.find((t) => t.type === d.type)?.label ?? d.type;
+                const label =
+                  DOCUMENT_TYPE_META[d.type as DocumentType]?.label ?? d.type;
                 return (
                   <Row
                     key={d.id}
@@ -165,6 +170,31 @@ export default function DocumentsPage() {
             );
           })}
         </div>
+
+        {chosenType ? (
+          <div className="flex flex-row items-start gap-2 rounded-tile bg-surface2 px-3 py-2.5">
+            <Icon
+              name="information-circle"
+              size={16}
+              className="mt-0.5 shrink-0 text-ink3"
+            />
+            <AppText variant="caption" className="flex-1 text-[12px] text-ink2">
+              {DOCUMENT_TYPE_META[chosenType].instruction}
+            </AppText>
+          </div>
+        ) : null}
+
+        <div className="flex flex-row items-start gap-2 rounded-tile border border-amber-line bg-amber-bg px-3 py-2.5">
+          <Icon
+            name="shield-checkmark"
+            size={16}
+            className="mt-0.5 shrink-0 text-amber"
+          />
+          <AppText variant="caption" className="flex-1 text-[12px] text-amber">
+            {DOCUMENT_UPLOAD_WARNING}
+          </AppText>
+        </div>
+
         <div className="flex flex-row gap-3">
           <Button
             title="Files / PDF"

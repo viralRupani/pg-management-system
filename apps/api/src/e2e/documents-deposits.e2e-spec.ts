@@ -73,7 +73,7 @@ describe("M4 documents, deposits & exit (e2e)", () => {
 
     it("resident submits a doc; manager verifies; double-verify is blocked (409)", async () => {
       docId = await newId(
-        await h.req("post", "/documents", r1, { type: "AADHAAR", s3Key: "k1" }),
+        await h.req("post", "/documents", r1, { type: "MASKED_AADHAAR", s3Key: "k1" }),
       );
       const mine = await h.req("get", "/documents/mine", r1);
       expect(mine.body.find((d: { id: string }) => d.id === docId).status).toBe("PENDING");
@@ -83,6 +83,11 @@ describe("M4 documents, deposits & exit (e2e)", () => {
 
       const again = await h.req("post", `/documents/${docId}/verify`, pgA.managerToken);
       expect(again.status).toBe(409);
+
+      // Manager can presign a (short-lived) read URL for the document.
+      const dl = await h.req("get", `/documents/${docId}/download`, pgA.managerToken);
+      expect(dl.status).toBe(200);
+      expect(typeof dl.body.downloadUrl).toBe("string");
 
       // A decided document also can't be flipped to the other outcome — the
       // conditional guard keys on status=PENDING, not just "not already verified".
@@ -94,7 +99,7 @@ describe("M4 documents, deposits & exit (e2e)", () => {
 
     it("manager rejects a second doc with a note", async () => {
       const id = await newId(
-        await h.req("post", "/documents", r1, { type: "PAN", s3Key: "k2" }),
+        await h.req("post", "/documents", r1, { type: "VOTER_ID", s3Key: "k2" }),
       );
       const reject = await h.req("post", `/documents/${id}/reject`, pgA.managerToken, {
         note: "Blurry scan",
@@ -105,31 +110,31 @@ describe("M4 documents, deposits & exit (e2e)", () => {
     });
 
     it("re-uploading a rejected doc replaces it in place (back to PENDING, no duplicate)", async () => {
-      // The PAN above is REJECTED. A re-submit ("ask for re-upload" loop) reuses
+      // The VOTER_ID above is REJECTED. A re-submit ("ask for re-upload" loop) reuses
       // the same row (unique tenant+resident+type) and resets it to PENDING.
       const resubmit = await h.req("post", "/documents", r1, {
-        type: "PAN",
+        type: "VOTER_ID",
         s3Key: "k2-v2",
       });
       expect(resubmit.status).toBe(201);
 
       const mine = await h.req("get", "/documents/mine", r1);
-      const pans = mine.body.filter((d: { type: string }) => d.type === "PAN");
+      const pans = mine.body.filter((d: { type: string }) => d.type === "VOTER_ID");
       expect(pans).toHaveLength(1); // replaced, not duplicated
       expect(pans[0].status).toBe("PENDING");
     });
 
     it("re-submitting a VERIFIED doc is blocked (409, never silently un-verified)", async () => {
-      // The AADHAAR above is VERIFIED; re-submitting must not reset it to PENDING.
+      // The MASKED_AADHAAR above is VERIFIED; re-submitting must not reset it to PENDING.
       const resubmit = await h.req("post", "/documents", r1, {
-        type: "AADHAAR",
+        type: "MASKED_AADHAAR",
         s3Key: "k1-v2",
       });
       expect(resubmit.status).toBe(409);
 
       const mine = await h.req("get", "/documents/mine", r1);
       const aadhaar = mine.body.find(
-        (d: { type: string }) => d.type === "AADHAAR",
+        (d: { type: string }) => d.type === "MASKED_AADHAAR",
       );
       expect(aadhaar.status).toBe("VERIFIED"); // unchanged
     });
@@ -137,6 +142,19 @@ describe("M4 documents, deposits & exit (e2e)", () => {
     it("a resident does not see another resident's docs (intra-tenant)", async () => {
       const mine = await h.req("get", "/documents/mine", r2);
       expect(mine.body).toHaveLength(0);
+    });
+
+    it("KYC is satisfied by ANY ONE verified government ID (a passport, no Aadhaar)", async () => {
+      const before = await h.req("get", `/residents/${r2Id}`, pgA.managerToken);
+      expect(before.body.kycStatus).toBe("NOT_SUBMITTED");
+
+      const passportId = await newId(
+        await h.req("post", "/documents", r2, { type: "PASSPORT", s3Key: "pp1" }),
+      );
+      await h.req("post", `/documents/${passportId}/verify`, pgA.managerToken);
+
+      const after = await h.req("get", `/residents/${r2Id}`, pgA.managerToken);
+      expect(after.body.kycStatus).toBe("VERIFIED"); // passport alone counts
     });
   });
 
@@ -185,6 +203,16 @@ describe("M4 documents, deposits & exit (e2e)", () => {
       // "record deposit" also logs a COLLECTION for the initial amount.
       const types = ledger.body.ledger.map((t: { type: string }) => t.type).sort();
       expect(types).toEqual(["COLLECTION", "DEDUCTION", "REFUND"]);
+
+      // Privacy: exiting purges the resident's KYC document rows (the S3 objects
+      // go too, best-effort — no-op under the local storage stub). r1 had a
+      // verified masked-Aadhaar + a voter ID; both are gone now.
+      const mgrDocs = await h.req("get", "/documents", pgA.managerToken);
+      expect(
+        mgrDocs.body.some((d: { residentId: string }) => d.residentId === r1Id),
+      ).toBe(false);
+      const mine = await h.req("get", "/documents/mine", r1);
+      expect(mine.body).toHaveLength(0);
     });
 
     it("a second settlement for the same resident is blocked (409)", async () => {

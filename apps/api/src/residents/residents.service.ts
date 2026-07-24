@@ -14,6 +14,7 @@ import {
   isNull,
   not,
   or,
+  sql,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
@@ -23,7 +24,7 @@ import {
   type ResidentSummary,
   BookingStatus,
   DocumentStatus,
-  DocumentType,
+  GOVERNMENT_ID_TYPES,
   KycStatus,
   ResidentStatus,
   UserRole,
@@ -53,10 +54,28 @@ const creator = alias(users, "creator");
 // Refer & earn: the referring resident is also another `users` row.
 const referrer = alias(users, "referrer");
 
-// The document type that constitutes KYC today. Adding more required types
-// later means rolling the per-resident status up across all of them; for one
-// type the resident's KYC status is just that document's status.
-const KYC_REQUIRED_DOC_TYPE = DocumentType.AADHAAR;
+// KYC is satisfied by ANY ONE verified government ID (GOVERNMENT_ID_TYPES). The
+// per-resident status is a priority rollup across those docs: VERIFIED if any is
+// verified, else PENDING if any pending, else REJECTED if any rejected, else
+// NOT_SUBMITTED. Lower number = higher priority in the ORDER BY below.
+const KYC_STATUS_PRIORITY = sql`case ${documents.status}
+  when ${DocumentStatus.VERIFIED} then 0
+  when ${DocumentStatus.PENDING} then 1
+  when ${DocumentStatus.REJECTED} then 2
+  else 3 end`;
+
+/**
+ * Correlated scalar subquery: the resident's "best" government-ID document
+ * status (or NULL if none on file), keeping the resident-list query N+1-free.
+ * Runs under tenant RLS like the rest of the service.
+ */
+const kycDocStatusExpr = sql<string | null>`(
+  select ${documents.status} from ${documents}
+  where ${documents.residentId} = ${users.id}
+    and ${documents.type} in ${GOVERNMENT_ID_TYPES}
+  order by ${KYC_STATUS_PRIORITY}
+  limit 1
+)`;
 
 /**
  * Resident operations, all under tenant RLS. The tenant id comes from the
@@ -195,7 +214,7 @@ export class ResidentsService {
           .where(
             and(
               eq(documents.residentId, users.id),
-              eq(documents.type, KYC_REQUIRED_DOC_TYPE),
+              inArray(documents.type, GOVERNMENT_ID_TYPES),
               eq(documents.status, DocumentStatus.VERIFIED),
             ),
           ),
@@ -257,7 +276,7 @@ export class ResidentsService {
         isShortStay: users.isShortStay,
         shortStayCheckOutDate: users.shortStayCheckOutDate,
         shortStayPerDayChargePaise: users.shortStayPerDayChargePaise,
-        kycDocStatus: documents.status,
+        kycDocStatus: kycDocStatusExpr,
         createdByName: creator.name,
         createdAt: users.createdAt,
         referredByName: referrer.name,
@@ -286,15 +305,9 @@ export class ResidentsService {
         ),
       )
       .leftJoin(bookedBeds, eq(bookedBeds.id, bookings.bedId))
-      // 1:1 — the unique (tenant, resident, type) index means at most one
-      // Aadhaar row per resident, so this can't fan out the result set.
-      .leftJoin(
-        documents,
-        and(
-          eq(documents.residentId, users.id),
-          eq(documents.type, KYC_REQUIRED_DOC_TYPE),
-        ),
-      )
+      // KYC status is a correlated subquery (kycDocStatusExpr) over the
+      // resident's government-ID docs, NOT a join — multiple ID types would
+      // otherwise fan out the result set. See kycDocStatusExpr above.
       // The registering manager/owner (1:1, may be null for seeded rows) — only
       // their display name is needed for the "Added by" provenance line.
       .leftJoin(
@@ -359,8 +372,8 @@ function dayspan(checkIn: string, checkOut: string): number {
   return Math.max(0, Math.round((b - a) / 86_400_000));
 }
 
-// No required document on file → KYC not started; otherwise the resident's KYC
-// status is the required document's own review state (values line up 1:1).
+// No government ID on file → KYC not started; otherwise map the rolled-up
+// best-status (kycDocStatusExpr) straight through (values line up 1:1).
 function toKycStatus(docStatus: string | null): KycStatus {
   switch (docStatus) {
     case DocumentStatus.VERIFIED:

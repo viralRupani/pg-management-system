@@ -2,7 +2,9 @@ import { BadRequestException, Global, Module } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { type UploadKind, isAllowedType } from "@pg/shared";
 import {
+  DeleteObjectsCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   S3Client,
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
@@ -36,13 +38,35 @@ export interface StorageProvider {
     tenantId: string;
     kind: string; // e.g. "payments", "kyc" — also the S3 key prefix
     contentType: string;
+    // Optional extra path segment nested under the kind (e.g. a residentId for
+    // KYC, so a resident's docs live under one prefix and can be purged together).
+    subPath?: string;
   }): Promise<PresignedUpload>;
-  presignDownload(key: string): Promise<{ downloadUrl: string }>;
+  /**
+   * Presigned GET URL. `expiresInSeconds` overrides the default read lifetime —
+   * KYC document reads pass a short value (a view link shouldn't be shareable),
+   * while logos/QR/proofs use the default.
+   */
+  presignDownload(
+    key: string,
+    expiresInSeconds?: number,
+  ): Promise<{ downloadUrl: string }>;
+  /**
+   * Delete every object under a prefix, best-effort. Used to purge a resident's
+   * KYC documents on exit (prefix `{tenantId}/kyc/{residentId}/`) — this also
+   * catches objects orphaned by a presign that never completed its `submit()`.
+   */
+  deletePrefix(prefix: string): Promise<void>;
 }
 
-/** Tenant-namespaced key so the real S3 layout is correct from day one. */
-function buildKey(tenantId: string, kind: string): string {
-  return `${tenantId}/${kind}/${randomUUID()}`;
+/**
+ * Tenant-namespaced key so the real S3 layout is correct from day one. An
+ * optional `subPath` nests objects one level deeper (`{tenantId}/{kind}/
+ * {subPath}/{uuid}`) so a whole group can be listed/purged by prefix.
+ */
+function buildKey(tenantId: string, kind: string, subPath?: string): string {
+  const mid = subPath ? `${kind}/${subPath}` : kind;
+  return `${tenantId}/${mid}/${randomUUID()}`;
 }
 
 /**
@@ -65,8 +89,9 @@ class LocalStorageProvider implements StorageProvider {
     tenantId: string;
     kind: string;
     contentType: string;
+    subPath?: string;
   }): Promise<PresignedUpload> {
-    const key = buildKey(params.tenantId, params.kind);
+    const key = buildKey(params.tenantId, params.kind, params.subPath);
     // Same shape as the S3 driver so clients/tests are driver-agnostic. The
     // stub URL does not accept the POST — uploads don't round-trip under `local`.
     return {
@@ -76,8 +101,15 @@ class LocalStorageProvider implements StorageProvider {
     };
   }
 
-  async presignDownload(key: string): Promise<{ downloadUrl: string }> {
+  async presignDownload(
+    key: string,
+    _expiresInSeconds?: number,
+  ): Promise<{ downloadUrl: string }> {
     return { downloadUrl: `${this.base}/download/${key}` };
+  }
+
+  async deletePrefix(_prefix: string): Promise<void> {
+    // No-op: the local stub never stores objects.
   }
 }
 
@@ -109,8 +141,9 @@ class S3StorageProvider implements StorageProvider {
     tenantId: string;
     kind: string;
     contentType: string;
+    subPath?: string;
   }): Promise<PresignedUpload> {
-    const key = buildKey(params.tenantId, params.kind);
+    const key = buildKey(params.tenantId, params.kind, params.subPath);
     const { url, fields } = await createPresignedPost(this.client, {
       Bucket: this.bucket,
       Key: key,
@@ -125,13 +158,43 @@ class S3StorageProvider implements StorageProvider {
     return { url, fields, key };
   }
 
-  async presignDownload(key: string): Promise<{ downloadUrl: string }> {
+  async presignDownload(
+    key: string,
+    expiresInSeconds?: number,
+  ): Promise<{ downloadUrl: string }> {
     const downloadUrl = await getSignedUrl(
       this.client,
       new GetObjectCommand({ Bucket: this.bucket, Key: key }),
-      { expiresIn: this.ttl },
+      { expiresIn: expiresInSeconds ?? this.ttl },
     );
     return { downloadUrl };
+  }
+
+  async deletePrefix(prefix: string): Promise<void> {
+    // Page through every object under the prefix and batch-delete (S3 caps
+    // DeleteObjects at 1000 keys per call, ListObjectsV2 at 1000 per page).
+    let token: string | undefined;
+    do {
+      const listed = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: prefix,
+          ContinuationToken: token,
+        }),
+      );
+      const keys = (listed.Contents ?? [])
+        .map((o) => o.Key)
+        .filter((k): k is string => Boolean(k));
+      if (keys.length > 0) {
+        await this.client.send(
+          new DeleteObjectsCommand({
+            Bucket: this.bucket,
+            Delete: { Objects: keys.map((Key) => ({ Key })), Quiet: true },
+          }),
+        );
+      }
+      token = listed.IsTruncated ? listed.NextContinuationToken : undefined;
+    } while (token);
   }
 }
 

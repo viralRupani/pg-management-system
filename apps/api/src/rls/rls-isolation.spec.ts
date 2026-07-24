@@ -295,8 +295,8 @@ describe("cross-tenant isolation (RLS gate)", () => {
         .values({
           tenantId: tenantA,
           residentId: residentA,
-          type: "AADHAAR",
-          s3Key: `${tenantA}/kyc/x`,
+          type: "MASKED_AADHAAR",
+          s3Key: `${tenantA}/kyc/${residentA}/x`,
         });
       await tcs
         .db()

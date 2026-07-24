@@ -13,6 +13,10 @@ export type DocumentUploadUrlInput = z.infer<typeof documentUploadUrlSchema>;
 export const submitDocumentSchema = z.object({
   type: z.nativeEnum(DocumentType),
   s3Key: z.string().min(1),
+  // The uploaded file's MIME type, so the manager viewer can pick image vs PDF
+  // rendering without a HEAD round-trip. The resident already computes it for
+  // the presign; optional for back-compat with pre-existing rows.
+  contentType: contentTypeField.optional(),
 });
 export type SubmitDocumentInput = z.infer<typeof submitDocumentSchema>;
 
@@ -29,6 +33,9 @@ export const documentSummarySchema = z.object({
   type: z.nativeEnum(DocumentType),
   status: z.nativeEnum(DocumentStatus),
   reviewNote: z.string().nullable(),
+  // MIME type of the stored file (null for pre-existing rows). Drives the admin
+  // viewer's PDF-vs-image branch.
+  contentType: z.string().nullable(),
   createdAt: z.string(),
 });
 export type DocumentSummary = z.infer<typeof documentSummarySchema>;
