@@ -140,7 +140,7 @@ export default function LoginPage() {
               setSlug(e.target.value);
               setError(null);
             }}
-            placeholder="GREENNEST"
+            placeholder="BASERA"
             autoCapitalize="characters"
             autoCorrect="off"
             autoFocus

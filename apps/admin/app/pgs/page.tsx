@@ -396,7 +396,7 @@ function CreatePgDialog({
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Sunrise PG"
+            placeholder="Basera PG"
           />
         </div>
         <div className="space-y-1.5">
@@ -408,7 +408,7 @@ function CreatePgDialog({
             onChange={(e) =>
               setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))
             }
-            placeholder="sunrise-pg"
+            placeholder="basera-pg"
           />
           <p className="text-xs text-muted-foreground">
             Lowercase letters, digits and hyphens. Residents use this to log in.

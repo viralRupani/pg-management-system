@@ -775,7 +775,7 @@ function AddBuildingDialog({
             onChange={(e) => setName(e.target.value)}
             required
             minLength={1}
-            placeholder="e.g. Sunrise Block A"
+            placeholder="e.g. Basera Block A"
           />
         </Field>
         <Field label="Address (optional)" htmlFor="b-address">

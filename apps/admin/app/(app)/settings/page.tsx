@@ -125,7 +125,7 @@ function IdentityCard({ onSaved }: { onSaved: () => Promise<void> | void }) {
               required
               minLength={2}
               maxLength={120}
-              placeholder="Sunrise PG"
+              placeholder="Basera PG"
             />
           </div>
 
@@ -298,7 +298,7 @@ function PgCodeCard({ onSaved }: { onSaved: () => Promise<void> | void }) {
                   id="pg-code"
                   value={slug}
                   onChange={(e) => setSlugInput(e.target.value)}
-                  placeholder="sunrise-pg"
+                  placeholder="basera-pg"
                   className="font-mono"
                   autoCapitalize="none"
                   spellCheck={false}
@@ -506,7 +506,7 @@ function UpiCard({
                   setUpiId(e.target.value);
                   setUpiIdSaved(false);
                 }}
-                placeholder="sunrise-pg@okhdfcbank"
+                placeholder="basera-pg@okhdfcbank"
                 className="font-mono"
                 autoCapitalize="none"
                 spellCheck={false}

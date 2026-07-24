@@ -49,7 +49,7 @@ export default function SlugScreen() {
           setCode(t);
           setError(null);
         }}
-        placeholder="GREENNEST"
+        placeholder="BASERA"
         autoCapitalize="characters"
         autoCorrect={false}
         autoFocus
