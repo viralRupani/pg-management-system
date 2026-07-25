@@ -1,0 +1,48 @@
+# systemd unit for the Basera NestJS API.
+#
+# Install:
+#   sudo cp deploy/basera-api.service /etc/systemd/system/basera-api.service
+#   # edit WorkingDirectory / ExecStart paths + User below to match your box
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now basera-api
+#   systemctl status basera-api
+#   journalctl -u basera-api -f      # live logs
+#
+# Prod run is `node dist/main.js` (built by `pnpm --filter @pg/api build`).
+# `node` does NOT read a .env file here — every variable comes from the
+# EnvironmentFile below (chmod 600, owned by the service user). BullMQ runs
+# IN-PROCESS, so this one unit is the whole backend (API + scheduler + worker).
+
+[Unit]
+Description=Basera PG Management API
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=basera
+Group=basera
+# Absolute path to apps/api inside the cloned repo:
+WorkingDirectory=/home/basera/pg-management-system/apps/api
+# Use an absolute node path (`which node`); with nvm it is NOT /usr/bin/node.
+ExecStart=/usr/bin/node dist/main.js
+EnvironmentFile=/etc/basera/api.env
+# Cron jobs run in the server timezone and all billing math is IST — pin it.
+Environment=TZ=Asia/Kolkata
+Environment=NODE_ENV=production
+Restart=always
+RestartSec=3
+# Give in-flight requests + the BullMQ worker time to drain on stop/restart.
+TimeoutStopSec=20
+# Light hardening.
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+# NOTE: the app runs from WorkingDirectory under /home/basera and writes nothing
+# to disk at runtime (files → S3, logs → journald). If you want ProtectHome, use
+# `ProtectHome=read-only` and confirm the service still boots (systemctl status) —
+# a stray runtime write under /home would crash-loop it. Left off by default.
+
+[Install]
+WantedBy=multi-user.target

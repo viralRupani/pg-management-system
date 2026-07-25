@@ -164,6 +164,21 @@ Still deferred:
 
 **Payment gateway seam** — billing collection is manual (offline UPI). The `billing_snapshots` table is ready; a Razorpay/Stripe adapter plugs in without schema changes.
 
-**Deployment** — all decisions deferred. Docker-compose is local-only; no prod infra defined.
+**Deployment** — ✅ GUIDE WRITTEN (2026-07-25): `docs/PRODUCTION.md` + ready-to-use
+`deploy/` files (hardened docker-compose, systemd unit, Caddyfile, backup/restore
+scripts, annotated `api.env.example`). Single-box (API + Redis + Postgres) →
+Phase-2 split (DB, then Redis) onto separate servers; nightly `pg_dump` → offsite
+S3. Two **pre-launch code blockers** surfaced by that work (see below).
+
+**SMS provider not implemented — resident phone-OTP login can't deliver codes**
+(critical before onboarding residents). `OtpService` (`apps/api/src/auth/otp.service.ts`)
+only writes the code to Redis; `OTP_DEV_LOG`/`OTP_DEV_FIXED_CODE` are force-disabled
+under `NODE_ENV=production`, and no `SmsProvider` is wired. Implement a real driver
+(MSG91 for India / Twilio) and inject it into `OtpService.issue()`. Managers/owners
+(email+password) are unaffected — the core manager product ships without it.
+
+**`trust proxy` not set** — behind a reverse proxy the throttler keys all clients to
+the proxy IP (one shared rate-limit bucket). One-liner in `apps/api/src/main.ts`:
+`app.getHttpAdapter().getInstance().set("trust proxy", 1)`.
 
 **Committed admin e2e harness** — the API has a full committed e2e suite (`apps/api/src/e2e/`). The admin app has no equivalent yet.
