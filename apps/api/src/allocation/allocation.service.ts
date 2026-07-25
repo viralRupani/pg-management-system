@@ -37,6 +37,7 @@ import { isUniqueViolation } from "../db/pg-errors";
 import { prorateSegment } from "../rent/rent.proration";
 import { InvoiceScheduleService } from "../rent/invoice-schedule.service";
 import { qualifyReferralIfAny } from "../referrals/qualify-referral";
+import { assertEmailVerified } from "../residents/assert-email-verified";
 
 /** Drizzle transaction handle (the arg to `db.transaction(async (tx) => …)`). */
 type Tx = Parameters<
@@ -75,6 +76,10 @@ export class AllocationService {
         and(eq(users.id, input.residentId), eq(users.role, UserRole.RESIDENT)),
       );
     if (!resident) throw new NotFoundException("Resident not found");
+
+    // Interim: email is the resident notification channel, so a long-term
+    // resident's email must be verified before we start their tenancy.
+    await assertEmailVerified(db, input.residentId);
 
     const startDate = input.startDate ? new Date(input.startDate) : new Date();
 

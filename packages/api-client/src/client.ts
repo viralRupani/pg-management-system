@@ -234,6 +234,20 @@ export class PgApiClient {
     get: (id: string) => this.http.get<ResidentSummary>(`/residents/${id}`),
     register: (input: RegisterResidentInput) =>
       this.http.post<ResidentSummary>("/residents", input),
+    /** Correct/add a resident's email (resets verification so it can be re-verified). */
+    updateEmail: (id: string, email: string) =>
+      this.http.patch<{ id: string }>(`/residents/${id}/email`, { email }),
+    /** Email a verification OTP to the resident (manager-driven verify flow). */
+    requestEmailOtp: (id: string) =>
+      this.http.post<{ sent: true }>(
+        `/residents/${id}/email/verify/request`,
+        {},
+      ),
+    /** Verify the resident's email with the 6-digit code they received. */
+    verifyEmailOtp: (id: string, code: string) =>
+      this.http.post<{ verified: true }>(`/residents/${id}/email/verify`, {
+        code,
+      }),
   };
 
   readonly allocations = {

@@ -16,6 +16,9 @@ export const registerResidentSchema = z
   .object({
     name: z.string().min(2).max(120),
     phone: indianPhone,
+    // Required for long-term residents (email is their notification channel and
+    // must be verified before bed allocation); optional for short-stay guests.
+    // See superRefine.
     email: z.string().email().optional(),
     // Required for long-term residents; optional for short-stay guests (a
     // lightweight guest record only needs name + phone). See superRefine.
@@ -106,21 +109,58 @@ export const registerResidentSchema = z
           message: "A short-stay guest can't be recorded as a referral",
         });
       }
-    } else if (d.age == null) {
+    } else {
       // Long-term residents must give an age (DB CHECK enforces it too).
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["age"],
-        message: "Age is required",
-      });
+      if (d.age == null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["age"],
+          message: "Age is required",
+        });
+      }
+      // ...and an email — it's the resident's notification channel and must be
+      // verified before a bed can be assigned. Short-stay guests are exempt.
+      if (d.email == null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["email"],
+          message: "Email is required",
+        });
+      }
     }
   });
 export type RegisterResidentInput = z.infer<typeof registerResidentSchema>;
+
+/**
+ * Manager verifies a resident's email by entering the 6-digit OTP that was
+ * emailed to the resident (the request step needs no body — the resident id is
+ * a URL param).
+ */
+export const verifyEmailOtpSchema = z.object({
+  code: z.string().regex(/^\d{6}$/, "Must be exactly 6 digits"),
+});
+export type VerifyEmailOtpInput = z.infer<typeof verifyEmailOtpSchema>;
+
+/**
+ * Correct/add a resident's email (e.g. a mis-typed address that can't receive
+ * the OTP). Resets verification server-side so the manager can re-verify — the
+ * one in-app recovery path out of the "unverified → can't allocate" dead-end.
+ */
+export const updateResidentEmailSchema = z.object({
+  email: z.string().email(),
+});
+export type UpdateResidentEmailInput = z.infer<
+  typeof updateResidentEmailSchema
+>;
 
 export const residentSummarySchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
   phone: z.string(),
+  // Email + whether it's been verified (via emailed OTP). Long-term residents
+  // must have a verified email before bed allocation; short-stays may be null.
+  email: z.string().nullable(),
+  emailVerified: z.boolean(),
   age: z.number().int().nullable(),
   occupationType: z.nativeEnum(OccupationType),
   nativePlace: z.string().nullable(),

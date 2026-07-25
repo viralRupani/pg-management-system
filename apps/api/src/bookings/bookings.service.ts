@@ -20,6 +20,7 @@ import { allocations, beds, bookings, deposits, shortStays, users } from "../db/
 import { isUniqueViolation, pgConstraintName } from "../db/pg-errors";
 import { istStartOfDayUtc } from "../common/ist-date";
 import { qualifyReferralIfAny } from "../referrals/qualify-referral";
+import { assertEmailVerified } from "../residents/assert-email-verified";
 
 /**
  * Future-dated bed bookings. A manager holds a bed for an incoming resident and
@@ -52,6 +53,10 @@ export class BookingsService {
         and(eq(users.id, input.residentId), eq(users.role, UserRole.RESIDENT)),
       );
     if (!resident) throw new NotFoundException("Resident not found");
+
+    // Interim: email is the resident notification channel, so a long-term
+    // resident's email must be verified before we reserve a bed for them.
+    await assertEmailVerified(db, input.residentId);
 
     const [activeAlloc] = await db
       .select({ id: allocations.id })

@@ -1,8 +1,9 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { and, desc, eq } from "drizzle-orm";
 import type { NotificationSummary } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
-import { notifications, pushTokens } from "../db/schema";
+import { notifications, pushTokens, users } from "../db/schema";
+import { MailService } from "../mail/mail.service";
 import {
   NOTIFICATION_CHANNEL,
   type NotificationChannel,
@@ -16,12 +17,15 @@ import {
  */
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
   constructor(
     private readonly ctx: TenantContextService,
     @Inject(NOTIFICATION_CHANNEL) private readonly channel: NotificationChannel,
+    private readonly mail: MailService,
   ) {}
 
-  /** Feed row + push fan-out to all of the user's registered devices. */
+  /** Feed row + push fan-out + email fallback to the user's verified email. */
   async notify(
     userId: string,
     n: { type: string; title: string; body: string },
@@ -45,6 +49,27 @@ export class NotificationsService {
       tokens.map((t) => t.token),
       { title: n.title, body: n.body, data: { type: n.type } },
     );
+
+    // Interim delivery channel (until real push infra): also email the resident,
+    // but only to a VERIFIED address (an unverified one may be a typo). Strictly
+    // best-effort — a mail failure must never fail the notification write.
+    const [recipient] = await db
+      .select({ email: users.email, emailVerified: users.emailVerified })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (recipient?.email && recipient.emailVerified) {
+      try {
+        await this.mail.sendNotificationEmail(recipient.email, {
+          title: n.title,
+          body: n.body,
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Failed to email notification to user ${userId}: ${String(err)}`,
+        );
+      }
+    }
   }
 
   /** Resident registers/refreshes a device token (idempotent per tenant+token). */

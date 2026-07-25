@@ -294,7 +294,8 @@ pnpm db:migrate`):
 - `src/rls/rls-isolation.spec.ts` — the DB-level isolation gate (raw pools as
   `app_user`, max=1). Add new RLS tables here for explicit per-table coverage.
 - `src/e2e/*.e2e-spec.ts` — black-box HTTP e2e over the real `AppModule`, one file
-  per milestone/feature. Current set (24 files): property-allocation, rent,
+  per milestone/feature. Current set (25 files): property-allocation, rent,
+  email-verification,
   documents-deposits, operations, metering-branding, owner, transfers,
   transfer-auto-activate, overdue-reminders, otp-lockout, resident-exit-photo,
   auth-password, bookings, charges, dashboard-alerts, deposit-apply-rent,

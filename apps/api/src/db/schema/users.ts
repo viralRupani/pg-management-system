@@ -27,6 +27,12 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   phone: text("phone"),
   email: text("email"),
+  // Resident email verification (interim notification channel, until real push
+  // infra). A long-term resident's email must be verified via an emailed OTP
+  // before they can be allocated a bed (see AllocationService/BookingsService);
+  // short-stay guests are exempt. Managers are never gated on this.
+  emailVerified: boolean("email_verified").notNull().default(false),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
 
   // Resident profile fields (null for managers — see role-conditional CHECKs)
   age: integer("age"),

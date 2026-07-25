@@ -155,6 +155,7 @@ describe("M2 property & allocation (e2e)", () => {
     const res = await h.req("post", "/residents", pgA.managerToken, {
       name: "No Age",
       phone: randomPhone(),
+      email: "no-age@example.com",
     });
     expect(res.status).toBe(400);
   });
@@ -163,6 +164,16 @@ describe("M2 property & allocation (e2e)", () => {
     const res = await h.req("post", "/residents", pgA.managerToken, {
       name: "Bad Phone",
       phone: "+15551234567",
+      age: 30,
+      email: "bad-phone@example.com",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects resident registration without an email (400)", async () => {
+    const res = await h.req("post", "/residents", pgA.managerToken, {
+      name: "No Email",
+      phone: randomPhone(),
       age: 30,
     });
     expect(res.status).toBe(400);
@@ -173,6 +184,7 @@ describe("M2 property & allocation (e2e)", () => {
       name: "Half Emergency",
       phone: randomPhone(),
       age: 30,
+      email: "half-emergency@example.com",
       emergencyContactName: "Ramesh",
     });
     expect(res.status).toBe(400);
@@ -183,6 +195,7 @@ describe("M2 property & allocation (e2e)", () => {
       name: "Full Emergency",
       phone: randomPhone(),
       age: 30,
+      email: "full-emergency@example.com",
       emergencyContactName: "Ramesh Sharma",
       emergencyContactRelation: "FATHER",
       emergencyContactPhone: randomPhone(),
@@ -211,12 +224,14 @@ describe("M2 property & allocation (e2e)", () => {
       name: "First Phone",
       phone,
       age: 30,
+      email: "first-phone@example.com",
     });
     expect(first.status).toBe(201);
     const dup = await h.req("post", "/residents", pgA.managerToken, {
       name: "Dup Phone",
       phone,
       age: 31,
+      email: "dup-phone@example.com",
     });
     expect(dup.status).toBe(409);
   });

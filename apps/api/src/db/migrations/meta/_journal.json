@@ -267,6 +267,13 @@
       "when": 1784086004568,
       "tag": "0037_brainy_crusher_hogan",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1784909250942,
+      "tag": "0038_dashing_thaddeus_ross",
+      "breakpoints": true
     }
   ]
 }

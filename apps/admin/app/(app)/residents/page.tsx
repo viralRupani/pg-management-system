@@ -30,6 +30,7 @@ import {
   BedDouble,
   ExternalLink,
   Eye,
+  MailCheck,
   MessageSquare,
   Plus,
   Receipt,
@@ -495,12 +496,18 @@ function RegisterDialog({
               placeholder="9876543210"
             />
           </Field>
-          <Field label="Email (optional)" htmlFor="r-email">
+          <Field
+            label={isShortStay ? "Email (optional)" : "Email"}
+            htmlFor="r-email"
+          >
             <Input
               id="r-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              // Required for long-term residents — it's their notification
+              // channel and must be verified before a bed can be assigned.
+              required={!isShortStay}
             />
           </Field>
           <Field label="Move-in date" htmlFor="r-movein">
@@ -727,6 +734,8 @@ function ResidentDetail({ id }: { id: string }) {
   } | null>(null);
   const [collectDepositOpen, setCollectDepositOpen] = useState(false);
   const [refundDepositOpen, setRefundDepositOpen] = useState(false);
+  const [verifyEmailOpen, setVerifyEmailOpen] = useState(false);
+  const [editEmailOpen, setEditEmailOpen] = useState(false);
   const [chargeOpen, setChargeOpen] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
   const [applyDepositOpen, setApplyDepositOpen] = useState(false);
@@ -1041,6 +1050,17 @@ function ResidentDetail({ id }: { id: string }) {
                   {resident.occupationType.toLowerCase()}
                   {resident.nativePlace ? ` · ${resident.nativePlace}` : ""}
                 </p>
+                {resident.email && (
+                  <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+                    {resident.email}
+                    {!isShortStay &&
+                      (resident.emailVerified ? (
+                        <Badge tone="success">Verified</Badge>
+                      ) : (
+                        <Badge tone="warning">Not verified</Badge>
+                      ))}
+                  </p>
+                )}
                 {resident.emergencyContactName && (
                   <p className="mt-1 text-xs text-muted-foreground">
                     Emergency:{" "}
@@ -1058,6 +1078,23 @@ function ResidentDetail({ id }: { id: string }) {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
+              {!isShortStay && !resident.emailVerified && (
+                <>
+                  {resident.email && (
+                    <Button size="sm" onClick={() => setVerifyEmailOpen(true)}>
+                      <MailCheck className="h-4 w-4" />
+                      Verify email
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEditEmailOpen(true)}
+                  >
+                    {resident.email ? "Edit email" : "Add email"}
+                  </Button>
+                </>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -1260,7 +1297,16 @@ function ResidentDetail({ id }: { id: string }) {
                   </Button>
                 </div>
               ) : (
-                <Button size="sm" onClick={() => setAllocating(true)}>
+                <Button
+                  size="sm"
+                  onClick={() => setAllocating(true)}
+                  disabled={!resident.emailVerified}
+                  title={
+                    resident.emailVerified
+                      ? undefined
+                      : "Verify the resident's email first"
+                  }
+                >
                   <BedDouble className="h-4 w-4" />
                   Allocate to bed
                 </Button>
@@ -1654,6 +1700,26 @@ function ResidentDetail({ id }: { id: string }) {
         onClose={() => setAllocating(false)}
         onDone={async () => {
           setAllocating(false);
+          await refresh();
+        }}
+      />
+      <VerifyEmailDialog
+        open={verifyEmailOpen}
+        residentId={id}
+        email={resident.email ?? ""}
+        onClose={() => setVerifyEmailOpen(false)}
+        onDone={async () => {
+          setVerifyEmailOpen(false);
+          await refresh();
+        }}
+      />
+      <EditEmailDialog
+        open={editEmailOpen}
+        residentId={id}
+        currentEmail={resident.email ?? ""}
+        onClose={() => setEditEmailOpen(false)}
+        onDone={async () => {
+          setEditEmailOpen(false);
           await refresh();
         }}
       />
@@ -2357,6 +2423,200 @@ function RefundDepositDialog({
           </Button>
         </div>
       </form>
+    </Dialog>
+  );
+}
+
+/**
+ * Correct or add a resident's email — the recovery path out of the
+ * "unverified → can't allocate" dead-end when the address was mis-typed (the
+ * OTP would go to the wrong inbox and never come back). Saving resets
+ * verification server-side; the manager then re-verifies the new address.
+ */
+function EditEmailDialog({
+  open,
+  residentId,
+  currentEmail,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  residentId: string;
+  currentEmail: string;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+}) {
+  const toast = useToast();
+  const [email, setEmail] = useState(currentEmail);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) setEmail(currentEmail);
+  }, [open, currentEmail]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.residents.updateEmail(residentId, email.trim());
+      toast.success("Email updated. Verify the new address next.");
+      await onDone();
+    } catch (err) {
+      toast.error(toMessage(err, "Could not update the email."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={currentEmail ? "Edit email" : "Add email"}
+      description="Saving resets verification — you'll need to re-verify the new address before assigning a bed."
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Email" htmlFor="edit-email-input">
+          <Input
+            id="edit-email-input"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoFocus
+          />
+        </Field>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            disabled={busy || email.trim() === "" || email.trim() === currentEmail}
+          >
+            {busy ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+/**
+ * Manager-driven email verification. Email is the interim resident notification
+ * channel (until push infra), so a long-term resident's email must be verified
+ * before a bed can be assigned. Step 1 emails a 6-digit OTP to the resident;
+ * step 2 takes the code the resident reads back and verifies it.
+ */
+function VerifyEmailDialog({
+  open,
+  residentId,
+  email,
+  onClose,
+  onDone,
+}: {
+  open: boolean;
+  residentId: string;
+  email: string;
+  onClose: () => void;
+  onDone: () => Promise<void> | void;
+}) {
+  const toast = useToast();
+  const [sent, setSent] = useState(false);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setSent(false);
+      setCode("");
+    }
+  }, [open]);
+
+  const sendCode = async () => {
+    setBusy(true);
+    try {
+      await api.residents.requestEmailOtp(residentId);
+      setSent(true);
+      toast.success(`Code sent to ${email}.`);
+    } catch (err) {
+      toast.error(toMessage(err, "Could not send the verification code."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.residents.verifyEmailOtp(residentId, code.trim());
+      toast.success("Email verified.");
+      await onDone();
+    } catch (err) {
+      toast.error(toMessage(err, "That code is incorrect or has expired."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Verify email"
+      description={
+        sent
+          ? `Enter the 6-digit code sent to ${email}. Ask the resident to read it from their inbox.`
+          : `Send a 6-digit verification code to ${email}.`
+      }
+    >
+      {!sent ? (
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={sendCode} disabled={busy}>
+            {busy ? "Sending…" : "Send code"}
+          </Button>
+        </div>
+      ) : (
+        <form onSubmit={verify} className="space-y-4">
+          <Field label="Verification code" htmlFor="verify-email-code">
+            <Input
+              id="verify-email-code"
+              inputMode="numeric"
+              pattern="\d{6}"
+              maxLength={6}
+              value={code}
+              onChange={(e) =>
+                setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+              }
+              required
+              autoFocus
+              placeholder="6-digit code"
+            />
+          </Field>
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              className="text-sm text-brand hover:underline disabled:opacity-50"
+              onClick={sendCode}
+              disabled={busy}
+            >
+              Resend code
+            </button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={busy || code.length !== 6}>
+                {busy ? "Verifying…" : "Verify"}
+              </Button>
+            </div>
+          </div>
+        </form>
+      )}
     </Dialog>
   );
 }

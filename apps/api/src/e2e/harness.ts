@@ -70,11 +70,20 @@ export interface Harness {
   onboardPg(slugBase: string): Promise<TestPg>;
   /** Manager email+password login → access token. */
   managerLogin(email: string, password?: string): Promise<string>;
-  /** Manager registers a resident; returns the new resident id. */
+  /**
+   * Manager registers a resident; returns the new resident id. Long-term
+   * residents get a default email and are auto-email-verified (so the allocation
+   * gate passes) unless `fields.skipEmailVerify` is set. Short-stay guests are
+   * left as-is (no email, no verification). Pass an explicit `email` to override.
+   */
   registerResident(
     managerToken: string,
     fields: Record<string, unknown>,
   ): Promise<string>;
+  /** Read the email-verification OTP for a resident from Redis (or null). */
+  getEmailOtp(tenantId: string, residentId: string): Promise<string | null>;
+  /** Request + verify a resident's email (reads the OTP from Redis). */
+  verifyResidentEmail(managerToken: string, residentId: string): Promise<void>;
   /** Full resident phone-OTP flow (reads the dev OTP from Redis) → access token. */
   residentLogin(slug: string, tenantId: string, phone: string): Promise<string>;
   /** Read the current OTP code from Redis (or null) — for testing the verify flow. */
@@ -156,20 +165,70 @@ export async function createHarness(): Promise<Harness> {
     return { id: res.body.id, slug, managerEmail, managerToken };
   }
 
+  function getEmailOtp(
+    tenantId: string,
+    residentId: string,
+  ): Promise<string | null> {
+    return redis.get(`email_otp:${tenantId}:${residentId}`);
+  }
+
+  async function verifyResidentEmail(
+    managerToken: string,
+    residentId: string,
+  ): Promise<void> {
+    const tenantId = (jwt.decode(managerToken) as { tenantId: string })
+      .tenantId;
+    const reqRes = await req(
+      "post",
+      `/residents/${residentId}/email/verify/request`,
+      managerToken,
+    );
+    if (reqRes.status !== 201 && reqRes.status !== 200) {
+      throw new Error(
+        `email OTP request failed: ${reqRes.status} ${JSON.stringify(reqRes.body)}`,
+      );
+    }
+    const code = await getEmailOtp(tenantId, residentId);
+    if (!code) throw new Error(`no email OTP in Redis for ${residentId}`);
+    const verifyRes = await req(
+      "post",
+      `/residents/${residentId}/email/verify`,
+      managerToken,
+      { code },
+    );
+    if (verifyRes.status !== 201 && verifyRes.status !== 200) {
+      throw new Error(
+        `email verify failed: ${verifyRes.status} ${JSON.stringify(verifyRes.body)}`,
+      );
+    }
+  }
+
   async function registerResident(
     managerToken: string,
     fields: Record<string, unknown>,
   ): Promise<string> {
-    // age is mandatory for residents; default it so specs that don't care can
-    // omit it.
+    // `skipEmailVerify` is a harness-only flag (not a DTO field) — strip it.
+    const { skipEmailVerify, ...body } = fields as {
+      skipEmailVerify?: boolean;
+      [k: string]: unknown;
+    };
+    const isShortStay = body.isShortStay === true;
+    // age is mandatory for long-term residents; email is too (notification
+    // channel). Default both so specs that don't care can omit them.
     const res = await req("post", "/residents", managerToken, {
-      age: 25,
-      ...fields,
+      ...(isShortStay ? {} : { age: 25, email: defaultResidentEmail() }),
+      ...body,
     });
     if (res.status !== 201 && res.status !== 200) {
       throw new Error(`register resident failed: ${res.status} ${JSON.stringify(res.body)}`);
     }
-    return res.body.id;
+    const residentId = res.body.id as string;
+    // Auto-verify long-term residents so the downstream allocation/booking gate
+    // passes. Specs that exercise the gate itself pass skipEmailVerify.
+    if (!isShortStay && !skipEmailVerify) {
+      await verifyResidentEmail(managerToken, residentId);
+    }
+    return residentId;
   }
 
   async function residentLogin(
@@ -221,11 +280,20 @@ export async function createHarness(): Promise<Harness> {
     onboardPg,
     managerLogin,
     registerResident,
+    getEmailOtp,
+    verifyResidentEmail,
     residentLogin,
     getOtp,
     getPwResetToken,
     close,
   };
+}
+
+/** Unique-ish default email for auto-registered long-term residents. */
+let residentEmailCounter = 0;
+function defaultResidentEmail(): string {
+  residentEmailCounter += 1;
+  return `resident-${Date.now().toString(36)}-${residentEmailCounter}@example.com`;
 }
 
 /** Strip the optional `+91` prefix — phones are stored/keyed as bare digits. */

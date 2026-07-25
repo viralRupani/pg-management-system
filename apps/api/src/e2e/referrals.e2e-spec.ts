@@ -83,6 +83,7 @@ describe("refer & earn (e2e)", () => {
       name: "New Resident",
       phone: randomPhone(),
       age: 25,
+      email: "new-resident@example.com",
       referredByUserId: randomUUID(),
     });
     expect(res.status).toBe(404);

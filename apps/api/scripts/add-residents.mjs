@@ -9,9 +9,18 @@ import { createHmac, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import Redis from "ioredis";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const API = process.env.API ?? "http://localhost:4000";
+
+/** Decode (not verify) the tenantId claim from a JWT payload. */
+function tenantIdFromToken(token) {
+  const payload = JSON.parse(
+    Buffer.from(token.split(".")[1], "base64").toString("utf8"),
+  );
+  return payload.tenantId;
+}
 
 function loadEnv() {
   const env = {};
@@ -137,13 +146,40 @@ async function main() {
   }
   console.log(`✓ Created ${newBeds.length} new beds`);
 
-  // Register all 20 residents
+  // Email is now mandatory for long-term residents and must be verified before
+  // a bed can be allocated (interim notification channel). Read the email OTP
+  // straight from Redis (dev only) so the seed can auto-verify each resident.
+  const env = loadEnv();
+  const redis = new Redis(env.REDIS_URL ?? "redis://localhost:6379", {
+    maxRetriesPerRequest: null,
+  });
+  const tenantId = tenantIdFromToken(mgr);
+
+  // Register all 20 residents (with an email) + verify each email
   const residents = [];
   for (const r of NEW_RESIDENTS) {
-    residents.push(must(await call("post", "/residents", mgr, r), `resident ${r.name}`));
+    const created = must(
+      await call("post", "/residents", mgr, {
+        ...r,
+        email: `${r.phone}@example.com`,
+      }),
+      `resident ${r.name}`,
+    );
+    // Verify: request an OTP, read it from Redis, submit it.
+    must(
+      await call("post", `/residents/${created.id}/email/verify/request`, mgr),
+      `email OTP request ${r.name}`,
+    );
+    const code = await redis.get(`email_otp:${tenantId}:${created.id}`);
+    if (!code) throw new Error(`no email OTP in Redis for ${r.name}`);
+    must(
+      await call("post", `/residents/${created.id}/email/verify`, mgr, { code }),
+      `email verify ${r.name}`,
+    );
+    residents.push(created);
     process.stdout.write(".");
   }
-  console.log(`\n✓ Registered ${residents.length} residents`);
+  console.log(`\n✓ Registered + email-verified ${residents.length} residents`);
 
   // Allocate all 20 residents to the 20 new beds
   for (let i = 0; i < residents.length; i++) {
@@ -155,6 +191,7 @@ async function main() {
   }
   console.log(`\n✓ Allocated all 20 residents to beds`);
 
+  await redis.quit();
   console.log("\nDone! 20 new residents added and allocated.");
 }
 

@@ -35,6 +35,9 @@ const envSchema = z.object({
   JWT_REFRESH_TTL: z.string().default("30d"),
 
   OTP_TTL_SECONDS: z.coerce.number().default(300),
+  // Resident email-verification OTP lifetime, in seconds. Longer than the SMS
+  // OTP by default — email takes longer to arrive (deliverability delays).
+  EMAIL_OTP_TTL_SECONDS: z.coerce.number().int().positive().default(600),
   // Single-use password-reset token lifetime, in seconds (default 15 min).
   PWRESET_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   // Base URL of the admin web app — used to build password-reset links emailed

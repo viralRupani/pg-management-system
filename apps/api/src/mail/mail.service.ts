@@ -46,4 +46,50 @@ export class MailService {
       text,
     });
   }
+
+  /** Email-verification OTP sent to a resident (manager-driven verify flow). */
+  async sendOtpEmail(
+    to: string,
+    params: { code: string; ttlMinutes: number },
+  ): Promise<void> {
+    const { html, text } = this.templates.render("otp", {
+      appName: this.env.MAIL_FROM_NAME,
+      brandColor: BRAND_COLOR,
+      preheader: `Your ${this.env.MAIL_FROM_NAME} verification code is ${params.code}.`,
+      code: params.code,
+      ttlMinutes: params.ttlMinutes,
+      year: new Date().getFullYear(),
+    });
+    await this.provider.send({
+      to,
+      subject: `Your ${this.env.MAIL_FROM_NAME} verification code`,
+      html,
+      text,
+    });
+  }
+
+  /**
+   * Generic resident notification email — the interim delivery channel for the
+   * in-app notifications feed (rent, payments, announcements) until real push
+   * infra lands. Mirrors the title/body of the feed row.
+   */
+  async sendNotificationEmail(
+    to: string,
+    params: { title: string; body: string },
+  ): Promise<void> {
+    const { html, text } = this.templates.render("notification", {
+      appName: this.env.MAIL_FROM_NAME,
+      brandColor: BRAND_COLOR,
+      preheader: params.title,
+      title: params.title,
+      body: params.body,
+      year: new Date().getFullYear(),
+    });
+    await this.provider.send({
+      to,
+      subject: params.title,
+      html,
+      text,
+    });
+  }
 }

@@ -234,6 +234,24 @@ export class ResidentsService {
     return { items: rows.map(toSummary), total, page, limit };
   }
 
+  /**
+   * Update a resident's email and reset verification — the recovery path for a
+   * mis-typed address (which can never receive its OTP, leaving the resident
+   * un-allocatable). The manager re-verifies afterwards.
+   */
+  async updateEmail(residentId: string, email: string): Promise<{ id: string }> {
+    const [updated] = await this.ctx
+      .db()
+      .update(users)
+      .set({ email, emailVerified: false, emailVerifiedAt: null })
+      .where(
+        and(eq(users.id, residentId), eq(users.role, UserRole.RESIDENT)),
+      )
+      .returning({ id: users.id });
+    if (!updated) throw new NotFoundException("Resident not found");
+    return { id: updated.id };
+  }
+
   async getById(id: string): Promise<ResidentSummary> {
     const [r] = await this.residentQuery().where(
       and(eq(users.id, id), eq(users.role, UserRole.RESIDENT)),
@@ -254,6 +272,8 @@ export class ResidentsService {
         id: users.id,
         name: users.name,
         phone: users.phone,
+        email: users.email,
+        emailVerified: users.emailVerified,
         age: users.age,
         occupationType: users.occupationType,
         nativePlace: users.nativePlace,
@@ -333,6 +353,8 @@ type ResidentRow = {
   id: string;
   name: string;
   phone: string | null;
+  email: string | null;
+  emailVerified: boolean;
   age: number | null;
   occupationType: string | null;
   nativePlace: string | null;
@@ -392,6 +414,8 @@ function toSummary(r: ResidentRow): ResidentSummary {
     id: r.id,
     name: r.name,
     phone: r.phone ?? "",
+    email: r.email,
+    emailVerified: r.emailVerified,
     age: r.age,
     occupationType: (r.occupationType ??
       "STUDENT") as ResidentSummary["occupationType"],
