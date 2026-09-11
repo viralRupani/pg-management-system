@@ -19,13 +19,14 @@ import { MailService } from "./mail.service";
     MailTemplateService,
     MailService,
     {
-      // Real SES sends when SES_FROM_EMAIL is configured; otherwise the console
-      // stub. Forced to the stub under NODE_ENV=test so the serialized e2e suite
-      // never makes a live SES call even if the var leaks into the test env.
+      // Real SES sends only in production (and only when SES_FROM_EMAIL is
+      // configured there) — every other NODE_ENV (development, test, ...) gets
+      // the console stub, even if SES_FROM_EMAIL is set in the local .env from
+      // production-setup work. Keeps dev/CI from ever making a live SES call.
       provide: EMAIL_PROVIDER,
       inject: [ENV],
       useFactory: (env: AppEnv): EmailProvider =>
-        env.SES_FROM_EMAIL && env.NODE_ENV !== "test"
+        env.SES_FROM_EMAIL && env.NODE_ENV === "production"
           ? new SesEmailProvider(env)
           : new ConsoleEmailStub(),
     },
