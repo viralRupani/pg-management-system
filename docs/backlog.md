@@ -165,7 +165,7 @@ Still deferred:
 **Payment gateway seam** — billing collection is manual (offline UPI). The `billing_snapshots` table is ready; a Razorpay/Stripe adapter plugs in without schema changes.
 
 **Deployment** — ✅ GUIDE WRITTEN (2026-07-25): `docs/PRODUCTION.md` + ready-to-use
-`deploy/` files (hardened docker-compose, systemd unit, Caddyfile, backup/restore
+`deploy/` files (hardened docker-compose, systemd unit, nginx.conf, backup/restore
 scripts, annotated `api.env.example`). Single-box (API + Redis + Postgres) →
 Phase-2 split (DB, then Redis) onto separate servers; nightly `pg_dump` → offsite
 S3. Two **pre-launch code blockers** surfaced by that work (see below).

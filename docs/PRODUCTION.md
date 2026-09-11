@@ -25,7 +25,7 @@ servers** as you grow. Follow it in order. Copy-paste config lives in
 7. [Deploy the API](#7-deploy-the-api)
 8. [Bootstrap the platform admin](#8-bootstrap-the-platform-admin)
 9. [Build + host the web frontends](#9-build--host-the-web-frontends)
-10. [Caddy + TLS](#10-caddy--tls)
+10. [nginx + TLS](#10-nginx--tls)
 11. [Backups](#11-backups)
 12. [Phase 2 — splitting DB / Redis out](#12-phase-2--splitting-db--redis-out)
 13. [Updating / redeploying](#13-updating--redeploying)
@@ -40,9 +40,9 @@ servers** as you grow. Follow it in order. Copy-paste config lives in
                           Internet (80/443 only)
                                   │
                           ┌───────▼────────┐
-                          │     Caddy      │  auto-HTTPS
-                          │  (reverse proxy│  + static file server
-                          │   + static)    │
+                          │     nginx      │  reverse proxy
+                          │  (+ certbot    │  + static file server
+                          │   for TLS)     │
                           └───┬────────┬───┘
               api.basera.app  │        │  admin.basera.app / app.basera.app
                               │        └────────► /var/www/{admin,resident}  (static)
@@ -61,8 +61,10 @@ servers** as you grow. Follow it in order. Copy-paste config lives in
                                                       AWS SES → transactional email
 ```
 
-- **Only Caddy is public** (ports 80/443). The API listens on `127.0.0.1:4000`;
+- **Only nginx is public** (ports 80/443). The API listens on `127.0.0.1:4000`;
   Postgres/Redis on `127.0.0.1` too. The firewall exposes only 22/80/443.
+  Unlike Caddy, nginx doesn't obtain TLS certs itself — **certbot's nginx
+  plugin** issues and auto-renews them (see §10).
 - **BullMQ runs inside the API process** — the one systemd service is the whole
   backend (HTTP + scheduler + worker). Do **not** run a second API instance (two
   in-process workers would double-fire the cron jobs).
@@ -93,9 +95,9 @@ dev logs are force-disabled**, so the code is never delivered by any channel.
 > **email-verification** OTP is a *separate*, working channel (it goes over SES, see
 > §5) — it does not substitute for SMS login.
 
-### 2b. `trust proxy` is not set — rate-limiting is degraded behind Caddy
+### 2b. `trust proxy` is not set — rate-limiting is degraded behind nginx
 The API doesn't trust the proxy's forwarded client IP, so the login/OTP throttler
-buckets **all** clients under Caddy's IP (one shared limit). One-line fix in
+buckets **all** clients under nginx's IP (one shared limit). One-line fix in
 `apps/api/src/main.ts` before `app.listen`:
 
 ```ts
@@ -158,11 +160,8 @@ sudo corepack enable
 corepack prepare pnpm@10.10.0 --activate
 node -v && pnpm -v                        # expect v22.x and 10.10.0
 
-# Caddy (official apt repo)
-sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-sudo apt update && sudo apt install -y caddy
+# nginx + certbot (TLS issuance/renewal — nginx itself has no built-in ACME client)
+sudo apt install -y nginx certbot python3-certbot-nginx
 
 # Backup/restore tooling (used by deploy/backup-db.sh + restore-db.sh):
 #   awscli           → upload dumps to / fetch from S3 (runs on the host)
@@ -322,7 +321,7 @@ PGs + managers through the app. (The other scripts — `seed.mjs`, `add-resident
 
 ## 9. Build + host the web frontends
 
-Both admin and resident-web are **static exports** — pure HTML/JS served by Caddy.
+Both admin and resident-web are **static exports** — pure HTML/JS served by nginx.
 
 > **Critical gotcha:** `NEXT_PUBLIC_API_URL` is **baked in at build time**. You must
 > set it before `next build`; you cannot change the API URL at runtime — a rebuild
@@ -345,22 +344,29 @@ sudo cp -r apps/resident-web/out/* /var/www/resident/
 **Landing site** (`@pg/landing`, a Vite static build → `apps/landing/dist/`): it has
 its own S3 + CloudFront runbook in [`../apps/landing/DEPLOY.md`](../apps/landing/DEPLOY.md).
 Use that, or serve it from this box by building it (`pnpm --filter @pg/landing build`),
-copying `dist/` to `/var/www/landing`, and uncommenting the root-domain block in the
-Caddyfile.
+copying `dist/` to `/var/www/landing`, and uncommenting the root-domain block in
+`nginx.conf`.
 
 ---
 
-## 10. Caddy + TLS
+## 10. nginx + TLS
 
 Point DNS **A records** for `api.`, `admin.`, and `app.` (and root, if serving the
-landing site) at the server's IP **first** — Caddy needs to answer the ACME
-challenge.
+landing site) at the server's IP **first** — certbot needs to answer the HTTP-01
+challenge on port 80.
 
 ```bash
-sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
-sudo nano /etc/caddy/Caddyfile            # replace basera.app domains + email
-sudo systemctl reload caddy
-sudo journalctl -u caddy -f               # watch certs get issued
+sudo cp deploy/nginx.conf /etc/nginx/sites-available/basera
+sudo nano /etc/nginx/sites-available/basera   # replace basera.app domains
+sudo ln -s /etc/nginx/sites-available/basera /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default    # avoid the stock "Welcome to nginx" default_server clash
+sudo nginx -t && sudo systemctl reload nginx
+
+# Issue + install certs — certbot edits the file in place to add the 443
+# server blocks and an HTTP->HTTPS redirect, and registers a renewal timer:
+sudo certbot --nginx -d api.basera.app -d admin.basera.app -d app.basera.app
+sudo systemctl status certbot.timer       # confirm auto-renew is scheduled
+sudo journalctl -u nginx -f               # tail while you smoke-test
 ```
 
 Confirm `CORS_ORIGINS` in `/etc/basera/api.env` lists the exact `https://admin.…`
@@ -476,8 +482,11 @@ if something goes wrong (migrations don't auto-reverse).
   BetterStack — free tiers are fine). Alerts to your phone/email.
 - **Disk:** dumps + docker volumes fill disk over time. Alert at ~80%; the backup
   script prunes local dumps but watch `pg_data` growth.
-- **Logs:** `journalctl -u basera-api` (API) and `-u caddy` (proxy). journald rotates
-  by default; cap it in `/etc/systemd/journald.conf` (`SystemMaxUse=500M`) if needed.
+- **Logs:** `journalctl -u basera-api` (API) and `-u nginx` (proxy, or
+  `/var/log/nginx/{access,error}.log`). journald rotates by default; cap it in
+  `/etc/systemd/journald.conf` (`SystemMaxUse=500M`) if needed.
+- **Cert renewal:** `sudo systemctl status certbot.timer` should show it active;
+  `sudo certbot renew --dry-run` rehearses a renewal without touching live certs.
 - **Confirm the box isn't leaking DB/Redis:** from *another* machine,
   `nc -vz <server-ip> 5432` and `6379` should both **refuse/timeout** (only
   22/80/443 open).
@@ -497,8 +506,8 @@ if something goes wrong (migrations don't auto-reverse).
       (§2a). Don't onboard residents before then.
 - [ ] `bash deploy/backup-db.sh` puts an object in `s3://basera-db-backups`, and
       `deploy/restore-db.sh` restores it into a scratch DB cleanly.
-- [ ] `systemctl status basera-api` active; Caddy certs issued; `ufw status` shows
-      only 22/80/443.
+- [ ] `systemctl status basera-api` active; nginx certs issued (`certbot
+      certificates`) and `certbot.timer` active; `ufw status` shows only 22/80/443.
 - [ ] From an external host, Postgres (5432) and Redis (6379) are **not** reachable.
 - [ ] Rehearse the Phase-2 DB split once into a throwaway server **before** you need it.
 
