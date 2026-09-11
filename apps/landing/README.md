@@ -8,6 +8,33 @@ in a thin Vite build for minification + content-hashed, immutable-cacheable bund
 
 Deploys as plain static files to **S3 + CloudFront** — no SSR, no server.
 
+Multi-page: the homepage (`index.html`) plus a blog (`blog/index.html` + one
+directory per post, `blog/<slug>/index.html`) — see "Structure" below.
+
+## Structure
+
+```
+index.html                        homepage
+blog/index.html                   blog listing (/blog/)
+blog/<slug>/index.html            one post each (/blog/<slug>/)
+src/styles.css                    single shared stylesheet (homepage + blog classes)
+src/app.js                        shared nav/drawer/calculator JS
+public/                           sitemap.xml, robots.txt, favicons, og-image.png, fonts
+```
+
+Vite's `rollupOptions.input` (`vite.config.js`) discovers every `blog/*/` folder
+automatically at build time — adding a post is a new folder, not a config edit.
+Because a post's canonical/OG/JSON-LD and `sitemap.xml` entry all need to match its
+final path, **add a post by copying an existing `blog/<slug>/index.html`** (it has
+every required tag already wired) rather than writing one from scratch. Then:
+
+1. Update its `<title>`, description, dates, tag, headline and body copy.
+2. Add a card for it to `blog/index.html`'s grid and JSON-LD `blogPost` list.
+3. Add its 2-3 "related" links on a couple of existing posts (internal linking is
+   most of what makes a blog help SEO — see the checklist below).
+4. Add a `<url>` entry to `public/sitemap.xml`.
+5. `robots.txt` needs no change (`Allow: /` already covers new paths).
+
 ## Build output (gzipped)
 
 | File | gzip |
@@ -47,9 +74,55 @@ ratio. Left as-is to preserve the design; revisit if strict AA/AAA is required.
 
 ## SEO
 
-`<title>` + meta description, canonical, Open Graph + Twitter card (with a real
-1200×630 PNG share image), `theme-color`, favicon set, `robots.txt`, `sitemap.xml`,
-and JSON-LD structured data (`Organization`, `SoftwareApplication`, `FAQPage`).
+> **Keep SEO in mind on every change to this app.** This is a marketing/landing
+> page — its whole job is to be found and to rank. Any edit to `index.html`,
+> `public/`, or the on-page copy should preserve (and ideally improve) the items
+> below, not just avoid breaking them. Checklist before you consider a change done:
+>
+> - `<title>` stays a specific, keyword-bearing phrase (~50–60 chars).
+> - `meta description` stays truthful and under ~160 chars (Google truncates
+>   longer snippets in search results) — check with
+>   `python3 -c "print(len('...'))"` before committing copy changes.
+> - `canonical`, `og:url`, the JSON-LD `@id`/`url` fields, and `sitemap.xml`'s
+>   `<loc>` all point at the **same** production domain (`baserapg.com`) — if the
+>   domain ever changes, update all four together, plus `robots.txt`'s `Sitemap:`
+>   line and `DEPLOY.md`.
+> - New sections/copy get exactly one `<h1>` per page and a logical `<h2>`/`<h3>`
+>   hierarchy (see `#features`/`#how`/`#pricing`/`#faq` for the pattern) — don't
+>   skip levels or add a second `<h1>`.
+> - Any new `<img>` gets a real `alt`; decorative inline SVG/mock visuals keep using
+>   `role="img" aria-label="..."` the way the hero mockups do.
+> - New claims in JSON-LD (`FAQPage`, `Offer`, etc.) must be true and match the
+>   visible page copy — don't add structured data for content that isn't rendered.
+> - Don't add fabricated stats/testimonials/reviews (adoption numbers, star
+>   ratings) — this repo intentionally ships none until they're real (see
+>   `DEPLOY.md`); fake `AggregateRating`/`Review` schema is a Google spam violation.
+> - Bump `sitemap.xml`'s `<lastmod>` when the page content meaningfully changes.
+> - Re-run Lighthouse (`pnpm --filter @pg/landing preview` → audit) after any
+>   change and keep the SEO score at 100 — see "Measured" above for the baseline.
+>
+> **Blog-specific**, on top of the above:
+> - Every post needs its own `sitemap.xml` entry, `canonical`, `og:url` and
+>   `BlogPosting` JSON-LD `mainEntityOfPage` — all pointing at its own
+>   `/blog/<slug>/` URL, not the blog index or homepage.
+> - Every post links to 2-3 others (the "Keep reading" related grid) and back to
+>   `/#pricing` or `/#demo` at least once. Internal links are the main SEO lever a
+>   new post pulls — a post nothing links to, and that links to nothing else,
+>   contributes far less. **True backlinks** (links from *other* domains) can't be
+>   manufactured here — they come from the content being genuinely link-worthy and
+>   getting shared; this repo only controls the internal linking and share-ability
+>   (OG/Twitter cards) side of that.
+> - Claims about Indian tenancy/KYC/deposit law are hedged ("check your local
+>   rules/state"), never stated as settled fact — these vary by state/city and a
+>   wrong specific claim is worse than a general pointer to check locally.
+> - A new post is a new page for CloudFront too — see `DEPLOY.md`'s
+>   "Directory-index requests" section before it goes live.
+>
+> Currently shipped: `<title>` + meta description, canonical, Open Graph + Twitter
+> card (with a real 1200×630 PNG share image, `og:image:type`/`twitter:image:alt`),
+> `theme-color`, favicon set, `robots.txt`, `sitemap.xml` (with `lastmod`), and
+> JSON-LD structured data (`Organization`, `SoftwareApplication`, `FAQPage` on the
+> homepage; `Blog`/`BlogPosting`/`BreadcrumbList` on the blog).
 
 ## Commands
 
@@ -74,9 +147,12 @@ These were carried over verbatim from the design and need real values before thi
 goes live — see the "Before launch" section in `DEPLOY.md`:
 
 - The CTA buttons (`Start free`, `Book a demo`) point to `#` / anchors — wire to the
-  real app URL (`app.basera.in`?) and a demo form.
+  real app URL (`app.baserapg.com`?) and a demo form.
 - The fabricated stat band and named testimonials from the design have been
   **removed** (no unverifiable adoption numbers or quotes ship). Re-add a
   testimonials section only once you have real, attributable quotes.
 - Footer phone (`+91 70163 93006`) and WhatsApp/social links are placeholders.
-- Confirm the production domain (`basera.in` assumed throughout canonical/OG/sitemap).
+- Production domain is `baserapg.com`, live throughout canonical/OG/JSON-LD/sitemap —
+  if it ever changes, update all of them together (see "SEO" below).
+- The blog's 7 launch posts are original, written for this site — not placeholders,
+  but review them for tone/accuracy before publishing like any other page copy.

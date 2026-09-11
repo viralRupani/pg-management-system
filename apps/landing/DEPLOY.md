@@ -18,10 +18,40 @@ aws s3 mb s3://basera-landing
 #  - Default root object: index.html
 #  - Compress objects automatically: YES (Brotli + gzip)
 #  - Viewer protocol policy: redirect-to-https
-#  - Alternate domain (CNAME): basera.in  + ACM cert (us-east-1)
+#  - Alternate domain (CNAME): baserapg.com  + ACM cert (us-east-1)
 #  - SPA-style 403/404 -> /index.html (200) only if you add client routes; not needed
-#    for this single page.
+#    for the marketing pages.
 ```
+
+### Directory-index requests (`/blog/`, `/blog/<slug>/`)
+
+The site is multi-page now (`apps/landing/blog/`), and each blog page builds to a
+`.../index.html` at a directory path (e.g. `dist/blog/pg-rent-collection-upi-guide/index.html`,
+served at `/blog/pg-rent-collection-upi-guide/`). CloudFront's **default root object**
+setting only rewrites the bucket *root* (`/` → `/index.html`) — it does **not** apply
+to nested paths, so a request for `/blog/` or `/blog/<slug>/` against an OAC-locked S3
+origin 404s unless something appends `/index.html` to the request URI first.
+
+Fix with a small CloudFront Function (Viewer Request) — cheap, no cold starts, exactly
+this one job:
+
+```js
+function handler(event) {
+  var request = event.request;
+  var uri = request.uri;
+  if (uri.endsWith("/")) {
+    request.uri += "index.html";
+  } else if (!uri.includes(".")) {
+    request.uri += "/index.html";
+  }
+  return request;
+}
+```
+
+Attach it to the distribution's default cache behavior as a **viewer request**
+function. Without it, the homepage still works (root default-root-object covers it)
+but every blog URL 404s — test `/blog/` and one post URL after the first deploy,
+not just `/`.
 
 ## 2. Upload with the right cache headers
 
@@ -43,7 +73,7 @@ aws s3 sync dist/ s3://basera-landing \
 
 # (c) Invalidate the always-fresh paths so a new deploy is visible immediately
 aws cloudfront create-invalidation --distribution-id <DIST_ID> \
-  --paths "/" "/index.html" "/sitemap.xml" "/robots.txt"
+  --paths "/" "/index.html" "/sitemap.xml" "/robots.txt" "/blog/*"
 ```
 
 Note: `aws s3 sync` sets `Content-Type` from the file extension automatically
@@ -51,8 +81,11 @@ Note: `aws s3 sync` sets `Content-Type` from the file extension automatically
 
 ## 3. DNS
 
-Point `basera.in` (and `www`, redirecting to apex) at the CloudFront distribution via
-an ALIAS/ANAME record. Add the ACM cert in `us-east-1` (CloudFront requirement).
+Point `baserapg.com` (and `www`, redirecting to apex) at the CloudFront distribution
+via an ALIAS/ANAME record. Add the ACM cert in `us-east-1` (CloudFront requirement).
+A mismatched domain here breaks the canonical URL / OG `url` / sitemap `loc` that
+`index.html` already ships (all pinned to `baserapg.com`) — SEO signals point at a
+host that must actually resolve to this site.
 
 ## Verifying "most optimized"
 
@@ -66,11 +99,13 @@ raster images in-page, and ~14 KB gzipped of HTML+CSS+JS total.
 The page copy is the approved design verbatim. Replace placeholders first:
 
 1. **CTA targets** — `Start free` / `Book a demo` currently link to `#`. Wire to the
-   real signup (`app.basera.in`?) and a demo booking form.
-2. **Stats & testimonials are illustrative** — `12,400+ beds`, `₹4.2 Cr collected`,
-   `120+ PGs`, `98% on-time`, and the three named 5-star quotes are placeholders.
-   Swap in real figures/quotes or remove them; don't publish as literal claims unverified.
-3. **Contact details** — footer phone `+91 70163 93006`, WhatsApp link, and social
+   real signup (`app.baserapg.com`?) and a demo booking form.
+2. **Contact details** — footer phone `+91 70163 93006`, WhatsApp link, and social
    links are stubs.
-4. **Domain** — `basera.in` is assumed in `index.html` (canonical/OG), `sitemap.xml`
-   and `robots.txt`. Change everywhere if the production domain differs.
+3. **Domain** — `baserapg.com` is what's live in `index.html` (canonical/OG/JSON-LD),
+   `sitemap.xml` and `robots.txt`. If the production domain ever changes, update all
+   four together (canonical, OG `url`, JSON-LD `@id`/`url`, sitemap `loc`) — a
+   mismatch silently breaks the SEO signals shipped in `<head>`.
+4. **CloudFront Function** — deploy the directory-index rewrite above before the
+   first deploy, or `/blog/` and every post URL 404. Easy to miss because `/`
+   still works fine without it.

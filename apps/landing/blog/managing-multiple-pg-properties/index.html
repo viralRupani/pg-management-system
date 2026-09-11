@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<!-- ===================== PRIMARY SEO ===================== -->
+<title>Managing Multiple PG Properties, Without Chaos | Basera</title>
+<meta name="description" content="What actually breaks when you go from one PG to three or four — and the systems that keep occupancy, rent and staff under control across properties." />
+<link rel="canonical" href="https://baserapg.com/blog/managing-multiple-pg-properties/" />
+<meta name="robots" content="index, follow, max-image-preview:large" />
+<meta name="theme-color" content="#4338ca" />
+<meta name="author" content="Basera Technologies" />
+<meta name="keywords" content="managing multiple PGs, multi property PG management, PG owner multiple properties, scaling PG business, PG chain management" />
+
+<!-- ===================== OPEN GRAPH ===================== -->
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Basera" />
+<meta property="og:title" content="Managing Multiple PG Properties Without Losing Your Mind" />
+<meta property="og:description" content="What actually breaks when you go from one PG to three or four — and the systems that keep occupancy, rent and staff under control." />
+<meta property="og:url" content="https://baserapg.com/blog/managing-multiple-pg-properties/" />
+<meta property="og:image" content="https://baserapg.com/og-image.png" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Basera — PG management blog" />
+<meta property="og:locale" content="en_IN" />
+<meta property="article:published_time" content="2026-09-05" />
+<meta property="article:modified_time" content="2026-09-05" />
+<meta property="article:author" content="Basera Technologies" />
+<meta property="article:section" content="Operations" />
+
+<!-- ===================== TWITTER ===================== -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Managing Multiple PG Properties Without Losing Your Mind" />
+<meta name="twitter:description" content="What breaks when you go from one PG to three or four — and the systems that keep it under control." />
+<meta name="twitter:image" content="https://baserapg.com/og-image.png" />
+<meta name="twitter:image:alt" content="Basera — PG management blog" />
+
+<!-- ===================== ICONS ===================== -->
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="icon" href="/favicon.ico" sizes="32x32" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+<!-- ===================== FONTS (self-hosted, LCP-critical preload) ===================== -->
+<link rel="preload" href="/fonts/bricolage-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/fonts/jakarta-latin.woff2" as="font" type="font/woff2" crossorigin />
+
+<link rel="stylesheet" href="/src/styles.css" />
+<script>document.documentElement.className += " js";</script>
+
+<!-- ===================== STRUCTURED DATA ===================== -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://baserapg.com/" },
+        { "@type": "ListItem", "position": 2, "name": "Blog", "item": "https://baserapg.com/blog/" },
+        { "@type": "ListItem", "position": 3, "name": "Managing Multiple PG Properties", "item": "https://baserapg.com/blog/managing-multiple-pg-properties/" }
+      ]
+    },
+    {
+      "@type": "BlogPosting",
+      "mainEntityOfPage": { "@type": "WebPage", "@id": "https://baserapg.com/blog/managing-multiple-pg-properties/" },
+      "headline": "Managing Multiple PG Properties Without Losing Your Mind",
+      "description": "What actually breaks when you go from one PG to three or four — and the systems that keep occupancy, rent and staff under control across properties.",
+      "image": "https://baserapg.com/og-image.png",
+      "datePublished": "2026-09-05",
+      "dateModified": "2026-09-05",
+      "author": { "@id": "https://baserapg.com/#org" },
+      "publisher": { "@id": "https://baserapg.com/#org" },
+      "articleSection": "Operations"
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<header class="nav" id="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="/" aria-label="Basera home">
+      <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/><path d="M7 16v-2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg></span>
+      <span>Basera<small>PG management</small></span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/#features">Features</a>
+      <a href="/#how">How it works</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="/#faq">FAQ</a>
+      <a href="/blog/" aria-current="page">Blog</a>
+    </nav>
+    <div class="nav-cta">
+      <a href="/#demo" class="btn btn-ghost">Book a demo</a>
+      <a href="/#pricing" class="btn btn-primary">Start free</a>
+      <button class="nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="drawer" id="drawer">
+  <div class="drawer-panel">
+    <div class="dh">
+      <span class="brand" style="font-size:18px"><span class="mark" aria-hidden="true" style="width:32px;height:32px"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/><path d="M7 16v-2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg></span>Basera</span>
+      <button class="drawer-close" id="drawerClose" aria-label="Close menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    </div>
+    <a class="dl" href="/#features">Features</a>
+    <a class="dl" href="/#how">How it works</a>
+    <a class="dl" href="/#pricing">Pricing</a>
+    <a class="dl" href="/#faq">FAQ</a>
+    <a class="dl" href="/blog/">Blog</a>
+    <a href="/#demo" class="btn btn-ghost">Book a demo</a>
+    <a href="/#pricing" class="btn btn-primary">Start free</a>
+  </div>
+</div>
+
+<main id="top">
+
+<article>
+<header class="section post-head" style="padding-bottom:0">
+  <div class="wrap">
+    <p class="crumbs">
+      <a href="/">Home</a> <span class="sep">/</span> <a href="/blog/">Blog</a> <span class="sep">/</span> <span aria-current="page">Multiple properties</span>
+    </p>
+    <span class="tag">Operations</span>
+    <h1>Managing Multiple PG Properties Without Losing Your Mind</h1>
+    <p class="dek">One PG, you can run from memory and a notebook. The second one is where memory stops being enough — here's what actually breaks, and what to fix first.</p>
+    <div class="post-meta">
+      <span class="avatar">B</span>
+      <span class="who">Basera Team</span>
+      <span class="dot"></span>
+      <span>5 Sep 2026</span>
+      <span class="dot"></span>
+      <span>7 min read</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="post-body">
+
+<p>Running one PG well and running two PGs well aren't the same skill scaled up — they're different problems. With one property, you know every resident, every pending payment and every bed status because you're physically there most days. Add a second property and that personal, in-your-head system stops covering both places at once. Here's where it actually breaks, in order.</p>
+
+<h2>1. You stop knowing your combined numbers</h2>
+<p>Occupancy at Property A and occupancy at Property B are each knowable individually. What's harder without a system is the combined view — total beds across both, total collected this month, which property is dragging on vacancy. Most multi-property owners can tell you either property's number on request, but can't tell you the combined one without adding it up by hand.</p>
+
+<h2>2. Managers need their own access, not your login</h2>
+<p>At one property, you might be the only person who needs to see everything. At two or three, you need a manager at each site who can see and act on that property's residents, rent and complaints — without seeing (or being able to touch) the other properties' data, and without everyone sharing one login and password. This is the point where "one owner runs everything" has to become "one owner oversees, managers run the day-to-day," and the software needs to actually support that split.</p>
+
+<h2>3. Switching context becomes its own tax</h2>
+<p>If checking Property B means logging into a different spreadsheet, a different WhatsApp group, or a different login entirely, every context switch costs you a few minutes of re-orientation. Multiply that by however many times a day you check on a second or third property, and it's a meaningful chunk of your day spent just switching between systems rather than doing anything with them.</p>
+
+<h2>4. Consistency starts slipping between properties</h2>
+<p>The way you handle a complaint, the way you communicate a rent reminder, the way you settle a deposit at move-out — at one property, it's just "how you do things," carried in your head. Across multiple properties with different managers, that consistency has to be explicit, or each property starts drifting into its own informal process, and residents notice when one PG in your portfolio feels more organised than another.</p>
+
+<blockquote>The jump from one property to several isn't about doing more of the same work — it's about the work needing a system it didn't need before.</blockquote>
+
+<h2>What to fix first</h2>
+<h3>One login, switchable between properties</h3>
+<p>You should be able to see Property A's dashboard, then switch to Property B's, without logging out and back in with different credentials. If that switch takes more than a couple of taps, it'll happen less often than it should.</p>
+<h3>Manager accounts scoped to one property</h3>
+<p>A manager at Property A shouldn't be able to see Property B's residents or payments — both for actual data isolation, and because it keeps each manager focused on their own property's numbers instead of getting lost in a combined view they don't need.</p>
+<h3>One combined view, when you want it</h3>
+<p>Even with properties kept separate day-to-day, you — the owner — need an occasional combined view: total occupancy, total collected, which property needs attention this week. This is the view a spreadsheet-per-property setup can't give you without manual reconciliation.</p>
+
+<div class="callout">
+  <strong>A practical threshold</strong>
+  Most owners feel this shift somewhere around the second property, not the fifth. If you're already juggling two separate WhatsApp groups and two separate spreadsheets, that's usually the sign it's worth fixing now rather than "once things get bigger."
+</div>
+
+<h2>FAQ: managing multiple PG properties</h2>
+<h3>At what point should I stop using spreadsheets for multiple PGs?</h3>
+<p>As soon as you're maintaining more than one spreadsheet and comparing them manually. That reconciliation step is exactly where errors and missed follow-ups creep in.</p>
+<h3>Can one manager run more than one property?</h3>
+<p>Yes, but they should still be able to see each property distinctly rather than a merged view — mixing residents and rent from two properties into one list makes both harder to manage, not easier.</p>
+<h3>Should each property have its own branding?</h3>
+<p>If your properties operate under different names or have different resident bases, yes — a resident app or dashboard that shows the specific property's identity, not a generic one, keeps the experience coherent for both residents and staff.</p>
+
+</div>
+</div>
+
+<div class="wrap">
+  <div class="post-cta">
+    <h3>Run every property from one login</h3>
+    <p>Basera lets an owner switch between properties instantly, gives each manager their own scoped access, and rolls up a combined view — from 1 property to 10+, on the same ₹10-per-bed plan.</p>
+    <a href="/#pricing" class="btn btn-primary btn-lg">Start free — no card needed</a>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="post-footer">
+    <div class="share">
+      <span>Share this article</span>
+      <a class="share-link" aria-label="Share on WhatsApp" href="https://wa.me/?text=Managing%20Multiple%20PG%20Properties%20Without%20Losing%20Your%20Mind%20https%3A%2F%2Fbaserapg.com%2Fblog%2Fmanaging-multiple-pg-properties%2F" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2m0 1.8a8.2 8.2 0 0 1 6.9 12.6l-.3.5.7 2.6-2.7-.7-.5.3A8.2 8.2 0 1 1 12 3.8m-3 3.7c-.2 0-.5 0-.7.4s-.9.9-.9 2.1.9 2.5 1 2.6c.1.2 1.8 2.9 4.5 4 .6.2 1.1.4 1.5.5.6.2 1.2.2 1.6.1.5-.1 1.5-.6 1.7-1.2s.2-1.1.1-1.2c-.1-.1-.2-.2-.5-.3l-1.7-.8c-.2-.1-.4-.1-.6.1l-.7.9c-.1.2-.3.2-.5.1s-1-.4-1.9-1.2c-.7-.6-1.2-1.4-1.3-1.6s0-.4.1-.5l.4-.5c.1-.2.2-.3.2-.5s0-.4-.1-.5l-.8-1.9c-.2-.4-.4-.4-.6-.4z"/></svg>
+      </a>
+      <a class="share-link" aria-label="Share on LinkedIn" href="https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fbaserapg.com%2Fblog%2Fmanaging-multiple-pg-properties%2F" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.94 5a2 2 0 1 1-4-.02 2 2 0 0 1 4 .02M7 8.48H3.5V21H7zm6.32 0H9.85V21h3.4v-6.15c0-1.62.31-3.2 2.33-3.2 1.98 0 2 1.86 2 3.3V21H21v-6.75c0-3.85-.83-6.8-5.32-6.8a4.66 4.66 0 0 0-4.2 2.3h-.06z"/></svg>
+      </a>
+      <a class="share-link" aria-label="Share by email" href="mailto:?subject=Managing%20Multiple%20PG%20Properties&body=https%3A%2F%2Fbaserapg.com%2Fblog%2Fmanaging-multiple-pg-properties%2F">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="m4 6 8 7 8-7"/></svg>
+      </a>
+    </div>
+  </div>
+</div>
+
+</article>
+
+<section class="related-wrap">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Keep reading</p>
+      <h2>More on running a tighter PG</h2>
+    </div>
+    <div class="blog-grid related compact">
+      <article class="blog-card">
+        <span class="tag">Operations</span>
+        <h3><a href="/blog/pg-management-excel-whatsapp-cost/">The Hidden Cost of Running a PG on WhatsApp and Excel</a></h3>
+        <p>What the "free" spreadsheet-and-chat combo is actually costing you.</p>
+      </article>
+      <article class="blog-card">
+        <span class="tag">Software</span>
+        <h3><a href="/blog/pg-management-software-features/">PG Management Software: 10 Features to Check</a></h3>
+        <p>What to look for before you commit to a PG software tool.</p>
+      </article>
+      <article class="blog-card">
+        <span class="tag">Occupancy</span>
+        <h3><a href="/blog/reduce-vacant-beds-pg-occupancy/">How to Reduce Vacant Beds</a></h3>
+        <p>A practical playbook for shortening vacancy gaps between residents.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <a class="brand" href="/">
+          <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/><path d="M7 16v-2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg></span>
+          <span>Basera</span>
+        </a>
+        <p>The all-in-one app for paying-guest owners and managers across India. Beds, rent, KYC and residents — without the spreadsheets.</p>
+        <a class="wa-btn" href="#">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2m0 1.8a8.2 8.2 0 0 1 6.9 12.6l-.3.5.7 2.6-2.7-.7-.5.3A8.2 8.2 0 1 1 12 3.8m-3 3.7c-.2 0-.5 0-.7.4s-.9.9-.9 2.1.9 2.5 1 2.6c.1.2 1.8 2.9 4.5 4 .6.2 1.1.4 1.5.5.6.2 1.2.2 1.6.1.5-.1 1.5-.6 1.7-1.2s.2-1.1.1-1.2c-.1-.1-.2-.2-.5-.3l-1.7-.8c-.2-.1-.4-.1-.6.1l-.7.9c-.1.2-.3.2-.5.1s-1-.4-1.9-1.2c-.7-.6-1.2-1.4-1.3-1.6s0-.4.1-.5l.4-.5c.1-.2.2-.3.2-.5s0-.4-.1-.5l-.8-1.9c-.2-.4-.4-.4-.6-.4z"/></svg>
+          Chat on WhatsApp
+        </a>
+      </div>
+      <div class="foot-col">
+        <h4>Product</h4>
+        <a href="/#features">Features</a>
+        <a href="/#pricing">Pricing</a>
+        <a href="/#how">How it works</a>
+        <a href="/#demo">Book a demo</a>
+      </div>
+      <div class="foot-col">
+        <h4>Company</h4>
+        <a href="#">About</a>
+        <a href="/blog/">Blog</a>
+        <a href="#">Careers</a>
+        <a href="/#faq">Help &amp; FAQ</a>
+      </div>
+      <div class="foot-col">
+        <h4>Get in touch</h4>
+        <a href="mailto:viralrupani12017@gmail.com">viralrupani12017@gmail.com</a>
+        <a href="tel:+917016393006">+91 70163 93006</a>
+        <a href="#">Ahmedabad, Gujarat</a>
+        <a href="#">Privacy &amp; data security</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© <span id="year">2026</span> Basera Technologies. Made in Ahmedabad. Prices in ₹ (INR).</span>
+      <span class="links"><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Security</a></span>
+    </div>
+  </div>
+</footer>
+
+<script type="module" src="/src/app.js"></script>
+</body>
+</html>
