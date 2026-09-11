@@ -7,7 +7,7 @@ Ready-to-use production config for Basera. **Start with the full walkthrough:
 |---|---|
 | `docker-compose.prod.yml` | Postgres 16 + Redis 7, bound to `127.0.0.1` only, hardened. |
 | `basera-api.service` | systemd unit for the API (`node dist/main.js`; BullMQ worker runs in-process). |
-| `Caddyfile` | Automatic-HTTPS reverse proxy for the API + static hosting for the admin/resident web apps. |
+| `nginx.conf` | Reverse proxy for the API + static hosting for the admin/resident web apps. TLS via certbot's nginx plugin. |
 | `backup-db.sh` | Nightly `pg_dump` → offsite S3 bucket + local pruning. |
 | `restore-db.sh` | Restore a dump (disaster recovery **and** the Phase-2 DB split). |
 | `api.env.example` | Every production env var, annotated. Copy to `/etc/basera/api.env` (chmod 600). |
@@ -21,7 +21,7 @@ box. Nothing here contains real secrets.
 
 **Note:** [`../docs/PRODUCTION.md`](../docs/PRODUCTION.md) §9 documents the
 default path — build the Next.js static export and copy it to `/var/www/{admin,resident}`
-on the same VPS that Caddy serves from. `deploy-frontend.mjs` is an **alternative**
+on the same VPS that nginx serves from. `deploy-frontend.mjs` is an **alternative**
 S3 + CloudFront hosting path (the same pattern `apps/landing` already uses for the
 marketing site) for when you'd rather host the frontends off the VPS. Pick one per
 app — don't run both against the same domain.
@@ -46,4 +46,4 @@ app — don't run both against the same domain.
 
 If you go this route instead of the VPS static hosting, point that app's DNS
 record at the CloudFront distribution (not the VPS) and drop the corresponding
-block from `Caddyfile`.
+`server` block from `nginx.conf`.
