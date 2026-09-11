@@ -5,6 +5,16 @@
 
 ---
 
+## 0. Hard rule: no AWS commands from any AI product
+
+**No AI coding tool or agent (Claude Code included) may run `aws` CLI commands, AWS SDK calls, or any other command that talks to AWS (S3, SES, IAM, etc.) against this project — including in auto/YOLO mode, even with explicit user approval in the moment.** This covers `aws s3 ...`, `aws ses ...`, deploy scripts that shell out to AWS, Terraform/CDK applies, and anything else that mutates or reads real AWS account state.
+
+- If a task seems to need an AWS action, **stop and tell the user what command/change is needed and why** — the user runs it themselves.
+- This applies regardless of environment (dev/staging/prod) and regardless of how the request is phrased ("just check the S3 bucket", "quickly deploy", etc.).
+- Reading AWS docs, writing/editing IaC files, or discussing AWS config is fine — only *executing* AWS-facing commands is prohibited.
+
+---
+
 ## 1. What this is
 
 **Multi-tenant SaaS** for paying-guest (PG) hostels in Ahmedabad, India. Managers use a web dashboard (Next.js); residents use a mobile app (Expo). Each PG's data is strictly isolated via Postgres RLS.
