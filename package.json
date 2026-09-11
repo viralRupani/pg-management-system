@@ -17,7 +17,8 @@
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "db:generate": "pnpm --filter @pg/api db:generate",
-    "db:migrate": "pnpm --filter @pg/api db:migrate"
+    "db:migrate": "pnpm --filter @pg/api db:migrate",
+    "deploy:frontend": "node deploy/deploy-frontend.mjs"
   },
   "devDependencies": {
     "turbo": "^2.3.3",

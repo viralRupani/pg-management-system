@@ -1,0 +1,43 @@
+{
+  "_comment": "S3 (+ optional CloudFront) deploy targets for the static frontends. Bucket/distribution values here are NOT secrets (they're just names) so this file is committed. Fill in the CHANGE_ME values for your AWS account before using deploy-frontend.mjs. See deploy/README.md.",
+
+  "admin": {
+    "workspace": "@pg/admin",
+    "dir": "apps/admin",
+    "buildDir": "out",
+    "s3Bucket": "CHANGE_ME-basera-admin",
+    "cloudfrontDistributionId": "",
+    "region": "ap-south-1",
+    "buildEnv": {
+      "NEXT_PUBLIC_API_URL": "https://api.basera.app"
+    },
+    "immutableInclude": ["_next/static/*"],
+    "invalidatePaths": ["/*"]
+  },
+
+  "resident-web": {
+    "workspace": "@pg/resident-web",
+    "dir": "apps/resident-web",
+    "buildDir": "out",
+    "s3Bucket": "basera-resident-web-767397880940-ap-south-1-an",
+    "cloudfrontDistributionId": "E2AE1H2HMORGT",
+    "region": "ap-south-1",
+    "buildEnv": {
+      "NEXT_PUBLIC_API_URL": "https://api.basera.app"
+    },
+    "immutableInclude": ["_next/static/*"],
+    "invalidatePaths": ["/*"]
+  },
+
+  "landing": {
+    "workspace": "@pg/landing",
+    "dir": "apps/landing",
+    "buildDir": "dist",
+    "s3Bucket": "basera-landing-767397880940-ap-south-1-an",
+    "cloudfrontDistributionId": "E34U7MXUCR7LCA",
+    "region": "ap-south-1",
+    "buildEnv": {},
+    "immutableInclude": ["assets/*", "fonts/*"],
+    "invalidatePaths": ["/", "/index.html", "/sitemap.xml", "/robots.txt"]
+  }
+}
