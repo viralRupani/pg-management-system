@@ -42,8 +42,11 @@ export function Dialog({
     document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    // Move focus into the dialog so keyboard users aren't left behind it.
-    panelRef.current?.focus();
+    // Move focus into the dialog so keyboard users aren't left behind it —
+    // but don't steal it from a field that already autofocused itself.
+    if (!panelRef.current?.contains(document.activeElement)) {
+      panelRef.current?.focus();
+    }
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;

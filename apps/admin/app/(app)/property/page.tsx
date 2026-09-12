@@ -776,6 +776,7 @@ function AddBuildingDialog({
             required
             minLength={1}
             placeholder="e.g. Basera Block A"
+            autoFocus
           />
         </Field>
         <Field label="Address (optional)" htmlFor="b-address">
@@ -847,6 +848,7 @@ function AddFloorDialog({
               required
               minLength={1}
               placeholder="e.g. Ground floor"
+              autoFocus
             />
           </Field>
           <Field label="Floor number" htmlFor="f-number">
@@ -931,6 +933,7 @@ function AddRoomDialog({
               required
               minLength={1}
               placeholder="e.g. 101"
+              autoFocus
             />
           </Field>
           <Field label="Monthly rent (₹)" htmlFor="rm-rent">
@@ -1032,6 +1035,7 @@ function AddBedDialog({
             required
             minLength={1}
             placeholder="e.g. A"
+            autoFocus
           />
         </Field>
         <DialogActions busy={busy} onClose={onClose} submitLabel="Add bed" />
@@ -1092,6 +1096,7 @@ function EditRentDialog({
             value={rent}
             onChange={(e) => setRent(e.target.value)}
             required
+            autoFocus
           />
         </Field>
         <DialogActions busy={busy} onClose={onClose} submitLabel="Save rent" />
@@ -1162,6 +1167,7 @@ function EditRoomDialog({
               onChange={(e) => setLabel(e.target.value)}
               required
               minLength={1}
+              autoFocus
             />
           </Field>
           <Field label="Capacity (beds)" htmlFor="ed-cap">
