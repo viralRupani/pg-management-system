@@ -51,7 +51,7 @@
   var resOut = document.getElementById("calcResidents");
   var costOut = document.getElementById("calcCost");
   var perDayOut = document.getElementById("calcPerDay");
-  var RATE = 10; // ₹ per occupied bed / month
+  var RATE = 5; // ₹ per occupied bed / month
 
   function fmt(n) {
     return n.toLocaleString("en-IN");
