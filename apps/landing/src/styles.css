@@ -727,7 +727,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visibl
   background: var(--surface);
   border-top: 1px solid var(--line);
   box-shadow: 0 -4px 24px rgba(0,0,0,.08);
-  padding: 1rem 1.5rem;
+  padding: 1rem 11rem 1rem 1.5rem;
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -756,7 +756,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visibl
 }
 .wa-nudge-close:hover { color: var(--ink); }
 @media (max-width: 640px) {
-  .wa-nudge { padding: .875rem 1rem; gap: .75rem; }
+  .wa-nudge { padding: .875rem 5.5rem .875rem 1rem; gap: .75rem; }
   .wa-nudge p { font-size: 13.5px; }
 }
 
