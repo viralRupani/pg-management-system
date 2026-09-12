@@ -1,3 +1,4 @@
+import { istPeriod } from "../common/ist-date";
 import { createHarness, randomPhone, type Harness, type TestPg } from "./harness";
 
 /**
@@ -247,15 +248,21 @@ describe("M4 documents, deposits & exit (e2e)", () => {
 
     it("an EXITED resident is billed zero on the next generation", async () => {
       // r1 and r2 have exited; only r3 is still active → only r3 is billed.
+      // The harness clock is NOT frozen (see apps/api/CLAUDE.md gotchas) —
+      // residents joined "now" (no explicit joinDate), so the generation
+      // target must be the REAL current IST period, not a hardcoded one.
+      const period = istPeriod(new Date());
       const gen = await h.req("post", "/invoices/generate", pgA.managerToken, {
-        period: "2026-07",
+        period,
       });
       expect(gen.body.generated).toBe(1);
 
       const all = await h.req("get", "/invoices", pgA.managerToken);
-      const july = all.body.items.filter((i: { period: string }) => i.period === "2026-07");
-      expect(july).toHaveLength(1);
-      expect(july[0].residentId).toBe(r3Id);
+      const thisMonth = all.body.items.filter(
+        (i: { period: string }) => i.period === period,
+      );
+      expect(thisMonth).toHaveLength(1);
+      expect(thisMonth[0].residentId).toBe(r3Id);
     });
 
     it("exit with no deposit still exits and frees the bed (refund 0)", async () => {

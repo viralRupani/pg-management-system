@@ -16,9 +16,15 @@ import { tenants } from "./tenants";
  * pool reserved strictly for the platform module. Blast radius if this table
  * leaks = contact + password hash only (no PG operational data).
  *
- * Uniqueness rules (market: people move between PGs, phone is per-PG):
- *   - Managers / platform admins log in by EMAIL  -> email globally unique.
- *   - Residents log in by (PG slug + PHONE)        -> (tenant_id, phone) unique.
+ * Uniqueness rules (market: people move between PGs, so per-PG uniqueness only
+ * for phone AND for resident email):
+ *   - Managers / platform admins log in by EMAIL  -> email globally unique
+ *     (role <> RESIDENT).
+ *   - Residents log in by (PG slug + EMAIL)        -> (tenant_id, email)
+ *     unique for role = RESIDENT. Email-OTP login replaced phone-OTP login
+ *     (SMS costs money; see docs/backlog.md) — `phone` is still written on
+ *     registration and stays (tenant_id, phone)-unique so SMS login can be
+ *     revived later with zero data migration; it's just not read at login.
  */
 export const authIdentities = pgTable(
   "auth_identities",
@@ -42,11 +48,17 @@ export const authIdentities = pgTable(
       .defaultNow(),
   },
   (t) => [
-    // Email is unique across the whole system, when present.
+    // Manager/owner/platform-admin email is unique system-wide.
     uniqueIndex("auth_email_unique")
       .on(t.email)
-      .where(sql`${t.email} IS NOT NULL`),
-    // Phone is unique only within a tenant, when present.
+      .where(sql`${t.email} IS NOT NULL AND ${t.role} <> 'RESIDENT'`),
+    // Resident email (the login key) is unique only within a tenant — same
+    // per-PG shape as phone below.
+    uniqueIndex("auth_tenant_resident_email_unique")
+      .on(t.tenantId, t.email)
+      .where(sql`${t.email} IS NOT NULL AND ${t.role} = 'RESIDENT'`),
+    // Phone is unique only within a tenant, when present. Not read at login
+    // today (SMS_OTP_LOGIN_DISABLED) but kept enforced for a future revival.
     uniqueIndex("auth_tenant_phone_unique")
       .on(t.tenantId, t.phone)
       .where(sql`${t.phone} IS NOT NULL`),

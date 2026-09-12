@@ -122,7 +122,7 @@ Fixed since the audit: HIGH OVERDUE-can't-settle (`e53195f`), auth rate-limiting
 
 ### Mobile app (Expo) — M8, built + device-verified
 
-Done: resident auth (slug + phone + OTP, JWT in SecureStore), swipeable tab nav,
+Done: resident auth (slug + email + OTP, JWT in SecureStore), swipeable tab nav,
 and all feature screens (Home with floating rent card, Rent + invoice detail +
 submit-payment, Complaints + raise + thread, KYC documents + upload, Deposit +
 ledger + move-out request, Announcements, Mess menu, Notifications feed,
@@ -170,12 +170,33 @@ scripts, annotated `api.env.example`). Single-box (API + Redis + Postgres) →
 Phase-2 split (DB, then Redis) onto separate servers; nightly `pg_dump` → offsite
 S3. Two **pre-launch code blockers** surfaced by that work (see below).
 
-**SMS provider not implemented — resident phone-OTP login can't deliver codes**
-(critical before onboarding residents). `OtpService` (`apps/api/src/auth/otp.service.ts`)
-only writes the code to Redis; `OTP_DEV_LOG`/`OTP_DEV_FIXED_CODE` are force-disabled
-under `NODE_ENV=production`, and no `SmsProvider` is wired. Implement a real driver
-(MSG91 for India / Twilio) and inject it into `OtpService.issue()`. Managers/owners
-(email+password) are unaffected — the core manager product ships without it.
+**SMS OTP login — disabled, replaced by email OTP (2026-09-12)** — ✅ RESOLVED
+(was: "SMS provider not implemented — resident phone-OTP login can't deliver
+codes", critical-before-onboarding). No `SmsProvider` was ever implemented and
+SMS costs money, so resident login now uses email OTP instead — residents
+already need a verified email (built for the notifications channel). Email
+delivery reuses `MailService`/SES, same as password-reset and notifications
+(prod still needs SES out of sandbox mode — see `docs/PRODUCTION.md`).
+
+Phone/SMS login is **preserved commented-out**, not deleted, for a future
+revival once a paying customer base justifies an SMS/WhatsApp provider cost:
+- `apps/api/src/auth/otp.service.ts` — the whole `OtpService` + `SmsProvider`
+  interface, block-commented.
+- `apps/api/src/auth/{auth.service,auth.repository,auth.controller}.ts` —
+  phone branches commented inline, tagged `SMS_OTP_LOGIN_DISABLED`.
+- `packages/shared/src/schemas/auth.ts` — `phoneOtpRequestSchema`/
+  `phoneOtpVerifySchema`, commented.
+- `apps/mobile/docs/disabled-phone-otp-login.tsx.txt` and
+  `apps/resident-web/docs/disabled-phone-otp-login.tsx.txt` — the original
+  phone-entry screen/branch, extracted out of the routed tree (a fully
+  commented route file breaks Expo Router / Next.js App Router).
+- `auth_identities.phone` is still written at registration and stays
+  `(tenant_id, phone)`-unique, so reviving SMS needs no data migration.
+
+To revive: implement a concrete `SmsProvider` (MSG91/Textlocal/Fast2SMS for
+India, or Twilio/WhatsApp Business API), un-comment the pieces above, and
+decide how phone vs. email login coexist (e.g. a `channel` field or a
+per-tenant setting) — see the comments in each file for the exact steps.
 
 **`trust proxy` not set** — behind a reverse proxy the throttler keys all clients to
 the proxy IP (one shared rate-limit bucket). One-liner in `apps/api/src/main.ts`:

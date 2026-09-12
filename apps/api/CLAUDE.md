@@ -251,8 +251,20 @@ trigger.
   `users.deactivated_at`) loses access at the access-TTL boundary, not 30 days.
   See root CLAUDE.md "PG Owner role".
 - Resident: `POST /auth/resident/otp/request` then `/verify` — both take
-  `pgCode` (tenant slug) + `phone`, because phone is unique only per-tenant. OTP
-  in Redis (`otp:{tenantId}:{phone}`), dev code logged when `OTP_DEV_LOG=true`.
+  `pgCode` (tenant slug) + `email`, because email is unique only per-tenant for
+  residents (`auth_tenant_resident_email_unique` — separate from the
+  system-wide manager/owner email uniqueness). OTP in Redis
+  (`email_login_otp:{tenantId}:{email}`, `EmailLoginOtpService`), dev code
+  logged when `OTP_DEV_LOG=true`, delivered via `MailService.sendOtpEmail`
+  (requires SES live in prod). A successful verify conditional-flips
+  `users.emailVerified = true` — the login round-trip is itself proof of
+  ownership, satisfying `assertEmailVerified()` at allocation time without a
+  manager action. **Was phone+SMS OTP** (`OtpService`, Redis `otp:{tenantId}:
+  {phone}`) until 2026-09-12 — SMS costs money and no `SmsProvider` was ever
+  implemented; that code is preserved commented-out in `otp.service.ts` /
+  `auth.service.ts` / `auth.repository.ts` for a future revival (see
+  `docs/backlog.md`). `auth_identities.phone` is still written at registration
+  so reviving it needs no data migration.
 - **Rate limiting** (`@nestjs/throttler` on `AuthController`): login 5/min,
   otp/request 3/min, otp/verify 5/min (per IP+route); refresh unthrottled; skipped
   under `NODE_ENV=test`. Defense-in-depth on top of the OTP 5-wrong-tries burn.

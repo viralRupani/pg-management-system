@@ -1,3 +1,25 @@
+SMS_OTP_LOGIN_DISABLED — see docs/backlog.md (root).
+
+Resident login switched from phone/SMS OTP to email OTP because SMS delivery
+costs money and no SmsProvider was ever implemented (see
+apps/api/src/auth/otp.service.ts, preserved commented-out). This file holds
+the ORIGINAL `app/(auth)/phone.tsx` screen (the phone-entry step of the old
+slug → phone → OTP wizard), extracted here — not left commented inside
+`app/` — because a fully-commented file with no default export inside Expo
+Router's file-based routing breaks the route tree.
+
+To revive phone/SMS login later:
+  1. Implement a concrete SmsProvider server-side and un-comment
+     apps/api/src/auth/otp.service.ts + the phone branches in
+     apps/api/src/auth/{auth.service,auth.repository,auth.controller}.ts +
+     packages/shared/src/schemas/auth.ts's phoneOtpRequestSchema/phoneOtpVerifySchema.
+  2. Restore this file to app/(auth)/phone.tsx (or a new route name).
+  3. Update app/(auth)/index.tsx to push to it, and app/(auth)/otp.tsx to
+     accept a `phone` param again (or support both `email` and `phone`).
+  4. Update app/(auth)/_layout.tsx's wizard-order comment.
+
+--- original app/(auth)/phone.tsx ---
+
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';

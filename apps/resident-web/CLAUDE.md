@@ -65,8 +65,9 @@ app/
   layout.tsx              server root: Inter, anti-flash script, Query→Auth→Theme
                           providers + ToastHost + SW
   page.tsx                '/' → /home or /login
-  login/page.tsx          slug→phone→OTP wizard (OtpInput auto-submit, resend
-                          countdown, pre-auth accent repaint)
+  login/page.tsx          slug→email→OTP wizard (OtpInput auto-submit, resend
+                          countdown, pre-auth accent repaint). SMS_OTP_LOGIN_DISABLED
+                          — was slug→phone→OTP; see docs/disabled-phone-otp-login.tsx.txt
   (app)/layout.tsx        client route guard + centered mobile column (max-w 480,
                           pb-68 for the tab bar) + <BottomTabs/>
   (app)/{home,rent,complaints,more}/page.tsx           the 4 tabs
@@ -134,9 +135,9 @@ pnpm --filter @pg/resident-web typecheck
 pnpm --filter @pg/resident-web build      # static export → out/ (the REAL check)
 pnpm --filter @pg/resident-web start      # preview out/ with no Next server
 ```
-Backend must be running + seeded. Resident login: slug + phone + OTP (with
-`OTP_DEV_LOG=true` read it from API logs, or read Redis key `otp:{tenantId}:{phone}`
-directly; `OTP_DEV_FIXED_CODE` fixes it).
+Backend must be running + seeded. Resident login: slug + email + OTP (with
+`OTP_DEV_LOG=true` read it from API logs, or read Redis key
+`email_login_otp:{tenantId}:{email}` directly; `OTP_DEV_FIXED_CODE` fixes it).
 **Deploy:** sync `out/` to S3; set `NEXT_PUBLIC_API_URL` to the prod API at
 build time.
 

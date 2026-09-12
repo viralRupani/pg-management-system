@@ -1,84 +1,103 @@
-import { randomInt } from "node:crypto";
-import { Inject, Injectable, Logger } from "@nestjs/common";
-import Redis from "ioredis";
-import { REDIS } from "../redis/redis.module";
-import { ENV, type AppEnv } from "../config/env";
-
-/**
- * Pluggable SMS sender. Console stub for local dev; swap MSG91/Twilio later.
- * NOTE: `phone` here is the bare 10-digit number (we don't store the country
- * code — see `packages/shared/.../phone.ts`). A real provider needs E.164, so
- * re-add `+91` at send time inside the driver — that seam is the single correct
- * place for the country code.
- */
-export interface SmsProvider {
-  send(phone: string, message: string): Promise<void>;
-}
-
-/**
- * Resident phone-OTP using Redis with a TTL. Codes are namespaced by tenant
- * because phone is unique only within a PG. A 6-digit code (10^6 space) is only
- * safe with a guess cap: after MAX_VERIFY_ATTEMPTS wrong tries the code is burned
- * so an attacker can't brute-force it within the TTL.
- */
-@Injectable()
-export class OtpService {
-  private readonly logger = new Logger(OtpService.name);
-  private readonly MAX_VERIFY_ATTEMPTS = 5;
-
-  constructor(
-    @Inject(REDIS) private readonly redis: Redis,
-    @Inject(ENV) private readonly env: AppEnv,
-  ) {}
-
-  private key(tenantId: string, phone: string): string {
-    return `otp:${tenantId}:${phone}`;
-  }
-
-  private attemptsKey(tenantId: string, phone: string): string {
-    return `otp_attempts:${tenantId}:${phone}`;
-  }
-
-  async issue(tenantId: string, phone: string): Promise<void> {
-    // Dev override: a fixed code (env-gated, force-cleared in prod) lets the
-    // mobile app log in without reading Redis/logs. Otherwise a CSPRNG code —
-    // not Math.random (predictable). randomInt's upper bound is exclusive, so
-    // [100000, 1000000) is always 6 digits.
-    const code =
-      this.env.OTP_DEV_FIXED_CODE ?? String(randomInt(100000, 1000000));
-    // New code resets the failed-attempt counter for this phone.
-    await this.redis
-      .multi()
-      .set(this.key(tenantId, phone), code, "EX", this.env.OTP_TTL_SECONDS)
-      .del(this.attemptsKey(tenantId, phone))
-      .exec();
-    // Dev: log the code. Production: send via SmsProvider.
-    if (this.env.OTP_DEV_LOG) {
-      this.logger.log(`OTP for ${phone} @ tenant ${tenantId}: ${code}`);
-    }
-  }
-
-  async verify(
-    tenantId: string,
-    phone: string,
-    code: string,
-  ): Promise<boolean> {
-    const key = this.key(tenantId, phone);
-    const stored = await this.redis.get(key);
-    if (!stored) return false;
-
-    if (stored === code) {
-      await this.redis.del(key, this.attemptsKey(tenantId, phone));
-      return true;
-    }
-
-    // Wrong code: count the attempt and burn the code once the cap is hit, so
-    // the remaining guesses can't be spent. The counter ages out with the code.
-    const attemptsKey = this.attemptsKey(tenantId, phone);
-    const attempts = await this.redis.incr(attemptsKey);
-    if (attempts === 1)
-      await this.redis.expire(attemptsKey, this.env.OTP_TTL_SECONDS);
-    if (attempts >= this.MAX_VERIFY_ATTEMPTS) await this.redis.del(key);
-    return false;
-  }
-}
+// SMS_OTP_LOGIN_DISABLED — see docs/backlog.md.
+//
+// Resident login now uses email OTP (`email-login-otp.service.ts`) instead of
+// phone/SMS OTP — SMS delivery costs money and no provider was ever wired up
+// (SmsProvider below was never implemented beyond the interface). This file is
+// preserved commented-out, not deleted, so phone/SMS login can be revived
+// later (e.g. once a paying customer base justifies an SMS/WhatsApp provider
+// cost) without redoing this design:
+//   1. Un-comment this file, `OtpService` in auth.module.ts, and the phone
+//      branches in auth.repository.ts / auth.service.ts / auth.controller.ts.
+//   2. Un-comment `phoneOtpRequestSchema`/`phoneOtpVerifySchema` in
+//      packages/shared/src/schemas/auth.ts and decide how phone vs. email
+//      login coexist (e.g. a `channel` field, or a per-tenant setting).
+//   3. Implement a concrete `SmsProvider` (MSG91/Textlocal/Fast2SMS/Twilio/
+//      WhatsApp Business API) and wire it into `OtpService`.
+//   4. Re-enable the mobile/resident-web phone screens — see
+//      apps/mobile/docs/disabled-phone-otp-login.tsx.txt and
+//      apps/resident-web/docs/disabled-phone-otp-login.tsx.txt.
+//
+// import { randomInt } from "node:crypto";
+// import { Inject, Injectable, Logger } from "@nestjs/common";
+// import Redis from "ioredis";
+// import { REDIS } from "../redis/redis.module";
+// import { ENV, type AppEnv } from "../config/env";
+//
+// /**
+//  * Pluggable SMS sender. Console stub for local dev; swap MSG91/Twilio later.
+//  * NOTE: `phone` here is the bare 10-digit number (we don't store the country
+//  * code — see `packages/shared/.../phone.ts`). A real provider needs E.164, so
+//  * re-add `+91` at send time inside the driver — that seam is the single correct
+//  * place for the country code.
+//  */
+// export interface SmsProvider {
+//   send(phone: string, message: string): Promise<void>;
+// }
+//
+// /**
+//  * Resident phone-OTP using Redis with a TTL. Codes are namespaced by tenant
+//  * because phone is unique only within a PG. A 6-digit code (10^6 space) is only
+//  * safe with a guess cap: after MAX_VERIFY_ATTEMPTS wrong tries the code is burned
+//  * so an attacker can't brute-force it within the TTL.
+//  */
+// @Injectable()
+// export class OtpService {
+//   private readonly logger = new Logger(OtpService.name);
+//   private readonly MAX_VERIFY_ATTEMPTS = 5;
+//
+//   constructor(
+//     @Inject(REDIS) private readonly redis: Redis,
+//     @Inject(ENV) private readonly env: AppEnv,
+//   ) {}
+//
+//   private key(tenantId: string, phone: string): string {
+//     return `otp:${tenantId}:${phone}`;
+//   }
+//
+//   private attemptsKey(tenantId: string, phone: string): string {
+//     return `otp_attempts:${tenantId}:${phone}`;
+//   }
+//
+//   async issue(tenantId: string, phone: string): Promise<void> {
+//     // Dev override: a fixed code (env-gated, force-cleared in prod) lets the
+//     // mobile app log in without reading Redis/logs. Otherwise a CSPRNG code —
+//     // not Math.random (predictable). randomInt's upper bound is exclusive, so
+//     // [100000, 1000000) is always 6 digits.
+//     const code =
+//       this.env.OTP_DEV_FIXED_CODE ?? String(randomInt(100000, 1000000));
+//     // New code resets the failed-attempt counter for this phone.
+//     await this.redis
+//       .multi()
+//       .set(this.key(tenantId, phone), code, "EX", this.env.OTP_TTL_SECONDS)
+//       .del(this.attemptsKey(tenantId, phone))
+//       .exec();
+//     // Dev: log the code. Production: send via SmsProvider.
+//     if (this.env.OTP_DEV_LOG) {
+//       this.logger.log(`OTP for ${phone} @ tenant ${tenantId}: ${code}`);
+//     }
+//   }
+//
+//   async verify(
+//     tenantId: string,
+//     phone: string,
+//     code: string,
+//   ): Promise<boolean> {
+//     const key = this.key(tenantId, phone);
+//     const stored = await this.redis.get(key);
+//     if (!stored) return false;
+//
+//     if (stored === code) {
+//       await this.redis.del(key, this.attemptsKey(tenantId, phone));
+//       return true;
+//     }
+//
+//     // Wrong code: count the attempt and burn the code once the cap is hit, so
+//     // the remaining guesses can't be spent. The counter ages out with the code.
+//     const attemptsKey = this.attemptsKey(tenantId, phone);
+//     const attempts = await this.redis.incr(attemptsKey);
+//     if (attempts === 1)
+//       await this.redis.expire(attemptsKey, this.env.OTP_TTL_SECONDS);
+//     if (attempts >= this.MAX_VERIFY_ATTEMPTS) await this.redis.del(key);
+//     return false;
+//   }
+// }

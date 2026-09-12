@@ -34,8 +34,8 @@
 | Mobile | React Native + Expo (TypeScript) | One codebase Android+iOS |
 | Web admin | Next.js `output:'export'` — pure client SPA | No SSR/middleware — API is the only trust boundary |
 | Backend | NestJS + Drizzle ORM | Drizzle needed for explicit `SET LOCAL` control |
-| Auth | Phone OTP (residents); email+password (managers) | Resident login = slug + phone + OTP |
-| Resident phone uniqueness | Per-tenant | People move between PGs |
+| Auth | Email OTP (residents); email+password (managers) | Resident login = slug + email + OTP. Was phone+SMS OTP until 2026-09-12 — SMS costs money and no provider was ever wired; switched to reuse the already-built resident-email infra. Phone/SMS login code is preserved commented-out (see `docs/backlog.md`) for a future revival. |
+| Resident phone/email uniqueness | Per-tenant | People move between PGs |
 | Notifications | Expo/FCM push (stub); SMS/email deferred | Behind a channel abstraction |
 | File storage | AWS S3 presigned URLs | KYC, payments, complaints, logos |
 | Currency | Integer paise everywhere | No floats, ever |

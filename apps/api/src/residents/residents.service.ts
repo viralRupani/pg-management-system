@@ -78,6 +78,16 @@ const kycDocStatusExpr = sql<string | null>`(
 )`;
 
 /**
+ * Email is now the resident login key (`auth_identities.email`, unique per
+ * tenant via a plain, non-`lower(...)`, btree index), so consistent casing at
+ * write time is what keeps a later login lookup exact. Must match
+ * `auth.service.ts`'s `normalizeEmail` and `EmailLoginOtpService.normalize`.
+ */
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+/**
  * Resident operations, all under tenant RLS. The tenant id comes from the
  * authenticated context (TenantContextService), NEVER from the request body —
  * so a forged tenant_id in the payload is impossible to express, and RLS
@@ -97,11 +107,12 @@ export class ResidentsService {
     try {
       return await this.insertResident(db, tenantId, input, createdByUserId);
     } catch (err) {
-      // Phone is unique per tenant in auth_identities — surface a clean 409
-      // instead of leaking the raw DB unique violation as a 500.
+      // Phone and (now) email are each unique per tenant in auth_identities —
+      // surface a clean 409 instead of leaking the raw DB unique violation as
+      // a 500.
       if (isUniqueViolation(err)) {
         throw new ConflictException(
-          "A resident with this phone number already exists in this PG",
+          "A resident with this phone number or email already exists in this PG",
         );
       }
       throw err;
@@ -143,7 +154,7 @@ export class ResidentsService {
           role: UserRole.RESIDENT,
           name: input.name,
           phone: input.phone,
-          email: input.email ?? null,
+          email: input.email ? normalizeEmail(input.email) : null,
           age: input.age ?? null,
           occupationType: input.occupationType,
           nativePlace: input.nativePlace ?? null,
@@ -164,15 +175,19 @@ export class ResidentsService {
         })
         .returning();
 
-      // Long-term residents log into the mobile app via phone OTP, so they get
-      // an auth identity. Short-stay guests are lightweight (no app login), so
-      // we skip it — their phone is still free to reuse for a later real stay.
+      // Long-term residents log into the app via email OTP (the login key —
+      // see auth-identities.ts), so they get an auth identity. `phone` is
+      // still written too (unused at login today, SMS_OTP_LOGIN_DISABLED) so
+      // a future SMS revival needs no data migration. Short-stay guests are
+      // lightweight (no app login), so we skip it entirely — their phone/email
+      // stay free to reuse for a later real stay.
       if (!input.isShortStay) {
         await tx.insert(authIdentities).values({
           tenantId,
           role: UserRole.RESIDENT,
           userId: resident.id,
           phone: input.phone,
+          email: input.email ? normalizeEmail(input.email) : null,
         });
       }
 
@@ -237,19 +252,45 @@ export class ResidentsService {
   /**
    * Update a resident's email and reset verification — the recovery path for a
    * mis-typed address (which can never receive its OTP, leaving the resident
-   * un-allocatable). The manager re-verifies afterwards.
+   * un-allocatable, and — now email is also the login key — un-loginable).
+   * Since email logs the resident in, `auth_identities.email` is kept in sync
+   * (dual-write with `users.email`) in the same transaction.
    */
-  async updateEmail(residentId: string, email: string): Promise<{ id: string }> {
-    const [updated] = await this.ctx
-      .db()
-      .update(users)
-      .set({ email, emailVerified: false, emailVerifiedAt: null })
-      .where(
-        and(eq(users.id, residentId), eq(users.role, UserRole.RESIDENT)),
-      )
-      .returning({ id: users.id });
-    if (!updated) throw new NotFoundException("Resident not found");
-    return { id: updated.id };
+  async updateEmail(residentId: string, rawEmail: string): Promise<{ id: string }> {
+    const tenantId = this.ctx.currentTenantId()!;
+    const email = normalizeEmail(rawEmail);
+    try {
+      return await this.ctx.db().transaction(async (tx) => {
+        const [updated] = await tx
+          .update(users)
+          .set({ email, emailVerified: false, emailVerifiedAt: null })
+          .where(
+            and(eq(users.id, residentId), eq(users.role, UserRole.RESIDENT)),
+          )
+          .returning({ id: users.id });
+        if (!updated) throw new NotFoundException("Resident not found");
+
+        await tx
+          .update(authIdentities)
+          .set({ email })
+          .where(
+            and(
+              eq(authIdentities.tenantId, tenantId),
+              eq(authIdentities.userId, residentId),
+              eq(authIdentities.role, UserRole.RESIDENT),
+            ),
+          );
+
+        return { id: updated.id };
+      });
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        throw new ConflictException(
+          "A resident with this email already exists in this PG",
+        );
+      }
+      throw err;
+    }
   }
 
   async getById(id: string): Promise<ResidentSummary> {

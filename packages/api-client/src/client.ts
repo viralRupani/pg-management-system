@@ -119,7 +119,7 @@ export class PgApiClient {
     /** Manager email + password login. Returns tokens; caller persists them. */
     managerLogin: (input: ManagerLoginInput) =>
       this.http.post<AuthTokens>("/auth/manager/login", input, { auth: false }),
-    /** Resident: request an OTP for (pgCode, phone). Always `{ sent: true }`. */
+    /** Resident: request a login OTP for (pgCode, email). Always `{ sent: true }`. */
     requestResidentOtp: (input: OtpRequestInput) =>
       this.http.post<{ sent: boolean }>(
         "/auth/resident/otp/request",

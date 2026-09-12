@@ -4,7 +4,9 @@ import { throttlerRootConfig } from "../common/throttler.config";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { AuthRepository } from "./auth.repository";
-import { OtpService } from "./otp.service";
+import { EmailLoginOtpService } from "./email-login-otp.service";
+// SMS_OTP_LOGIN_DISABLED — see docs/backlog.md.
+// import { OtpService } from "./otp.service";
 import { PasswordResetService } from "./password-reset.service";
 import { MailModule } from "../mail/mail.module";
 
@@ -21,7 +23,8 @@ import { MailModule } from "../mail/mail.module";
   providers: [
     AuthService,
     AuthRepository,
-    OtpService,
+    EmailLoginOtpService,
+    // OtpService, // SMS_OTP_LOGIN_DISABLED — see docs/backlog.md.
     PasswordResetService,
   ],
   exports: [AuthService, AuthRepository],

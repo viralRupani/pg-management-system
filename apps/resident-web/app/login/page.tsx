@@ -14,16 +14,19 @@ import { useAuth } from "@/lib/auth";
 import { haptics } from "@/lib/haptics";
 import { DEFAULT_BRAND, useTheme } from "@/lib/theme";
 import { cn, toMessage } from "@/lib/utils";
-import { INDIAN_PHONE_REGEX } from "@pg/shared";
 
 const RESEND_SECONDS = 30;
 
-type Step = "slug" | "phone" | "otp";
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type Step = "slug" | "email" | "otp";
 
 /**
- * The login wizard: slug → phone → OTP as one client state machine (the mobile
+ * The login wizard: slug → email → OTP as one client state machine (the mobile
  * app's three (auth) screens collapsed into a single static-export route).
  * Fetching the PG's branding on step 1 themes the whole app pre-auth.
+ * SMS_OTP_LOGIN_DISABLED (see docs/backlog.md, root) — this used to be
+ * slug → phone → OTP; see docs/disabled-phone-otp-login.tsx.txt.
  */
 export default function LoginPage() {
   const router = useRouter();
@@ -42,7 +45,7 @@ export default function LoginPage() {
   const [slug, setSlug] = useState("");
   const [pgCode, setPgCode] = useState("");
   const [pgName, setPgName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [seconds, setSeconds] = useState(RESEND_SECONDS);
 
@@ -62,7 +65,7 @@ export default function LoginPage() {
       setAccent(branding.accentColor ?? DEFAULT_BRAND);
       setPgCode(branding.slug);
       setPgName(branding.name);
-      setStep("phone");
+      setStep("email");
     } catch (err) {
       setError(toMessage(err, "We couldn't find a PG with that code."));
     } finally {
@@ -70,16 +73,14 @@ export default function LoginPage() {
     }
   }
 
-  const phoneValid = INDIAN_PHONE_REGEX.test(phone);
+  const emailValid = EMAIL_REGEX.test(email.trim());
 
   async function onSendOtp() {
-    if (!phoneValid || loading) return;
+    if (!emailValid || loading) return;
     setLoading(true);
     setError(null);
     try {
-      // Phones are stored as the bare 10 digits (no country code) — send
-      // exactly that so the OTP lookup matches. The +91 label is cosmetic.
-      await api.auth.requestResidentOtp({ pgCode, phone });
+      await api.auth.requestResidentOtp({ pgCode, email: email.trim() });
       setCode("");
       setSeconds(RESEND_SECONDS);
       setStep("otp");
@@ -96,7 +97,7 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const tokens = await api.auth.verifyResidentOtp({ pgCode, phone, code: otp });
+      const tokens = await api.auth.verifyResidentOtp({ pgCode, email, code: otp });
       haptics.success();
       signIn(tokens);
       router.replace("/home");
@@ -110,7 +111,7 @@ export default function LoginPage() {
   async function onResend() {
     if (seconds > 0) return;
     try {
-      await api.auth.requestResidentOtp({ pgCode, phone });
+      await api.auth.requestResidentOtp({ pgCode, email });
       setSeconds(RESEND_SECONDS);
       setCode("");
       setError(null);
@@ -160,12 +161,12 @@ export default function LoginPage() {
     );
   }
 
-  if (step === "phone") {
+  if (step === "email") {
     return (
       <AuthShell
         step={2}
-        title="Verify your number"
-        subtitle="We'll text a 6-digit code to confirm it's you."
+        title="Verify your email"
+        subtitle="We'll email a 6-digit code to confirm it's you."
         header={<PgBrandHeader name={pgName} />}
       >
         <form
@@ -176,28 +177,25 @@ export default function LoginPage() {
           }}
         >
           <Input
-            label="Phone number"
-            value={phone}
+            label="Email address"
+            value={email}
             onChange={(e) => {
-              setPhone(e.target.value.replace(/[^\d]/g, "").slice(0, 10));
+              setEmail(e.target.value);
               setError(null);
             }}
-            placeholder="98765 43210"
-            inputMode="numeric"
+            placeholder="you@example.com"
+            type="email"
+            autoCapitalize="none"
+            autoCorrect="off"
             autoFocus
-            prefix={
-              <span className="shrink-0 text-[16px] font-semibold text-ink2">
-                🇮🇳 +91
-              </span>
-            }
             error={error ?? undefined}
-            hint="Standard SMS rates may apply."
+            hint="Use the email your manager has on file."
           />
           <Button
             type="submit"
             title="Send OTP"
             loading={loading}
-            disabled={!phoneValid}
+            disabled={!emailValid}
             className="mt-6"
           />
         </form>
@@ -209,7 +207,7 @@ export default function LoginPage() {
     <AuthShell
       step={3}
       title="Enter the code"
-      subtitle={`Sent to ${phone}`}
+      subtitle={`Sent to ${email}`}
       header={<PgBrandHeader name={pgName} />}
     >
       <OtpInput

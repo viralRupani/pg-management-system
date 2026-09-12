@@ -84,10 +84,15 @@ export interface Harness {
   getEmailOtp(tenantId: string, residentId: string): Promise<string | null>;
   /** Request + verify a resident's email (reads the OTP from Redis). */
   verifyResidentEmail(managerToken: string, residentId: string): Promise<void>;
-  /** Full resident phone-OTP flow (reads the dev OTP from Redis) → access token. */
+  /**
+   * Full resident email-OTP login flow (reads the dev OTP from Redis) →
+   * access token. Still takes `phone`, not `email` — see the implementation.
+   */
   residentLogin(slug: string, tenantId: string, phone: string): Promise<string>;
-  /** Read the current OTP code from Redis (or null) — for testing the verify flow. */
+  /** Read the current login-OTP code from Redis (or null) — for testing the verify flow. */
   getOtp(tenantId: string, phone: string): Promise<string | null>;
+  /** Read the current login-OTP code from Redis by the exact email used (no phone-derivation). */
+  getEmailLoginOtp(tenantId: string, email: string): Promise<string | null>;
   /** Read the password-reset token for a specific email (null if none/expired). */
   getPwResetToken(email: string): Promise<string | null>;
   /** Tear down: delete created tenants (cascade) and close the app. */
@@ -213,10 +218,16 @@ export async function createHarness(): Promise<Harness> {
       [k: string]: unknown;
     };
     const isShortStay = body.isShortStay === true;
-    // age is mandatory for long-term residents; email is too (notification
-    // channel). Default both so specs that don't care can omit them.
+    // age is mandatory for long-term residents; email is too (it's now also
+    // the login key — see residentLogin). Default both so specs that don't
+    // care can omit them; the default email is DERIVED from phone (like
+    // scripts/add-residents.mjs's seed pattern) so residentLogin can compute
+    // the same email from just the phone it's already called with — no
+    // per-spec plumbing needed.
     const res = await req("post", "/residents", managerToken, {
-      ...(isShortStay ? {} : { age: 25, email: defaultResidentEmail() }),
+      ...(isShortStay
+        ? {}
+        : { age: 25, email: defaultResidentEmail(body.phone as string) }),
       ...body,
     });
     if (res.status !== 201 && res.status !== 200) {
@@ -231,23 +242,31 @@ export async function createHarness(): Promise<Harness> {
     return residentId;
   }
 
+  /**
+   * Full resident login flow — email OTP. Still takes `phone` (not `email`)
+   * so every existing call site keeps working unchanged: the email used is
+   * DERIVED from phone via `defaultResidentEmail`, the same formula
+   * `registerResident` used to default the resident's email. A spec that
+   * registered a resident with an explicit custom `email` must not call this
+   * — none currently do (grep `residentLogin` call sites before adding one).
+   */
   async function residentLogin(
     slug: string,
     tenantId: string,
     phone: string,
   ): Promise<string> {
+    const email = defaultResidentEmail(phone);
     await req("post", "/auth/resident/otp/request", undefined, {
       pgCode: slug,
-      phone,
+      email,
     });
-    // The API stores phones (and the OTP Redis key) as the bare 10 digits — the
-    // `indianPhone` schema strips any `+91` on the way in. Mirror that here so
-    // the key matches whether the caller passed a bare or `+91`-prefixed number.
-    const code = await redis.get(`otp:${tenantId}:${normalizePhone(phone)}`);
-    if (!code) throw new Error(`no OTP in Redis for ${phone}`);
+    const code = await redis.get(
+      `email_login_otp:${tenantId}:${normalizeEmail(email)}`,
+    );
+    if (!code) throw new Error(`no login OTP in Redis for ${email}`);
     const res = await req("post", "/auth/resident/otp/verify", undefined, {
       pgCode: slug,
-      phone,
+      email,
       code,
     });
     if (!res.body?.accessToken) {
@@ -256,8 +275,18 @@ export async function createHarness(): Promise<Harness> {
     return res.body.accessToken;
   }
 
+  /** Read the current login-OTP code from Redis (or null) — keyed by the
+   *  email `defaultResidentEmail(phone)` derives, mirroring residentLogin. */
   function getOtp(tenantId: string, phone: string): Promise<string | null> {
-    return redis.get(`otp:${tenantId}:${normalizePhone(phone)}`);
+    const email = defaultResidentEmail(phone);
+    return redis.get(`email_login_otp:${tenantId}:${normalizeEmail(email)}`);
+  }
+
+  function getEmailLoginOtp(
+    tenantId: string,
+    email: string,
+  ): Promise<string | null> {
+    return redis.get(`email_login_otp:${tenantId}:${normalizeEmail(email)}`);
   }
 
   function getPwResetToken(email: string): Promise<string | null> {
@@ -284,21 +313,27 @@ export async function createHarness(): Promise<Harness> {
     verifyResidentEmail,
     residentLogin,
     getOtp,
+    getEmailLoginOtp,
     getPwResetToken,
     close,
   };
 }
 
-/** Unique-ish default email for auto-registered long-term residents. */
-let residentEmailCounter = 0;
-function defaultResidentEmail(): string {
-  residentEmailCounter += 1;
-  return `resident-${Date.now().toString(36)}-${residentEmailCounter}@example.com`;
+/**
+ * Default email for auto-registered long-term residents — DERIVED from
+ * phone (mirrors `scripts/add-residents.mjs`'s seed pattern) so
+ * `residentLogin`/`getOtp` (which only receive `phone`) can compute the same
+ * email a spec's `registerResident` call defaulted, with zero extra state.
+ * Phone is already unique per spec/tenant, so this is unique too.
+ */
+function defaultResidentEmail(phone: string): string {
+  return `resident-${phone}@example.com`;
 }
 
-/** Strip the optional `+91` prefix — phones are stored/keyed as bare digits. */
-function normalizePhone(phone: string): string {
-  return phone.replace(/^\+91/, "");
+/** Must match `EmailLoginOtpService.normalize` / `auth.service.ts`'s
+ *  `normalizeEmail` — the Redis key and DB lookup are both case-normalized. */
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
 }
 
 /** Unique-ish phone generator for resident seeding (bare 10 digits). */

@@ -30,14 +30,26 @@ export class AuthRepository {
     });
   }
 
-  findResidentIdentity(tenantId: string, phone: string) {
+  findResidentIdentityByEmail(tenantId: string, email: string) {
     return this.db.query.authIdentities.findFirst({
       where: and(
         eq(authIdentities.tenantId, tenantId),
-        eq(authIdentities.phone, phone),
+        eq(authIdentities.email, email),
+        eq(authIdentities.role, UserRole.RESIDENT),
       ),
     });
   }
+
+  // SMS_OTP_LOGIN_DISABLED — see docs/backlog.md. Phone-keyed resident lookup,
+  // preserved for when a paid SMS/WhatsApp provider is wired up.
+  // findResidentIdentityByPhone(tenantId: string, phone: string) {
+  //   return this.db.query.authIdentities.findFirst({
+  //     where: and(
+  //       eq(authIdentities.tenantId, tenantId),
+  //       eq(authIdentities.phone, phone),
+  //     ),
+  //   });
+  // }
 
   /**
    * Whether a resident is still entitled to use the mobile / web app. A manager

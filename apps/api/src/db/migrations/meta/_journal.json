@@ -274,6 +274,13 @@
       "when": 1784909250942,
       "tag": "0038_dashing_thaddeus_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1789236589248,
+      "tag": "0039_flowery_iron_patriot",
+      "breakpoints": true
     }
   ]
 }

@@ -26,7 +26,7 @@ export default function SlugScreen() {
       const branding = await api.branding.bySlug(slug);
       setAccent(branding.accentColor ?? DEFAULT_BRAND);
       router.push({
-        pathname: '/(auth)/phone',
+        pathname: '/(auth)/email',
         params: { pgCode: branding.slug, pgName: branding.name },
       });
     } catch (err) {

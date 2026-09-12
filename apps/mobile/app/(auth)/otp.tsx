@@ -18,10 +18,10 @@ const RESEND_SECONDS = 30;
 export default function OtpScreen() {
   const router = useRouter();
   const { signIn } = useAuth();
-  const { pgCode, pgName, phone } = useLocalSearchParams<{
+  const { pgCode, pgName, email } = useLocalSearchParams<{
     pgCode: string;
     pgName: string;
-    phone: string;
+    email: string;
   }>();
 
   const [code, setCode] = useState('');
@@ -41,7 +41,7 @@ export default function OtpScreen() {
     setLoading(true);
     setError(null);
     try {
-      const tokens = await api.auth.verifyResidentOtp({ pgCode, phone, code: otp });
+      const tokens = await api.auth.verifyResidentOtp({ pgCode, email, code: otp });
       haptics.success();
       signIn(tokens);
       router.replace('/home');
@@ -55,7 +55,7 @@ export default function OtpScreen() {
   async function onResend() {
     if (seconds > 0) return;
     try {
-      await api.auth.requestResidentOtp({ pgCode, phone });
+      await api.auth.requestResidentOtp({ pgCode, email });
       setSeconds(RESEND_SECONDS);
       setCode('');
       setError(null);
@@ -68,7 +68,7 @@ export default function OtpScreen() {
     <AuthShell
       step={3}
       title="Enter the code"
-      subtitle={`Sent to ${phone}`}
+      subtitle={`Sent to ${email}`}
       header={<PgBrandHeader name={pgName} />}
     >
       <OtpInput

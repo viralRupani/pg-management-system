@@ -42,16 +42,22 @@ describe("resident access revocation on move-out (e2e)", () => {
     );
   }
 
-  /** Full OTP flow → the raw verify response (carries access + refresh). */
+  /**
+   * Full login-OTP flow → the raw verify response (carries access + refresh).
+   * Takes `phone` (not `email`) like `h.residentLogin` — the email used is
+   * `resident-{phone}@example.com`, the same default `registerResident`
+   * applies when a spec doesn't pass an explicit `email`.
+   */
   async function otpLogin(phone: string) {
+    const email = `resident-${phone}@example.com`;
     await h.req("post", "/auth/resident/otp/request", undefined, {
       pgCode: pg.slug,
-      phone,
+      email,
     });
-    const code = await h.getOtp(pg.id, phone);
+    const code = await h.getEmailLoginOtp(pg.id, email);
     return h.req("post", "/auth/resident/otp/verify", undefined, {
       pgCode: pg.slug,
-      phone,
+      email,
       code,
     });
   }

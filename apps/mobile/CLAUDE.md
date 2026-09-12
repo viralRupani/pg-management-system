@@ -1,7 +1,9 @@
 # CLAUDE.md — apps/mobile (Expo resident app)
 
 > **Built (M8) — device-verified.** The resident app is feature-complete: OTP auth
-> (slug → phone → OTP), a **4-tab swipeable bottom nav** (Home · Rent · Complaints ·
+> (slug → email → OTP — was slug → phone → OTP until 2026-09-12, see
+> `docs/disabled-phone-otp-login.tsx.txt` + root `CLAUDE.md`), a **4-tab
+> swipeable bottom nav** (Home · Rent · Complaints ·
 > More/Profile) with the remaining screens as **top-level pushed routes** reached
 > from the tabs (invoice detail + submit-payment sheet, complaint raise + thread,
 > KYC documents + upload, Deposit + ledger + move-out request, Announcements, Mess
@@ -54,7 +56,7 @@ From root §2 + backlog:
 | Concern | Decision |
 |---|---|
 | Framework | React Native + **Expo, managed workflow** (TypeScript), one codebase Android + iOS |
-| Auth | **slug (pgCode) + phone + OTP**; phone is unique *per-tenant* |
+| Auth | **slug (pgCode) + email + OTP**; email is unique *per-tenant* (was phone+SMS OTP until 2026-09-12, see `docs/disabled-phone-otp-login.tsx.txt`) |
 | Token storage | JWT in **expo-secure-store** (not AsyncStorage) |
 | Pre-auth theming | public `GET /branding/:slug` (resident types the slug) — NOT the post-login `/tenants/branding` the admin uses |
 | Types / validation | `@pg/shared` Zod schemas — same single source of truth as web |
@@ -96,8 +98,8 @@ app/                       expo-router file-based routes
                            Stack + ToastHost; hydrates SecureStore tokens AND
                            loads Inter (splash-held, system-font fallback via
                            lib/fonts.ts setInterLoaded) before rendering routes
-  (auth)/                  login flow: slug → phone → OTP (auto-submit)
-                           (index → phone → otp)
+  (auth)/                  login flow: slug → email → OTP (auto-submit)
+                           (index → email → otp)
   (tabs)/                  swipeable bottom-tab nav — only 4 tabs now:
                            home · rent · complaints · more. Material Top Tabs
                            pinned to the bottom (finger-tracking swipe), custom bar
@@ -179,10 +181,10 @@ from app code, and pnpm only exposes direct deps. (3) `@pg/shared` must be built
 ## Auth flow (the entry point)
 1. Resident enters **PG code (slug)** → `GET /branding/:slug` (public) themes the
    app + confirms the PG exists.
-2. Enters **phone** → `POST /auth/resident/otp/request` `{ pgCode, phone }`.
-   OTP lives in Redis (`otp:{tenantId}:{phone}`); dev code is logged when
-   `OTP_DEV_LOG=true`.
-3. Enters **OTP** → `POST /auth/resident/otp/verify` `{ pgCode, phone, code }` →
+2. Enters **email** → `POST /auth/resident/otp/request` `{ pgCode, email }`.
+   OTP lives in Redis (`email_login_otp:{tenantId}:{email}`); dev code is
+   logged when `OTP_DEV_LOG=true`.
+3. Enters **OTP** → `POST /auth/resident/otp/verify` `{ pgCode, email, code }` →
    `{ accessToken, refreshToken }` (role `RESIDENT`, `sub` = resident id) → store
    both in SecureStore.
 4. `POST /auth/refresh` re-mints; 401 → single-flight refresh, else back to login.

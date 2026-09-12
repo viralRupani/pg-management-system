@@ -1,0 +1,127 @@
+SMS_OTP_LOGIN_DISABLED — see docs/backlog.md (root).
+
+Resident login switched from phone/SMS OTP to email OTP because SMS delivery
+costs money and no SmsProvider was ever implemented (see
+apps/api/src/auth/otp.service.ts, preserved commented-out). The original
+login wizard's phone step + otp step (from app/login/page.tsx, a single
+client-state-machine component — slug → phone → OTP) is preserved here —
+extracted, not left commented inline — because Next.js App Router's
+`page.tsx` requires a live default export; a fully-commented file breaks the
+build.
+
+To revive phone/SMS login later:
+  1. Implement a concrete SmsProvider server-side and un-comment
+     apps/api/src/auth/otp.service.ts + the phone branches in
+     apps/api/src/auth/{auth.service,auth.repository,auth.controller}.ts +
+     packages/shared/src/schemas/auth.ts's phoneOtpRequestSchema/phoneOtpVerifySchema.
+  2. Re-introduce a "phone" step (and phone state) into app/login/page.tsx
+     using the pieces below, alongside or instead of the email step.
+
+--- relevant pieces of the original app/login/page.tsx ---
+
+// imports
+import { INDIAN_PHONE_REGEX } from "@pg/shared";
+
+// state
+const [phone, setPhone] = useState("");
+
+// validity
+const phoneValid = INDIAN_PHONE_REGEX.test(phone);
+
+// send OTP
+async function onSendOtp() {
+  if (!phoneValid || loading) return;
+  setLoading(true);
+  setError(null);
+  try {
+    // Phones are stored as the bare 10 digits (no country code) — send
+    // exactly that so the OTP lookup matches. The +91 label is cosmetic.
+    await api.auth.requestResidentOtp({ pgCode, phone });
+    setCode("");
+    setSeconds(RESEND_SECONDS);
+    setStep("otp");
+  } catch (err) {
+    setError(toMessage(err, "Could not send the code. Try again."));
+  } finally {
+    setLoading(false);
+  }
+}
+
+// verify
+async function onVerify(submitted?: string) {
+  const otp = submitted ?? code;
+  if (otp.length !== 6 || loading) return;
+  setLoading(true);
+  setError(null);
+  try {
+    const tokens = await api.auth.verifyResidentOtp({ pgCode, phone, code: otp });
+    haptics.success();
+    signIn(tokens);
+    router.replace("/home");
+  } catch (err) {
+    setError(toMessage(err, "Incorrect or expired code. Try again."));
+    setCode("");
+    setLoading(false);
+  }
+}
+
+// resend
+async function onResend() {
+  if (seconds > 0) return;
+  try {
+    await api.auth.requestResidentOtp({ pgCode, phone });
+    setSeconds(RESEND_SECONDS);
+    setCode("");
+    setError(null);
+  } catch (err) {
+    setError(toMessage(err, "Could not resend. Try again."));
+  }
+}
+
+// "phone" step JSX
+if (step === "phone") {
+  return (
+    <AuthShell
+      step={2}
+      title="Verify your number"
+      subtitle="We'll text a 6-digit code to confirm it's you."
+      header={<PgBrandHeader name={pgName} />}
+    >
+      <form
+        className="flex flex-col"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSendOtp();
+        }}
+      >
+        <Input
+          label="Phone number"
+          value={phone}
+          onChange={(e) => {
+            setPhone(e.target.value.replace(/[^\d]/g, "").slice(0, 10));
+            setError(null);
+          }}
+          placeholder="98765 43210"
+          inputMode="numeric"
+          autoFocus
+          prefix={
+            <span className="shrink-0 text-[16px] font-semibold text-ink2">
+              🇮🇳 +91
+            </span>
+          }
+          error={error ?? undefined}
+          hint="Standard SMS rates may apply."
+        />
+        <Button
+          type="submit"
+          title="Send OTP"
+          loading={loading}
+          disabled={!phoneValid}
+          className="mt-6"
+        />
+      </form>
+    </AuthShell>
+  );
+}
+
+// otp step subtitle used `Sent to ${phone}`

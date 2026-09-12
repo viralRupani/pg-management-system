@@ -18,15 +18,30 @@ import {
   type ResetPasswordInput,
   UserRole,
 } from "@pg/shared";
+import { and, eq } from "drizzle-orm";
 import { ENV, type AppEnv } from "../config/env";
 import { TenantContextService } from "../db/tenant-context";
+import { users } from "../db/schema";
 import { AuthRepository } from "./auth.repository";
-import { OtpService } from "./otp.service";
+import { EmailLoginOtpService } from "./email-login-otp.service";
+// SMS_OTP_LOGIN_DISABLED — see docs/backlog.md.
+// import { OtpService } from "./otp.service";
 import { PasswordResetService } from "./password-reset.service";
 import { MailService } from "../mail/mail.service";
 
 /** Shown when a moved-out / exited resident tries to (re)authenticate. */
 const RESIDENT_INACTIVE = "This account is no longer active";
+
+/**
+ * The `auth_tenant_resident_email_unique` index is a plain (not `lower(...)`)
+ * btree on the raw column, so case-consistency at write AND read time is what
+ * keeps lookups exact — normalize here rather than add a functional index.
+ * Must match `EmailLoginOtpService.normalize` (the Redis key uses the same
+ * rule) and `residents.service.ts`'s write-side normalization.
+ */
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
 
 /** Roles that authenticate with an email + password (and can reset it). */
 const PASSWORD_ROLES: readonly UserRole[] = [
@@ -40,7 +55,7 @@ export class AuthService {
 
   constructor(
     private readonly repo: AuthRepository,
-    private readonly otp: OtpService,
+    private readonly otp: EmailLoginOtpService,
     private readonly reset: PasswordResetService,
     private readonly jwt: JwtService,
     private readonly mail: MailService,
@@ -73,11 +88,15 @@ export class AuthService {
     const tenant = await this.repo.resolveTenantBySlug(input.pgCode);
     // Do not reveal whether the PG or resident exists — always report "sent".
     if (tenant) {
-      const identity = await this.repo.findResidentIdentity(
+      // Normalize so a login attempt matches however the email was cased at
+      // registration — the unique index (and Redis key) are on the raw
+      // column, so consistent lowercasing here is what keeps lookups exact.
+      const email = normalizeEmail(input.email);
+      const identity = await this.repo.findResidentIdentityByEmail(
         tenant.id,
-        input.phone,
+        email,
       );
-      if (identity) await this.otp.issue(tenant.id, input.phone);
+      if (identity) await this.otp.issue(tenant.id, email);
     }
     return { sent: true };
   }
@@ -86,12 +105,13 @@ export class AuthService {
     const tenant = await this.repo.resolveTenantBySlug(input.pgCode);
     if (!tenant) throw new UnauthorizedException("Invalid code");
 
-    const ok = await this.otp.verify(tenant.id, input.phone, input.code);
+    const email = normalizeEmail(input.email);
+    const ok = await this.otp.verify(tenant.id, email, input.code);
     if (!ok) throw new UnauthorizedException("Invalid code");
 
-    const identity = await this.repo.findResidentIdentity(
+    const identity = await this.repo.findResidentIdentityByEmail(
       tenant.id,
-      input.phone,
+      email,
     );
     if (!identity) throw new UnauthorizedException("Invalid code");
 
@@ -99,9 +119,27 @@ export class AuthService {
     // their exit since the OTP was requested. A departed resident must not be
     // able to enter the app even with a valid code.
     const residentId = identity.userId ?? identity.id;
-    const hasAccess = await this.ctx.run(tenant.id, () =>
-      this.repo.residentHasAccess(this.ctx.db(), residentId),
-    );
+    const hasAccess = await this.ctx.run(tenant.id, async () => {
+      const ok = await this.repo.residentHasAccess(this.ctx.db(), residentId);
+      if (ok) {
+        // The email-OTP round-trip is itself proof of ownership — stronger
+        // than the manager-mediated verify flow. Conditional-flip so a
+        // resident's first login also satisfies assertEmailVerified() at
+        // allocation/booking time without waiting on a manager.
+        await this.ctx
+          .db()
+          .update(users)
+          .set({ emailVerified: true, emailVerifiedAt: new Date() })
+          .where(
+            and(
+              eq(users.id, residentId),
+              eq(users.role, UserRole.RESIDENT),
+              eq(users.emailVerified, false),
+            ),
+          );
+      }
+      return ok;
+    });
     if (!hasAccess) throw new UnauthorizedException(RESIDENT_INACTIVE);
 
     return this.issueTokens({
@@ -110,6 +148,43 @@ export class AuthService {
       role: UserRole.RESIDENT,
     });
   }
+
+  // SMS_OTP_LOGIN_DISABLED — see docs/backlog.md. Phone-OTP login, preserved
+  // for a future SMS/WhatsApp revival.
+  //
+  // async requestOtpByPhone(input: PhoneOtpRequestInput): Promise<{ sent: boolean }> {
+  //   const tenant = await this.repo.resolveTenantBySlug(input.pgCode);
+  //   if (tenant) {
+  //     const identity = await this.repo.findResidentIdentityByPhone(
+  //       tenant.id,
+  //       input.phone,
+  //     );
+  //     if (identity) await this.smsOtp.issue(tenant.id, input.phone);
+  //   }
+  //   return { sent: true };
+  // }
+  //
+  // async verifyOtpByPhone(input: PhoneOtpVerifyInput): Promise<AuthTokens> {
+  //   const tenant = await this.repo.resolveTenantBySlug(input.pgCode);
+  //   if (!tenant) throw new UnauthorizedException("Invalid code");
+  //   const ok = await this.smsOtp.verify(tenant.id, input.phone, input.code);
+  //   if (!ok) throw new UnauthorizedException("Invalid code");
+  //   const identity = await this.repo.findResidentIdentityByPhone(
+  //     tenant.id,
+  //     input.phone,
+  //   );
+  //   if (!identity) throw new UnauthorizedException("Invalid code");
+  //   const residentId = identity.userId ?? identity.id;
+  //   const hasAccess = await this.ctx.run(tenant.id, () =>
+  //     this.repo.residentHasAccess(this.ctx.db(), residentId),
+  //   );
+  //   if (!hasAccess) throw new UnauthorizedException(RESIDENT_INACTIVE);
+  //   return this.issueTokens({
+  //     sub: residentId,
+  //     tenantId: tenant.id,
+  //     role: UserRole.RESIDENT,
+  //   });
+  // }
 
   async refresh(refreshToken: string): Promise<AuthTokens> {
     let payload: JwtPayload;
