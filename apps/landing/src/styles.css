@@ -422,6 +422,27 @@ a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visibl
 .faq[open] summary .pm { transform: rotate(45deg); background: var(--primary); color: var(--primary-ink); border-color: var(--primary); }
 .faq .ans { padding: 0 4px 24px; color: var(--ink-soft); font-size: 16px; max-width: 640px; }
 
+/* ---------- 404 ---------- */
+.notfound-inner { max-width: 620px; margin-inline: auto; text-align: center; }
+.notfound-code {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(88px, 16vw, 160px);
+  line-height: 1;
+  letter-spacing: -0.03em;
+  margin-top: 4px;
+  background: linear-gradient(155deg, var(--primary), var(--teal) 120%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.notfound h1 { font-size: clamp(26px, 3.4vw, 36px); margin-top: 8px; }
+.notfound-sub { color: var(--muted); font-size: 17px; margin-top: 16px; }
+.notfound-actions { justify-content: center; margin-top: 32px; }
+.notfound-links { display: flex; flex-wrap: wrap; gap: 10px 22px; justify-content: center; margin-top: 32px; padding-top: 28px; border-top: 1px solid var(--line); }
+.notfound-links a { color: var(--ink-soft); font-size: 14.5px; font-weight: 600; transition: color .15s; }
+.notfound-links a:hover { color: var(--primary); }
+
 /* ---------- final cta ---------- */
 .final { position: relative; }
 .cta-box {

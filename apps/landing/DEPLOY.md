@@ -21,6 +21,10 @@ aws s3 mb s3://basera-landing
 #  - Alternate domain (CNAME): baserapg.com  + ACM cert (us-east-1)
 #  - SPA-style 403/404 -> /index.html (200) only if you add client routes; not needed
 #    for the marketing pages.
+#  - Custom error response: 404 -> /404.html, HTTP response code 404 (keep the real
+#    404 status — do NOT remap to 200, that would tell crawlers every dead URL is
+#    live content). An OAC-locked S3 origin returns 403 for a missing key, not 404,
+#    so add the SAME mapping for error code 403 -> /404.html / 404 as well.
 ```
 
 ### Directory-index requests (`/blog/`, `/blog/<slug>/`)
@@ -73,7 +77,7 @@ aws s3 sync dist/ s3://basera-landing \
 
 # (c) Invalidate the always-fresh paths so a new deploy is visible immediately
 aws cloudfront create-invalidation --distribution-id <DIST_ID> \
-  --paths "/" "/index.html" "/sitemap.xml" "/robots.txt" "/blog/*"
+  --paths "/" "/index.html" "/404.html" "/sitemap.xml" "/robots.txt" "/blog/*"
 ```
 
 Note: `aws s3 sync` sets `Content-Type` from the file extension automatically
