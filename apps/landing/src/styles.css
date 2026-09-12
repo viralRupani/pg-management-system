@@ -717,54 +717,6 @@ a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visibl
   .wa-float-label { display: none; }
 }
 
-/* ===================== SCROLL NUDGE BAR ===================== */
-.wa-nudge {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 54;
-  background: var(--surface);
-  border-top: 1px solid var(--line);
-  box-shadow: 0 -4px 24px rgba(0,0,0,.07);
-  padding: .875rem 5.5rem .875rem 1.5rem;
-  display: flex;
-  align-items: center;
-  gap: .75rem;
-  transform: translateY(100%);
-  transition: transform .35s cubic-bezier(.22,.68,0,1.2);
-}
-.wa-nudge.visible { transform: translateY(0); }
-.wa-nudge p {
-  flex: 1;
-  font-size: 14px;
-  margin: 0;
-  color: var(--ink-soft);
-}
-.wa-nudge p strong { color: var(--ink); }
-.wa-nudge-link {
-  color: #25d366;
-  font-weight: 600;
-  text-decoration: none;
-  white-space: nowrap;
-}
-.wa-nudge-link:hover { text-decoration: underline; }
-.wa-nudge-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 20px;
-  line-height: 1;
-  padding: 2px 6px;
-  transition: color .15s;
-  flex-shrink: 0;
-}
-.wa-nudge-close:hover { color: var(--ink); }
-@media (max-width: 640px) {
-  .wa-nudge { padding: .75rem 4.5rem .75rem 1rem; }
-  .wa-nudge p { font-size: 13px; }
-}
 
 /* ===================== INLINE BLOG CTA ===================== */
 .post-cta-inline {
