@@ -11,6 +11,8 @@ const root = dirname(fileURLToPath(import.meta.url));
 const input = {
   main: resolve(root, "index.html"),
   notFound: resolve(root, "404.html"),
+  privacy: resolve(root, "privacy", "index.html"),
+  terms: resolve(root, "terms", "index.html"),
 };
 const blogDir = resolve(root, "blog");
 input.blog = resolve(blogDir, "index.html");

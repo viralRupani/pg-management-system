@@ -38,7 +38,7 @@ const og = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" vi
   <text x="90" y="486" font-family="Helvetica, Arial, sans-serif" font-size="34" font-weight="400" fill="#e7e5ff">Beds · Rent · KYC · Complaints · Mess — for PG owners.</text>
   <g transform="translate(90 530)">
     <rect width="290" height="62" rx="31" fill="#ffffff"/>
-    <text x="145" y="42" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="30" font-weight="700" fill="#3b30b0">₹10 / bed / month</text>
+    <text x="145" y="42" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="30" font-weight="700" fill="#3b30b0">₹5 / bed / month</text>
   </g>
 </svg>`;
 

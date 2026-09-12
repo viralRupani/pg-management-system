@@ -686,3 +686,92 @@ a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visibl
   .post-body { font-size: 16.5px; }
   .post-meta { gap: 8px; }
 }
+
+/* ===================== FLOATING WHATSAPP BUTTON ===================== */
+.wa-float {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  background: #25d366;
+  color: #fff;
+  border-radius: 50px;
+  padding: .75rem 1.25rem;
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+  box-shadow: 0 4px 20px rgba(37,211,102,.45);
+  transition: transform .2s, box-shadow .2s;
+}
+.wa-float:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(37,211,102,.55);
+  color: #fff;
+}
+.wa-float svg { width: 22px; height: 22px; flex-shrink: 0; }
+@media (max-width: 640px) {
+  .wa-float { padding: .75rem; border-radius: 50%; }
+  .wa-float-label { display: none; }
+}
+
+/* ===================== SCROLL NUDGE BAR ===================== */
+.wa-nudge {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 54;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -4px 24px rgba(0,0,0,.08);
+  padding: 1rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  transform: translateY(100%);
+  transition: transform .35s cubic-bezier(.22,.68,0,1.2);
+}
+.wa-nudge.visible { transform: translateY(0); }
+.wa-nudge p {
+  flex: 1;
+  font-size: 14.5px;
+  margin: 0;
+  color: var(--ink-soft);
+  min-width: 200px;
+}
+.wa-nudge p strong { color: var(--ink); }
+.wa-nudge-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px;
+  transition: color .15s;
+}
+.wa-nudge-close:hover { color: var(--ink); }
+@media (max-width: 640px) {
+  .wa-nudge { padding: .875rem 1rem; gap: .75rem; }
+  .wa-nudge p { font-size: 13.5px; }
+}
+
+/* ===================== INLINE BLOG CTA ===================== */
+.post-cta-inline {
+  margin: 2.5rem 0;
+  padding: 1.5rem 1.75rem;
+  background: var(--primary-soft);
+  border-left: 4px solid var(--primary);
+  border-radius: 0 10px 10px 0;
+}
+.post-cta-inline p {
+  font-size: 15.5px;
+  margin: 0 0 1rem;
+  color: var(--ink-soft);
+}
+.post-cta-inline p a { color: var(--primary-strong); font-weight: 600; }
+.post-cta-inline .btn { font-size: 14.5px; }
