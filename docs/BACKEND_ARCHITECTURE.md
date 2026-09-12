@@ -70,7 +70,7 @@ Postgres is **multi-tenant**: every PG (hostel) is a "tenant," and one shared da
 | `budgets` / `expenses` | PG expense tracking |
 | `notifications` | The in-app notification feed |
 | `push_tokens` | Resident phones' push-notification device tokens |
-| `billing_snapshots` | Monthly snapshot of active-resident count (this is how *your* ₹10/resident platform fee is metered) |
+| `billing_snapshots` | Monthly snapshot of active-resident count (this is how *your* ₹5/resident platform fee is metered) |
 | `referrals` | "Refer a friend" discount tracking |
 
 ### Tables that are NOT tied to any one PG (no RLS — these are platform-level) — 6 tables
@@ -99,7 +99,7 @@ This is probably the part you have the least visibility into, since none of it i
 | **Activate bookings** | Daily, 1:00 AM | A resident can be booked into a bed for a *future* move-in date. This job checks daily and "activates" the booking (makes it a real, billable allocation) once that date arrives. |
 | **Activate room transfers** | Daily, 1:30 AM | Same idea, for pre-scheduled room transfers — executes the transfer once the target bed frees up. |
 | **Rent reminders** | Daily, 9:00 AM | Sends a notification to any resident with an overdue/pending invoice. |
-| **Monthly billing snapshot** | 1st of each month, 3:00 AM | Records the active-resident headcount for that PG — this is the number your ₹10/resident/month platform fee is calculated from. |
+| **Monthly billing snapshot** | 1st of each month, 3:00 AM | Records the active-resident headcount for that PG — this is the number your ₹5/resident/month platform fee is calculated from. |
 
 All of these run **per PG, one at a time**, inside that PG's own security context (so a job never accidentally reads across PGs) — and if one PG's job fails, the others still run.
 

@@ -2,7 +2,7 @@ import "reflect-metadata";
 import { Pool } from "pg";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { eq, inArray } from "drizzle-orm";
-import { UserRole } from "@pg/shared";
+import { BILLING_RATE_PAISE, UserRole } from "@pg/shared";
 import {
   allocations,
   announcementRecipients,
@@ -450,8 +450,8 @@ describe("cross-tenant isolation (RLS gate)", () => {
       tenantId: tenantA,
       period: "2026-06",
       activeResidents: 3,
-      ratePaise: 1000,
-      amountDuePaise: 3000,
+      ratePaise: BILLING_RATE_PAISE,
+      amountDuePaise: 3 * BILLING_RATE_PAISE,
     });
 
     // Tenant B's context sees none of A's snapshots.

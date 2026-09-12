@@ -18,9 +18,10 @@ import { allocations, billingSnapshots, tenants } from "../db/schema";
  * NEVER re-enters per-tenant RLS context because it only reads aggregate counts
  * (no per-tenant operational data leaves this service).
  *
- * Billable event (CONFIRMED): ₹10 (BILLING_RATE_PAISE) per active resident per
- * month, recurring. The rate + amount are stored denormalized per snapshot so a
- * historical row is immutable if pricing changes.
+ * Billable event (CONFIRMED): BILLING_RATE_PAISE (from `@pg/shared`) per
+ * active resident per month, recurring. The rate + amount are stored
+ * denormalized per snapshot so a historical row is immutable if pricing
+ * changes.
  */
 @Injectable()
 export class MeteringService {

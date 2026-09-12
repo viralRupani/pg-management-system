@@ -72,7 +72,7 @@ src/
                               a true undo (freeBed + delete pristine deposit)
   short-stays/                lightweight transient guests (`short_stays`, no OTP
                               identity, no allocations row → auto-excluded from rent
-                              + ₹10 metering); assigned to a VACANT/RESERVED-free-after
+                              + ₹5 metering); assigned to a VACANT/RESERVED-free-after
                               bed (→ TRANSIENT); complete/cancel frees the bed
   storage/                    StorageProvider seam (presigned URLs) + local stub
   rent/                       rent loop: invoices + payments (RentService, 2 controllers)

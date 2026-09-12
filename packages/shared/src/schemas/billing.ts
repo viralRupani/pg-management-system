@@ -2,13 +2,19 @@ import { z } from "zod";
 import { TenantStatus } from "../enums";
 
 /**
- * Platform metering. Billable event (CONFIRMED): ₹10 per active resident
- * (currently bed-allocated) per MONTH, recurring. Captured monthly in
+ * Platform metering. Billable event (CONFIRMED): BILLING_RATE_PAISE per active
+ * resident (currently bed-allocated) per MONTH, recurring. Captured monthly in
  * `billing_snapshots`. Collection is manual (offline UPI) for now.
+ *
+ * This is the ONLY place the platform rate is defined — every service, test,
+ * and doc must read/derive from it, never hardcode a rupee figure.
  */
 
-/** ₹10 per active resident per month, in paise. */
-export const BILLING_RATE_PAISE = 1000;
+/** Platform billing rate per active resident per month, in paise. */
+export const BILLING_RATE_PAISE = 500;
+
+/** Convenience display value derived from the rate above — never hardcode ₹ elsewhere. */
+export const BILLING_RATE_RUPEES = BILLING_RATE_PAISE / 100;
 
 const periodString = z
   .string()

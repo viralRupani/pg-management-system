@@ -1,3 +1,4 @@
+import { BILLING_RATE_PAISE } from "@pg/shared";
 import { createHarness, randomPhone, type Harness, type TestPg } from "./harness";
 
 /**
@@ -15,7 +16,7 @@ describe("M6 metering & branding (e2e)", () => {
   let plat: string;
   let aR1: string; // resident ids in A
   const PERIOD = "2026-06";
-  const RATE = 1000; // BILLING_RATE_PAISE (₹10)
+  const RATE = BILLING_RATE_PAISE;
 
   async function newId(res: { status: number; body: { id: string } }): Promise<string> {
     if (res.status !== 201 && res.status !== 200)
