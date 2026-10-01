@@ -259,37 +259,55 @@ describe("M3 rent loop (e2e)", () => {
     expect(rejected.body).toContain("Screenshot unreadable");
   });
 
-  it("an invoice cannot be double-paid by approving a second payment for it", async () => {
-    // inv2 is still PENDING. Two SUBMITTED payments can co-exist on it (e.g. a
-    // resident re-uploads); approving the first pays the invoice, approving the
-    // second must 409 and leave exactly one APPROVED payment.
+  it("re-submitting supersedes the previous pending payment (one awaiting review per invoice)", async () => {
+    // inv2 is still PENDING. A resident re-uploading better proof must keep
+    // working, but the two attempts must NOT both sit SUBMITTED: the loser could
+    // never be approved (approving either settles the invoice) and would linger
+    // in the manager's review queue against a PAID invoice. So the first attempt
+    // is superseded — REJECTED, with a note, and no manager reviewer.
     const p1 = (
       await h.req("post", "/payments", resident2, {
         invoiceId: inv2,
         screenshotKey: "shot-2a",
       })
     ).body.id;
-    const p2 = (
-      await h.req("post", "/payments", resident2, {
-        invoiceId: inv2,
-        screenshotKey: "shot-2b",
-      })
-    ).body.id;
+    const resubmit = await h.req("post", "/payments", resident2, {
+      invoiceId: inv2,
+      screenshotKey: "shot-2b",
+    });
+    expect(resubmit.status).toBe(201);
+    const p2 = resubmit.body.id;
 
-    const first = await h.req("post", `/payments/${p1}/approve`, pgA.managerToken);
+    // Exactly one payment awaits review on this invoice, and it's the newer one.
+    const queue = await h.req("get", "/payments?status=SUBMITTED", pgA.managerToken);
+    const pendingOnInv2 = queue.body.filter((p: { invoiceId: string }) => p.invoiceId === inv2);
+    expect(pendingOnInv2).toHaveLength(1);
+    expect(pendingOnInv2[0].id).toBe(p2);
+
+    // The superseded attempt is visible to the resident as an earlier attempt.
+    const mine = await h.req("get", `/payments/invoice/${inv2}`, resident2);
+    const superseded = mine.body.find((p: { id: string }) => p.id === p1);
+    expect(superseded.status).toBe("REJECTED");
+    expect(superseded.reviewNote).toBe("Superseded by a newer submission");
+
+    // Superseding is not a manager rejection — the resident is NOT notified.
+    const feed = await h.req("get", "/notifications", resident2);
+    const rejections = feed.body.filter(
+      (n: { type: string; body: string }) =>
+        n.type === "PAYMENT_REJECTED" && n.body.includes("Superseded"),
+    );
+    expect(rejections).toHaveLength(0);
+
+    // Approving the live attempt pays the invoice; the superseded one 409s.
+    const first = await h.req("post", `/payments/${p2}/approve`, pgA.managerToken);
     expect(first.status).toBe(201);
-
-    // Second approval for the same (now PAID) invoice is rejected, whole txn
-    // rolls back — p2 stays SUBMITTED, invoice keeps its single payment.
-    const second = await h.req("post", `/payments/${p2}/approve`, pgA.managerToken);
+    const second = await h.req("post", `/payments/${p1}/approve`, pgA.managerToken);
     expect(second.status).toBe(409);
 
     const invoice2 = (
       await h.req("get", "/invoices", pgA.managerToken)
     ).body.items.find((i: { id: string }) => i.id === inv2);
     expect(invoice2.status).toBe("PAID");
-    const stillSubmitted = await h.req("get", "/payments?status=SUBMITTED", pgA.managerToken);
-    expect(stillSubmitted.body.some((p: { id: string }) => p.id === p2)).toBe(true);
   });
 
   it("a resident cannot submit a payment against an already-paid invoice (409)", async () => {

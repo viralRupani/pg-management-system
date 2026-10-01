@@ -20,6 +20,7 @@ import {
   type SubmitPaymentInput,
 } from "@pg/shared";
 import { TenantContextService } from "../db/tenant-context";
+import { isUniqueViolation } from "../db/pg-errors";
 import {
   allocations,
   beds,
@@ -703,21 +704,57 @@ export class RentService {
       throw new ConflictException(
         `Invoice is already ${invoice.status.toLowerCase()}`,
       );
-    const [row] = await this.ctx
-      .db()
-      .insert(payments)
-      .values({
-        tenantId,
-        invoiceId: input.invoiceId,
-        residentId, // from JWT sub, never the body
-        amountPaise: input.amountPaise ?? invoice.amountPaise,
-        method: input.method,
-        screenshotKey: input.screenshotKey ?? null,
-        referenceId: input.referenceId ?? null,
-        status: PaymentStatus.SUBMITTED,
-      })
-      .returning({ id: payments.id });
-    return { id: row.id };
+    // Re-submitting SUPERSEDES the previous pending attempt rather than being
+    // refused: re-uploading better proof (a blurry screenshot, the wrong UTR) is
+    // a real flow and must keep working. But two SUBMITTED rows must not co-exist
+    // — approving either settles the invoice, so the loser is unapprovable (409)
+    // and just lingers in the manager's review queue against an already-PAID
+    // invoice. Superseding keeps exactly one payment awaiting review per invoice.
+    //
+    // `reviewedByUserId` stays null: no manager reviewed this, the resident
+    // replaced it. Nothing notifies the resident here (the PAYMENT_REJECTED feed
+    // row is written only by the manager reject path) — being told "payment
+    // rejected" for your own re-upload would be wrong.
+    try {
+      return await this.ctx.db().transaction(async (tx) => {
+        // Conditional flip — zero rows affected is the normal (first submit) case.
+        await tx
+          .update(payments)
+          .set({
+            status: PaymentStatus.REJECTED,
+            reviewNote: "Superseded by a newer submission",
+            reviewedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(payments.invoiceId, input.invoiceId),
+              eq(payments.status, PaymentStatus.SUBMITTED),
+            ),
+          );
+        const [row] = await tx
+          .insert(payments)
+          .values({
+            tenantId,
+            invoiceId: input.invoiceId,
+            residentId, // from JWT sub, never the body
+            amountPaise: input.amountPaise ?? invoice.amountPaise,
+            method: input.method,
+            screenshotKey: input.screenshotKey ?? null,
+            referenceId: input.referenceId ?? null,
+            status: PaymentStatus.SUBMITTED,
+          })
+          .returning({ id: payments.id });
+        return { id: row.id };
+      });
+    } catch (err) {
+      // `payments_pending_per_invoice_unique` is the concurrency backstop: two
+      // genuinely simultaneous submits both supersede, then race to insert.
+      if (isUniqueViolation(err))
+        throw new ConflictException(
+          "Another payment for this invoice was just submitted. Please try again.",
+        );
+      throw err;
+    }
   }
 
   /**

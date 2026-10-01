@@ -1,9 +1,11 @@
+import { sql } from "drizzle-orm";
 import {
   foreignKey,
   integer,
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { tenants } from "./tenants";
@@ -60,6 +62,14 @@ export const payments = pgTable(
       foreignColumns: [users.id, users.tenantId],
       name: "payments_reviewed_by_user_id_tenant_id_fk",
     }),
+    // At most ONE payment awaiting review per invoice. Two SUBMITTED rows on one
+    // invoice are never meaningful: approval settles the invoice, so the loser is
+    // unapprovable (409) and just sits in the manager's review queue against an
+    // already-PAID invoice. Decided rows (APPROVED/REJECTED) are unconstrained,
+    // so a rejected attempt can always be followed by a fresh one.
+    pendingPerInvoice: uniqueIndex("payments_pending_per_invoice_unique")
+      .on(t.invoiceId)
+      .where(sql`status = 'SUBMITTED'`),
   }),
 );
 

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "payments_pending_per_invoice_unique" ON "payments" USING btree ("invoice_id") WHERE status = 'SUBMITTED';
