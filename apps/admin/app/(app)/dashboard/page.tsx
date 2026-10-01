@@ -132,7 +132,7 @@ export default function DashboardPage() {
           }
           icon={AlertTriangle}
           loading={loading}
-          href="/rent"
+          href="/rent?tab=invoices"
         />
         <StatCard
           label="Payments to review"

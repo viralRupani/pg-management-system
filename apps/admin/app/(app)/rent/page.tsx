@@ -62,9 +62,18 @@ export default function RentPage() {
 
 function RentPageInner() {
   const toast = useToast();
+  const searchParams = useSearchParams();
   // A "View invoices" link from a resident lands here pre-filtered to them.
-  const residentId = useSearchParams().get("resident") ?? undefined;
-  const [tab, setTab] = useState<Tab>(residentId ? "invoices" : "payments");
+  const residentId = searchParams.get("resident") ?? undefined;
+  // Dashboard stat cards (e.g. "Overdue rent") deep-link to a specific tab.
+  const tabParam = searchParams.get("tab");
+  const initialTab: Tab =
+    tabParam === "invoices" || tabParam === "schedule"
+      ? tabParam
+      : residentId
+        ? "invoices"
+        : "payments";
+  const [tab, setTab] = useState<Tab>(initialTab);
 
   // Following a fresh resident link keeps us on the Invoices tab.
   useEffect(() => {
