@@ -17,20 +17,19 @@ servers** as you grow. Follow it in order. Copy-paste config lives in
 ## Contents
 
 1. [Architecture at a glance](#1-architecture-at-a-glance)
-2. [⚠️ Pre-launch blockers (read first)](#2-pre-launch-blockers-read-first)
-3. [Provision the server](#3-provision-the-server)
-4. [Install runtimes](#4-install-runtimes)
-5. [AWS: S3 + SES + IAM](#5-aws-s3--ses--iam)
-6. [Database + Redis](#6-database--redis)
-7. [Deploy the API](#7-deploy-the-api)
-8. [Bootstrap the platform admin](#8-bootstrap-the-platform-admin)
-9. [Build + host the web frontends](#9-build--host-the-web-frontends)
-10. [nginx + TLS](#10-nginx--tls)
-11. [Backups](#11-backups)
-12. [Phase 2 — splitting DB / Redis out](#12-phase-2--splitting-db--redis-out)
-13. [Updating / redeploying](#13-updating--redeploying)
-14. [Monitoring + hardening](#14-monitoring--hardening)
-15. [Post-deploy verification checklist](#15-post-deploy-verification-checklist)
+2. [Provision the server](#2-provision-the-server)
+3. [Install runtimes](#3-install-runtimes)
+4. [AWS: S3 + SES + IAM](#4-aws-s3--ses--iam)
+5. [Database + Redis](#5-database--redis)
+6. [Deploy the API](#6-deploy-the-api)
+7. [Bootstrap the platform admin](#7-bootstrap-the-platform-admin)
+8. [Build + host the web frontends](#8-build--host-the-web-frontends)
+9. [nginx + TLS](#9-nginx--tls)
+10. [Backups](#10-backups)
+11. [Phase 2 — splitting DB / Redis out](#11-phase-2--splitting-db--redis-out)
+12. [Updating / redeploying](#12-updating--redeploying)
+13. [Monitoring + hardening](#13-monitoring--hardening)
+14. [Post-deploy verification checklist](#14-post-deploy-verification-checklist)
 
 ---
 
@@ -64,7 +63,7 @@ servers** as you grow. Follow it in order. Copy-paste config lives in
 - **Only nginx is public** (ports 80/443). The API listens on `127.0.0.1:4000`;
   Postgres/Redis on `127.0.0.1` too. The firewall exposes only 22/80/443.
   Unlike Caddy, nginx doesn't obtain TLS certs itself — **certbot's nginx
-  plugin** issues and auto-renews them (see §10).
+  plugin** issues and auto-renews them (see §9).
 - **BullMQ runs inside the API process** — the one systemd service is the whole
   backend (HTTP + scheduler + worker). Do **not** run a second API instance (two
   in-process workers would double-fire the cron jobs).
@@ -76,44 +75,7 @@ servers** as you grow. Follow it in order. Copy-paste config lives in
 
 ---
 
-## 2. ⚠️ Pre-launch blockers (read first)
-
-Two things are **not** solved by configuration — they need a small code change
-before the corresponding feature works in production. Don't discover these after launch.
-
-### 2a. Resident phone-OTP login has no SMS delivery — **residents cannot log in**
-The OTP is generated and stored in Redis, but there is **no SMS provider wired**
-(`apps/api/src/auth/otp.service.ts` — the `SmsProvider` interface is a stub, never
-implemented). In development the code is printed to the log; in **production those
-dev logs are force-disabled**, so the code is never delivered by any channel.
-
-**Required before residents can log in:** implement a real SMS driver (recommend
-**MSG91** for India, or Twilio) and inject it into `OtpService.issue()`. This is a
-~half-day code task, then set the provider's credentials as env vars.
-
-> Managers/owners log in with email + password and are unaffected. The resident
-> **email-verification** OTP is a *separate*, working channel (it goes over SES, see
-> §5) — it does not substitute for SMS login.
-
-### 2b. `trust proxy` is not set — rate-limiting is degraded behind nginx
-The API doesn't trust the proxy's forwarded client IP, so the login/OTP throttler
-buckets **all** clients under nginx's IP (one shared limit). One-line fix in
-`apps/api/src/main.ts` before `app.listen`:
-
-```ts
-app.getHttpAdapter().getInstance().set("trust proxy", 1);
-```
-
-Not a hard blocker, but do it so brute-force protection works per-client.
-
-> Lower priority (backlog, not blocking): a password change doesn't invalidate
-> existing 30-day refresh tokens.
-
-*(Ask the maintainer to knock out 2a + 2b — they're quick and both are code, not ops.)*
-
----
-
-## 3. Provision the server
+## 2. Provision the server
 
 - **Where:** any Ubuntu 22.04/24.04 LTS VPS. Pick an **India region** for latency
   (DigitalOcean **BLR1**, AWS **Lightsail Mumbai**, or similar).
@@ -146,7 +108,7 @@ sudo timedatectl set-timezone Asia/Kolkata
 
 ---
 
-## 4. Install runtimes
+## 3. Install runtimes
 
 ```bash
 # Docker + compose plugin (for Postgres + Redis)
@@ -176,7 +138,7 @@ sudo apt install -y awscli postgresql-client
 
 ---
 
-## 5. AWS: S3 + SES + IAM
+## 4. AWS: S3 + SES + IAM
 
 Both are **required for a functional launch** — file uploads and every
 transactional email depend on them. Region: **ap-south-1 (Mumbai)**.
@@ -192,7 +154,7 @@ transactional email depend on them. Region: **ap-south-1 (Mumbai)**.
    ```
    (Without CORS, browser/app uploads fail with an opaque error.)
 3. Create a **separate** bucket for DB backups, e.g. `basera-db-backups`
-   (see §11) — enable **versioning** + a **lifecycle** rule (expire after 30–90 days).
+   (see §10) — enable **versioning** + a **lifecycle** rule (expire after 30–90 days).
 
 **SES (email — password reset, resident email-verify OTP, notification emails):**
 1. Verify a **domain identity** you own (not just an address) and enable **DKIM**.
@@ -214,7 +176,7 @@ transactional email depend on them. Region: **ap-south-1 (Mumbai)**.
 
 ---
 
-## 6. Database + Redis
+## 5. Database + Redis
 
 Clone the repo and bring up Postgres + Redis:
 
@@ -260,7 +222,7 @@ docker exec -it basera_postgres psql -U postgres -d pg_management -c \
 
 ---
 
-## 7. Deploy the API
+## 6. Deploy the API
 
 ```bash
 cd ~/pg-management-system
@@ -300,7 +262,7 @@ curl -s http://127.0.0.1:4000/health      # → {"status":"ok"}
 
 ---
 
-## 8. Bootstrap the platform admin
+## 7. Bootstrap the platform admin
 
 The SaaS super-admin (you, the operator) has **no signup endpoint** — seed it once.
 This also seeds Terms & Conditions v1.
@@ -319,7 +281,7 @@ PGs + managers through the app. (The other scripts — `seed.mjs`, `add-resident
 
 ---
 
-## 9. Build + host the web frontends
+## 8. Build + host the web frontends
 
 Both admin and resident-web are **static exports** — pure HTML/JS served by nginx.
 
@@ -349,7 +311,7 @@ copying `dist/` to `/var/www/landing`, and uncommenting the root-domain block in
 
 ---
 
-## 10. nginx + TLS
+## 9. nginx + TLS
 
 Point DNS **A records** for `api.`, `admin.`, and `app.` (and root, if serving the
 landing site) at the server's IP **first** — certbot needs to answer the HTTP-01
@@ -374,7 +336,7 @@ and `https://app.…` origins, then `sudo systemctl restart basera-api`.
 
 ---
 
-## 11. Backups
+## 10. Backups
 
 **Postgres is the only critical stateful thing.** User files live in S3 (off the
 box); Redis is rebuildable (OTPs are short-lived and BullMQ repeatable jobs
@@ -416,7 +378,7 @@ Backup policy:
 
 ---
 
-## 12. Phase 2 — splitting DB / Redis out
+## 11. Phase 2 — splitting DB / Redis out
 
 The app reaches Postgres/Redis **only** through connection strings and stores files
 in S3, so scaling out is *stand up + repoint + restart* — **no code changes**.
@@ -450,7 +412,7 @@ It's stateless: build on the new box, point env at the same DB/Redis/S3, cut DNS
 
 ---
 
-## 13. Updating / redeploying
+## 12. Updating / redeploying
 
 ```bash
 cd ~/pg-management-system
@@ -476,7 +438,7 @@ if something goes wrong (migrations don't auto-reverse).
 
 ---
 
-## 14. Monitoring + hardening
+## 13. Monitoring + hardening
 
 - **Uptime:** external check on `https://api.basera.app/health` (UptimeRobot,
   BetterStack — free tiers are fine). Alerts to your phone/email.
@@ -490,11 +452,11 @@ if something goes wrong (migrations don't auto-reverse).
 - **Confirm the box isn't leaking DB/Redis:** from *another* machine,
   `nc -vz <server-ip> 5432` and `6379` should both **refuse/timeout** (only
   22/80/443 open).
-- Keep `unattended-upgrades` + `fail2ban` running (from §3).
+- Keep `unattended-upgrades` + `fail2ban` running (from §2).
 
 ---
 
-## 15. Post-deploy verification checklist
+## 14. Post-deploy verification checklist
 
 - [ ] `curl https://api.basera.app/health` → `{"status":"ok"}` over valid TLS.
 - [ ] Manager can log in end-to-end from `https://admin.basera.app`.
@@ -502,8 +464,8 @@ if something goes wrong (migrations don't auto-reverse).
       `STORAGE_DRIVER=s3` + bucket CORS).
 - [ ] A manager **password-reset email actually arrives** (proves SES live + DKIM,
       not stuck in sandbox/spam).
-- [ ] **Resident phone-OTP login** — expected to **fail until the SMS driver ships**
-      (§2a). Don't onboard residents before then.
+- [ ] **Resident email-OTP login** end-to-end — the OTP email actually arrives
+      (proves SES live, same dependency as the password-reset email above).
 - [ ] `bash deploy/backup-db.sh` puts an object in `s3://basera-db-backups`, and
       `deploy/restore-db.sh` restores it into a scratch DB cleanly.
 - [ ] `systemctl status basera-api` active; nginx certs issued (`certbot
